@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, FileUp, X, ScanLine, CheckCircle2, AlertCircle, LoaderCircle } from 'lucide-react';
 import { imageFilesToPdf } from '../services/pdf';
-import { readInvoiceDocument, type InvoiceReadResult } from '../services/invoiceReader';
+import { readInvoiceDocumentEnhanced } from '../services/invoiceReaderEnhanced';
+import type { InvoiceReadResult } from '../services/invoiceReader';
 import type { ExpenseCategory, InvoiceSource, NewInvoiceInput } from '../types';
 
 export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolean;onClose:()=>void;onSave:(input:NewInvoiceInput)=>Promise<void>;categories:ExpenseCategory[]}) {
@@ -39,7 +40,7 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
     if(result.invoiceDate) setInvoiceDate(result.invoiceDate);
     if(result.categoryId) setCategoryId(result.categoryId);
     if(result.subtotal) setSubtotal(String(result.subtotal));
-    if(result.vat) setVat(String(result.vat));
+    setVat(String(result.vat || 0));
     if(result.withholding) setWithholding(String(result.withholding));
     if(result.total) setTotal(String(result.total));
   };
@@ -47,7 +48,7 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
   const runReader = async (prepared: File) => {
     setReading(true); setReaderMessage('Analizando factura…'); setExtraction(null);
     try {
-      const result = await readInvoiceDocument(prepared, categories, setReaderMessage);
+      const result = await readInvoiceDocumentEnhanced(prepared, categories, setReaderMessage);
       applyExtraction(result);
       const percent = Math.round(result.confidence * 100);
       setReaderMessage(`Lectura completada · confianza ${percent}%${result.lines.length ? ` · ${result.lines.length} línea${result.lines.length>1?'s':''} detectada${result.lines.length>1?'s':''}` : ''}. Revisa los datos antes de guardar.`);
@@ -72,7 +73,7 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
     setSaving(true); setError('');
     try {
       const extractionMetadata = extraction ? {
-        parser: extraction.usedOcr ? 'browser-ocr-v1' : 'pdf-text-v1',
+        parser: extraction.usedOcr ? 'browser-ocr-v2' : 'pdf-text-v2',
         supplierName: extraction.supplierName,
         invoiceNumber: extraction.invoiceNumber,
         invoiceDate: extraction.invoiceDate,
