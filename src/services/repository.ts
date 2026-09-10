@@ -307,6 +307,21 @@ export async function addProduct(input: { name: string; sku?: string; category?:
   if (error) throw error;
 }
 
+export async function updateProduct(productId: string, input: { name: string; sku?: string; category?: string; unit: string }) {
+  const { error } = await supabase.from('products').update({
+    name: input.name.trim(),
+    sku: input.sku?.trim() || null,
+    category: input.category?.trim() || null,
+    base_unit: input.unit.trim() || 'ud',
+  }).eq('id', productId);
+  if (error) throw error;
+}
+
+export async function deleteProduct(productId: string) {
+  const { error } = await supabase.from('products').delete().eq('id', productId);
+  if (error) throw error;
+}
+
 type SupplierInput = { name: string; taxId?: string; email?: string; supplierType: 'goods' | 'service' | 'both' };
 
 export async function addSupplier(input: SupplierInput) {
