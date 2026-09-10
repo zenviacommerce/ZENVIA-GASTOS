@@ -1,0 +1,1 @@
+.fieldValidationError{display:block;margin-top:5px;color:#dc2626;font-size:11px;line-height:1.35;font-weight:600}.stackForm input[aria-invalid="true"],.stackForm select[aria-invalid="true"]{border-color:#ef4444!important;box-shadow:0 0 0 3px rgba(239,68,68,.1)!important}[data-theme="dark"] .fieldValidationError{color:#fca5a5}
