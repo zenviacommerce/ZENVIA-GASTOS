@@ -1,5 +1,5 @@
 import type { ExpenseCategory, NewInvoiceInput } from '../types';
-import { readInvoiceDocument } from './invoiceReader';
+import { readInvoiceDocumentEnhanced } from './invoiceReaderEnhanced';
 import { createInvoice } from './repository';
 import { supabase } from './supabase';
 import { downloadGmailAttachment, updateGmailImport, type GmailCandidate } from './gmail';
@@ -84,7 +84,7 @@ export async function importGmailCandidate(
 
     stage = 'leyendo la factura';
     onProgress?.('Leyendo la factura…');
-    const extraction = await readInvoiceDocument(file, categories, onProgress);
+    const extraction = await readInvoiceDocumentEnhanced(file, categories, onProgress);
     const supplierName = extraction.supplierName || senderFallback(candidate.sender);
     const receivedDate = validIsoDate(candidate.receivedAt?.slice(0, 10));
     const invoiceDate = validIsoDate(extraction.invoiceDate) || receivedDate || new Date().toISOString().slice(0, 10);
@@ -102,7 +102,7 @@ export async function importGmailCandidate(
       total: extraction.total,
       ocrText: extraction.text,
       extraction: {
-        parser: extraction.usedOcr ? 'gmail-browser-ocr-v1' : 'gmail-pdf-text-v1',
+        parser: extraction.usedOcr ? 'gmail-browser-ocr-v2' : 'gmail-pdf-text-v2',
         gmailMessageId: candidate.messageId,
         gmailAttachmentId: candidate.attachmentId,
         supplierName: extraction.supplierName,
@@ -129,9 +129,6 @@ export async function importGmailCandidate(
       const firstMessage = errorMessage(firstSaveError);
       if (!extraction.lines.length) throw new Error(firstMessage);
 
-      // La cabecera y el documento son prioritarios. Si el enriquecimiento de líneas/productos
-      // falla, createInvoice revierte ese intento; hacemos un segundo guardado sin líneas para
-      // que la factura no se pierda y quede disponible para revisión manual.
       stage = 'guardando la factura sin líneas automáticas';
       onProgress?.('Las líneas automáticas dieron un problema. Guardando la factura para revisión…');
       lineImportWarning = firstMessage;
