@@ -8,6 +8,8 @@ const LIST_PAGE_SIZE = 500;
 const MAX_LIST_PAGES = 20;
 const MAX_MESSAGES_PER_SCAN = 200;
 const MAX_CACHED_MESSAGE_IDS = 5000;
+const MIN_GENERIC_IMAGE_BYTES = 20_000;
+const MIN_GENERIC_INLINE_IMAGE_BYTES = 75_000;
 
 export interface GmailStableScanResult {
   candidates: GmailCandidate[];
@@ -49,14 +51,9 @@ function isTemporaryGmailError(status: number, reason: string, message: string) 
   return status === 429
     || status >= 500
     || (status === 403 && (
-      r.includes('ratelimit')
-      || r.includes('quota')
-      || r.includes('resource_exhausted')
-      || r.includes('userratelimitexceeded')
-      || m.includes('rate limit')
-      || m.includes('quota')
-      || m.includes('too many requests')
-      || m.includes('resource exhausted')
+      r.includes('ratelimit') || r.includes('quota') || r.includes('resource_exhausted')
+      || r.includes('userratelimitexceeded') || m.includes('rate limit')
+      || m.includes('quota') || m.includes('too many requests') || m.includes('resource exhausted')
     ));
 }
 
@@ -104,14 +101,61 @@ function isSupportedAttachment(filename: string, mimeType: string) {
   return mimeType === 'application/pdf' || mimeType.startsWith('image/') || /\.(pdf|png|jpe?g|webp)$/i.test(name);
 }
 
-function looksLikeInvoice(filename: string, subject: string, snippet: string, mimeType: string) {
-  const haystack = `${filename} ${subject} ${snippet}`.toLowerCase();
-  const invoiceWords = /factura|invoice|receipt|recibo|ticket|billing|bill|fatura|fattura|rechnung/;
-  if (invoiceWords.test(haystack)) return true;
-  return mimeType === 'application/pdf' || filename.toLowerCase().endsWith('.pdf');
+const invoiceWords = /factura|invoice|receipt|recibo|ticket|billing|bill|fatura|fattura|rechnung/i;
+const decorativeImageName = /(?:^|[-_.\s])(logo|logotipo|signature|firma|banner|icon|spacer|pixel|facebook|instagram|linkedin|twitter)(?:[-_.\s]|$)/i;
+const genericImageName = /^(?:image|img|imagen|photo|foto)[-_ ]?\d{0,5}\.(?:png|jpe?g|webp)$/i;
+
+export function isDecorativeGmailImage(candidate: Pick<GmailCandidate, 'attachmentName' | 'mimeType' | 'size' | 'subject' | 'snippet'>) {
+  const filename = candidate.attachmentName || '';
+  const mimeType = candidate.mimeType || '';
+  const lower = filename.toLowerCase();
+  const image = mimeType.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(lower);
+  if (!image) return false;
+
+  const size = Number(candidate.size || 0);
+  const filenameSaysInvoice = invoiceWords.test(filename);
+  invoiceWords.lastIndex = 0;
+  if (filenameSaysInvoice) return false;
+
+  if (decorativeImageName.test(lower)) return true;
+  decorativeImageName.lastIndex = 0;
+
+  if (genericImageName.test(lower) && size > 0 && size < MIN_GENERIC_INLINE_IMAGE_BYTES) return true;
+  genericImageName.lastIndex = 0;
+
+  if (size > 0 && size < MIN_GENERIC_IMAGE_BYTES) return true;
+  return false;
 }
 
-function collectAttachmentParts(part: any, result: Array<{ attachmentId: string; partId?: string; filename: string; mimeType: string; size?: number }>) {
+function looksLikeInvoice(filename: string, subject: string, snippet: string, mimeType: string, size?: number) {
+  const lower = filename.toLowerCase();
+  if (mimeType === 'application/pdf' || lower.endsWith('.pdf')) return true;
+
+  const candidate = { attachmentName: filename, mimeType, size: size || null, subject, snippet };
+  if (isDecorativeGmailImage(candidate)) return false;
+
+  const filenameSaysInvoice = invoiceWords.test(filename);
+  invoiceWords.lastIndex = 0;
+  if (filenameSaysInvoice) return true;
+
+  const contextSaysInvoice = invoiceWords.test(`${subject} ${snippet}`);
+  invoiceWords.lastIndex = 0;
+  if (!contextSaysInvoice) return false;
+
+  // Para imágenes genéricas exigimos un tamaño mínimo. Esto evita logos de firmas
+  // como image001.jpg de pocos KB aunque el asunto del correo diga «factura».
+  return !size || size >= MIN_GENERIC_IMAGE_BYTES;
+}
+
+type AttachmentPart = {
+  attachmentId: string;
+  partId?: string;
+  filename: string;
+  mimeType: string;
+  size?: number;
+};
+
+function collectAttachmentParts(part: any, result: AttachmentPart[]) {
   const filename = String(part?.filename || '').trim();
   const mimeType = String(part?.mimeType || 'application/octet-stream');
   if (filename && isSupportedAttachment(filename, mimeType) && (part?.body?.attachmentId || part?.body?.data)) {
@@ -150,7 +194,6 @@ function saveScannedMessageIds(account: string, ids: Set<string>) {
 type GmailListResponse = {
   messages?: Array<{ id: string; threadId?: string }>;
   nextPageToken?: string;
-  resultSizeEstimate?: number;
 };
 
 async function listMatchingMessages(accessToken: string, q: string, onProgress?: (message: string) => void) {
@@ -161,7 +204,9 @@ async function listMatchingMessages(accessToken: string, q: string, onProgress?:
   let truncated = false;
 
   do {
-    onProgress?.(pagesLoaded === 0 ? 'Buscando correos con adjuntos compatibles…' : `Buscando correos con adjuntos compatibles… página ${pagesLoaded + 1}`);
+    onProgress?.(pagesLoaded === 0
+      ? 'Buscando correos con adjuntos compatibles…'
+      : `Buscando correos con adjuntos compatibles… página ${pagesLoaded + 1}`);
     const token = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
     const list = await gmailFetchJson<GmailListResponse>(accessToken, `messages?maxResults=${LIST_PAGE_SIZE}&q=${q}${token}`);
     pagesLoaded += 1;
@@ -195,10 +240,7 @@ export async function searchGmailInvoiceCandidatesStable(
   const listed = await listMatchingMessages(accessToken, q, onProgress);
   const messages = listed.messages;
   if (!messages.length) {
-    return {
-      candidates: [], totalMessages: 0, newMessages: 0, cachedMessages: 0,
-      skippedMessages: 0, remainingMessages: 0, pagesLoaded: listed.pagesLoaded, truncated: listed.truncated,
-    };
+    return { candidates: [], totalMessages: 0, newMessages: 0, cachedMessages: 0, skippedMessages: 0, remainingMessages: 0, pagesLoaded: listed.pagesLoaded, truncated: listed.truncated };
   }
 
   const scannedIds = loadScannedMessageIds(account);
@@ -212,10 +254,7 @@ export async function searchGmailInvoiceCandidatesStable(
 
   if (!messagesToReview.length) {
     onProgress?.(`Gmail al día: ${cachedMessages} correos ya estaban revisados.`);
-    return {
-      candidates: [], totalMessages: messages.length, newMessages: 0, cachedMessages,
-      skippedMessages: 0, remainingMessages, pagesLoaded: listed.pagesLoaded, truncated: listed.truncated,
-    };
+    return { candidates: [], totalMessages: messages.length, newMessages: 0, cachedMessages, skippedMessages: 0, remainingMessages, pagesLoaded: listed.pagesLoaded, truncated: listed.truncated };
   }
 
   const candidates: GmailCandidate[] = [];
@@ -231,10 +270,10 @@ export async function searchGmailInvoiceCandidatesStable(
       const sender = headerValue(headers, 'From');
       const snippet = String(full.snippet || '');
       const receivedAt = full.internalDate ? new Date(Number(full.internalDate)).toISOString() : null;
-      const attachments: Array<{ attachmentId: string; partId?: string; filename: string; mimeType: string; size?: number }> = [];
+      const attachments: AttachmentPart[] = [];
       collectAttachmentParts(full.payload, attachments);
 
-      for (const attachment of attachments.filter(item => looksLikeInvoice(item.filename, subject, snippet, item.mimeType))) {
+      for (const attachment of attachments.filter(item => looksLikeInvoice(item.filename, subject, snippet, item.mimeType, item.size))) {
         candidates.push({
           messageId: full.id || message.id,
           threadId: full.threadId || message.threadId || null,
