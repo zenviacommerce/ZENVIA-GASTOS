@@ -4,6 +4,10 @@ const MAX_RETRIES = 5;
 const BASE_DELAY_MS = 1200;
 const MAX_DELAY_MS = 15000;
 const CACHE_PREFIX = 'zenvia-gmail-scanned-v2:';
+const LIST_PAGE_SIZE = 500;
+const MAX_LIST_PAGES = 20;
+const MAX_MESSAGES_PER_SCAN = 200;
+const MAX_CACHED_MESSAGE_IDS = 5000;
 
 export interface GmailStableScanResult {
   candidates: GmailCandidate[];
@@ -11,6 +15,9 @@ export interface GmailStableScanResult {
   newMessages: number;
   cachedMessages: number;
   skippedMessages: number;
+  remainingMessages: number;
+  pagesLoaded: number;
+  truncated: boolean;
 }
 
 class GmailAuthError extends Error {
@@ -134,10 +141,45 @@ function loadScannedMessageIds(account: string) {
 
 function saveScannedMessageIds(account: string, ids: Set<string>) {
   try {
-    localStorage.setItem(cacheKey(account), JSON.stringify(Array.from(ids).slice(-500)));
+    localStorage.setItem(cacheKey(account), JSON.stringify(Array.from(ids).slice(-MAX_CACHED_MESSAGE_IDS)));
   } catch {
     // La caché es solo una optimización; si el navegador la bloquea, la búsqueda sigue funcionando.
   }
+}
+
+type GmailListResponse = {
+  messages?: Array<{ id: string; threadId?: string }>;
+  nextPageToken?: string;
+  resultSizeEstimate?: number;
+};
+
+async function listMatchingMessages(accessToken: string, q: string, onProgress?: (message: string) => void) {
+  const messages: Array<{ id: string; threadId?: string }> = [];
+  const seen = new Set<string>();
+  let pageToken = '';
+  let pagesLoaded = 0;
+  let truncated = false;
+
+  do {
+    onProgress?.(pagesLoaded === 0 ? 'Buscando correos con adjuntos compatibles…' : `Buscando correos con adjuntos compatibles… página ${pagesLoaded + 1}`);
+    const token = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
+    const list = await gmailFetchJson<GmailListResponse>(accessToken, `messages?maxResults=${LIST_PAGE_SIZE}&q=${q}${token}`);
+    pagesLoaded += 1;
+
+    for (const message of list.messages || []) {
+      if (!message.id || seen.has(message.id)) continue;
+      seen.add(message.id);
+      messages.push(message);
+    }
+
+    pageToken = list.nextPageToken || '';
+    if (pageToken && pagesLoaded >= MAX_LIST_PAGES) {
+      truncated = true;
+      break;
+    }
+  } while (pageToken);
+
+  return { messages, pagesLoaded, truncated };
 }
 
 export async function searchGmailInvoiceCandidatesStable(
@@ -149,15 +191,14 @@ export async function searchGmailInvoiceCandidatesStable(
 ): Promise<GmailStableScanResult> {
   const period = months >= 12 && months % 12 === 0 ? `${months / 12}y` : `${months}m`;
   const q = encodeURIComponent(`has:attachment newer_than:${period} {filename:pdf filename:jpg filename:jpeg filename:png filename:webp}`);
-  onProgress?.('Buscando correos con adjuntos…');
 
-  const list = await gmailFetchJson<{ messages?: Array<{ id: string; threadId?: string }> }>(
-    accessToken,
-    `messages?maxResults=100&q=${q}`,
-  );
-  const messages = list.messages || [];
+  const listed = await listMatchingMessages(accessToken, q, onProgress);
+  const messages = listed.messages;
   if (!messages.length) {
-    return { candidates: [], totalMessages: 0, newMessages: 0, cachedMessages: 0, skippedMessages: 0 };
+    return {
+      candidates: [], totalMessages: 0, newMessages: 0, cachedMessages: 0,
+      skippedMessages: 0, remainingMessages: 0, pagesLoaded: listed.pagesLoaded, truncated: listed.truncated,
+    };
   }
 
   const scannedIds = loadScannedMessageIds(account);
@@ -166,17 +207,23 @@ export async function searchGmailInvoiceCandidatesStable(
 
   const freshMessages = messages.filter(message => !known.has(message.id));
   const cachedMessages = messages.length - freshMessages.length;
-  if (!freshMessages.length) {
+  const messagesToReview = freshMessages.slice(0, MAX_MESSAGES_PER_SCAN);
+  const remainingMessages = Math.max(0, freshMessages.length - messagesToReview.length);
+
+  if (!messagesToReview.length) {
     onProgress?.(`Gmail al día: ${cachedMessages} correos ya estaban revisados.`);
-    return { candidates: [], totalMessages: messages.length, newMessages: 0, cachedMessages, skippedMessages: 0 };
+    return {
+      candidates: [], totalMessages: messages.length, newMessages: 0, cachedMessages,
+      skippedMessages: 0, remainingMessages, pagesLoaded: listed.pagesLoaded, truncated: listed.truncated,
+    };
   }
 
   const candidates: GmailCandidate[] = [];
   let skippedMessages = 0;
 
-  for (let index = 0; index < freshMessages.length; index += 1) {
-    const message = freshMessages[index];
-    onProgress?.(`Revisando correos nuevos ${index + 1} de ${freshMessages.length}…`);
+  for (let index = 0; index < messagesToReview.length; index += 1) {
+    const message = messagesToReview[index];
+    onProgress?.(`Revisando correos nuevos ${index + 1} de ${messagesToReview.length} · ${messages.length} encontrados…`);
     try {
       const full = await gmailFetchJson<any>(accessToken, `messages/${encodeURIComponent(message.id)}?format=full`);
       const headers = full.payload?.headers as Array<{ name?: string; value?: string }> | undefined;
@@ -222,8 +269,11 @@ export async function searchGmailInvoiceCandidatesStable(
   return {
     candidates,
     totalMessages: messages.length,
-    newMessages: freshMessages.length,
+    newMessages: messagesToReview.length,
     cachedMessages,
     skippedMessages,
+    remainingMessages,
+    pagesLoaded: listed.pagesLoaded,
+    truncated: listed.truncated,
   };
 }
