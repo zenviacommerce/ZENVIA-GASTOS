@@ -14,7 +14,8 @@ import { GmailPage } from './pages/Gmail';
 import { AdminPage } from './pages/Admin';
 import { supabase } from './services/supabase';
 import { loadAccessProfile, type AccessProfile, type MenuPermission } from './services/access';
-import { addProduct, addSupplier, bootstrapUser, createInvoice, deleteProduct, deleteSupplier, getInvoiceFileUrl, loadAppData, updateInvoiceStatus, updateProduct, updateSupplier } from './services/repository';
+import { addSupplier, bootstrapUser, createInvoice, deleteProduct, deleteSupplier, getInvoiceFileUrl, loadAppData, updateInvoiceStatus, updateSupplier } from './services/repository';
+import { addProduct, updateProduct, type ProductInput } from './services/productEditor';
 import { deleteInvoiceWithGmailRecovery } from './services/invoiceLifecycle';
 import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './types';
 
@@ -23,7 +24,6 @@ const THEME_KEY = 'zenvia-gastos-theme';
 const regularPages: MenuPermission[] = ['dashboard','invoices','products','suppliers','gmail'];
 
 type SupplierInput = {name:string;taxId?:string;email?:string;supplierType:'goods'|'service'|'both'};
-type ProductInput = {name:string;sku?:string;category?:string;unit:string;price?:number|null};
 
 function initialTheme(): ThemeMode {
   const stored=window.localStorage.getItem(THEME_KEY);
