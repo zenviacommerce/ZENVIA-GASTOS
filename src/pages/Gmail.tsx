@@ -77,15 +77,21 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
       const merged=await saveGmailCandidates(result.candidates);
       setImports(merged);
 
-      if(result.skippedMessages>0){
-        const importedText=result.candidates.length?` Se encontraron ${result.candidates.length} adjunto${result.candidates.length===1?'':'s'} nuevo${result.candidates.length===1?'':'s'}.`:'';
-        setMessage(`Actualización completada. ${result.skippedMessages} correo${result.skippedMessages===1?'':'s'} se omitieron temporalmente por límites de Gmail.${importedText} Puedes volver a actualizar más tarde.`);
+      const totalLabel=`${result.truncated?'al menos ':''}${result.totalMessages}`;
+      const foundLabel=result.candidates.length
+        ? ` Se encontraron ${result.candidates.length} adjunto${result.candidates.length===1?'':'s'} candidato${result.candidates.length===1?'':'s'} nuevo${result.candidates.length===1?'':'s'}.`
+        : '';
+
+      if(result.remainingMessages>0){
+        setMessage(`Gmail encontró ${totalLabel} correos con adjuntos compatibles en el periodo. En esta pasada se revisaron ${result.newMessages} nuevos; ${result.cachedMessages} ya estaban revisados y quedan ${result.remainingMessages} por revisar.${foundLabel} Pulsa «Actualizar Gmail» para continuar.`);
+      }else if(result.skippedMessages>0){
+        setMessage(`Actualización completada sobre ${totalLabel} correos localizados. ${result.skippedMessages} correo${result.skippedMessages===1?'':'s'} se omitieron temporalmente por límites de Gmail.${foundLabel} Puedes volver a actualizar más tarde.`);
       }else if(result.newMessages===0){
-        setMessage(`Gmail actualizado. No hay correos nuevos; ${result.cachedMessages} correo${result.cachedMessages===1?' ya estaba':'s ya estaban'} revisado${result.cachedMessages===1?'':'s'}.`);
+        setMessage(`Gmail al día. Se localizaron ${totalLabel} correos con adjuntos compatibles y todos ya estaban revisados.`);
       }else if(result.candidates.length){
-        setMessage(`Búsqueda completada: ${result.candidates.length} adjunto${result.candidates.length===1?'':'s'} nuevo${result.candidates.length===1?'':'s'} encontrado${result.candidates.length===1?'':'s'} en ${result.newMessages} correo${result.newMessages===1?'':'s'} nuevo${result.newMessages===1?'':'s'}.`);
+        setMessage(`Búsqueda completada: ${totalLabel} correos con adjuntos compatibles en el periodo; se revisaron ${result.newMessages} nuevos y se encontraron ${result.candidates.length} adjunto${result.candidates.length===1?'':'s'} candidato${result.candidates.length===1?'':'s'}.`);
       }else{
-        setMessage(`Gmail actualizado. Se revisaron ${result.newMessages} correo${result.newMessages===1?'':'s'} nuevo${result.newMessages===1?'':'s'} y no contenían nuevas facturas.`);
+        setMessage(`Gmail actualizado. Se localizaron ${totalLabel} correos con adjuntos compatibles; se revisaron ${result.newMessages} nuevos y no contenían nuevas facturas.`);
       }
     }catch(e){
       const text=e instanceof Error?e.message:'No se pudo buscar en Gmail.';
