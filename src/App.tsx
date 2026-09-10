@@ -12,10 +12,12 @@ import { Products } from './pages/Products';
 import { Suppliers } from './pages/Suppliers';
 import { GmailPage } from './pages/Gmail';
 import { supabase } from './services/supabase';
-import { addProduct, addSupplier, bootstrapUser, createInvoice, deleteInvoice, getInvoiceFileUrl, loadAppData, updateInvoiceStatus } from './services/repository';
-import type { AppData, Invoice, NewInvoiceInput } from './types';
+import { addProduct, addSupplier, bootstrapUser, createInvoice, deleteInvoice, deleteSupplier, getInvoiceFileUrl, loadAppData, updateInvoiceStatus, updateSupplier } from './services/repository';
+import type { AppData, Invoice, NewInvoiceInput, Supplier } from './types';
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
+
+type SupplierInput = {name:string;taxId?:string;email?:string;supplierType:'goods'|'service'|'both'};
 
 export default function App(){
  const [session,setSession]=useState<Session|null>(null);
@@ -27,6 +29,7 @@ export default function App(){
  const [upload,setUpload]=useState(false);
  const [productModal,setProductModal]=useState(false);
  const [supplierModal,setSupplierModal]=useState(false);
+ const [supplierToEdit,setSupplierToEdit]=useState<Supplier|null>(null);
 
  const refresh=useCallback(async()=>{
    setLoading(true); setError('');
@@ -60,7 +63,15 @@ export default function App(){
    document.body.appendChild(a);a.click();a.remove();
  };
  const saveProduct=async(input:{name:string;sku?:string;category?:string;unit:string})=>{await addProduct(input);await refresh()};
- const saveSupplier=async(input:{name:string;taxId?:string;email?:string;supplierType:'goods'|'service'|'both'})=>{await addSupplier(input);await refresh()};
+ const openNewSupplier=()=>{setSupplierToEdit(null);setSupplierModal(true)};
+ const openEditSupplier=(supplier:Supplier)=>{setSupplierToEdit(supplier);setSupplierModal(true)};
+ const closeSupplierModal=()=>{setSupplierModal(false);setSupplierToEdit(null)};
+ const saveSupplier=async(input:SupplierInput)=>{
+   if(supplierToEdit) await updateSupplier(supplierToEdit.id,input);
+   else await addSupplier(input);
+   await refresh();
+ };
+ const removeSupplier=async(supplier:Supplier)=>{await deleteSupplier(supplier.id);await refresh()};
 
  return <div className="app"><Sidebar page={page} onChange={setPage} onLogout={()=>supabase.auth.signOut()}/><main>
    {error&&<div className="globalError">{error}<button onClick={refresh}>Reintentar</button></div>}
@@ -68,11 +79,11 @@ export default function App(){
    {page==='dashboard'&&<Dashboard invoices={data.invoices} products={data.products} onUpload={()=>setUpload(true)} onProducts={()=>setPage('products')}/>} 
    {page==='invoices'&&<Invoices invoices={data.invoices} onUpload={()=>setUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice}/>} 
    {page==='products'&&<Products products={data.products} onAdd={()=>setProductModal(true)}/>} 
-   {page==='suppliers'&&<Suppliers suppliers={data.suppliers} onAdd={()=>setSupplierModal(true)}/>} 
+   {page==='suppliers'&&<Suppliers suppliers={data.suppliers} onAdd={openNewSupplier} onEdit={openEditSupplier} onDelete={removeSupplier}/>} 
    {page==='gmail'&&<GmailPage/>}
  </main>
  <UploadInvoiceModal open={upload} onClose={()=>setUpload(false)} onSave={saveInvoice} categories={data.categories}/>
  <ProductModal open={productModal} onClose={()=>setProductModal(false)} onSave={saveProduct}/>
- <SupplierModal open={supplierModal} onClose={()=>setSupplierModal(false)} onSave={saveSupplier}/>
+ <SupplierModal open={supplierModal} supplier={supplierToEdit} onClose={closeSupplierModal} onSave={saveSupplier}/>
  </div>
 }
