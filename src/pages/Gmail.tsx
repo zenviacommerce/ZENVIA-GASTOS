@@ -15,6 +15,7 @@ import { importGmailCandidate } from '../services/gmailImport';
 import { loadRecoverableGmailImports } from '../services/invoiceLifecycle';
 
 const PAGE_SIZE = 20;
+type GmailViewFilter = 'all' | 'pending' | 'imported' | 'not_imported' | 'ignored' | 'not_ignored' | 'error';
 
 const formatBytes = (value?: number | null) => {
   if (!value) return '';
@@ -27,10 +28,23 @@ const statusLabel = (status: GmailCandidate['status']) => (
   status === 'imported' ? 'Importada' : status === 'ignored' ? 'Ignorada' : status === 'error' ? 'Error' : 'Pendiente'
 );
 
+function matchesStatusFilter(item: GmailCandidate, filter: GmailViewFilter) {
+  switch (filter) {
+    case 'pending': return item.status === 'found' || item.status === 'error';
+    case 'imported': return item.status === 'imported';
+    case 'not_imported': return item.status !== 'imported';
+    case 'ignored': return item.status === 'ignored';
+    case 'not_ignored': return item.status !== 'ignored';
+    case 'error': return item.status === 'error';
+    default: return true;
+  }
+}
+
 export function GmailPage({ categories, onImported }:{ categories:ExpenseCategory[]; onImported:()=>Promise<void> | void }) {
   const [connection,setConnection]=useState<GmailConnection|null>(()=>getCachedGmailConnection());
   const [imports,setImports]=useState<GmailCandidate[]>([]);
   const [query,setQuery]=useState('');
+  const [statusFilter,setStatusFilter]=useState<GmailViewFilter>('all');
   const [months,setMonths]=useState(12);
   const [page,setPage]=useState(1);
   const [connecting,setConnecting]=useState(false);
@@ -50,16 +64,15 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
 
   useEffect(()=>{ void refreshImports(); },[]);
   useEffect(()=>()=>{ if(previewUrl) URL.revokeObjectURL(previewUrl); },[previewUrl]);
-  useEffect(()=>{ setPage(1); },[query]);
+  useEffect(()=>{ setPage(1); },[query,statusFilter]);
 
+  const visibleImports=useMemo(()=>imports.filter(item=>item.status==='imported'||!isDecorativeGmailImage(item)),[imports]);
   const shown=useMemo(()=>{
     const q=query.trim().toLowerCase();
-    return imports
-      // Conservamos las ya importadas por trazabilidad, pero ocultamos falsos positivos
-      // decorativos pendientes/ignorados que vinieron de firmas de correo.
-      .filter(item=>item.status==='imported'||!isDecorativeGmailImage(item))
+    return visibleImports
+      .filter(item=>matchesStatusFilter(item,statusFilter))
       .filter(item=>!q||[item.sender||'',item.subject||'',item.attachmentName].some(value=>value.toLowerCase().includes(q)));
-  },[imports,query]);
+  },[visibleImports,query,statusFilter]);
 
   const totalPages=Math.max(1,Math.ceil(shown.length/PAGE_SIZE));
   useEffect(()=>{ setPage(current=>Math.min(current,totalPages)); },[totalPages]);
@@ -160,8 +173,8 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
     }finally{setPreviewLoading(false);}
   };
 
-  const pendingCount=imports.filter(item=>(item.status==='found'||item.status==='error')&&!isDecorativeGmailImage(item)).length;
-  const importedCount=imports.filter(item=>item.status==='imported').length;
+  const pendingCount=visibleImports.filter(item=>item.status==='found'||item.status==='error').length;
+  const importedCount=visibleImports.filter(item=>item.status==='imported').length;
   const previewIsPdf=Boolean(previewItem&&(previewItem.mimeType==='application/pdf'||previewItem.attachmentName.toLowerCase().endsWith('.pdf')));
   const previewCanImport=Boolean(previewItem&&previewItem.status!=='imported'&&previewItem.status!=='ignored');
 
@@ -180,7 +193,22 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
     {message&&<div className="success"><CheckCircle2 size={17}/>{message}</div>}
     {error&&<div className="errorBox"><AlertCircle size={17}/>{error}</div>}
 
-    <div className="toolbar gmailToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por proveedor, asunto o archivo…"/></div>{connection&&<button className="secondary" disabled={scanning} onClick={scan}><RefreshCw size={16}/> Actualizar Gmail</button>}</div>
+    <div className="toolbar gmailToolbar">
+      <div className="gmailFilterBar">
+        <div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por proveedor, asunto o archivo…"/></div>
+        <select className="gmailStatusFilter" value={statusFilter} onChange={e=>setStatusFilter(e.target.value as GmailViewFilter)} aria-label="Filtrar por estado">
+          <option value="all">Todos los estados</option>
+          <option value="pending">Pendientes</option>
+          <option value="imported">Importadas</option>
+          <option value="not_imported">No importadas</option>
+          <option value="ignored">Ignoradas</option>
+          <option value="not_ignored">No ignoradas</option>
+          <option value="error">Con error</option>
+        </select>
+        <span className="gmailFilterSummary">{shown.length} resultado{shown.length===1?'':'s'}</span>
+      </div>
+      {connection&&<button className="secondary" disabled={scanning} onClick={scan}><RefreshCw size={16}/> Actualizar Gmail</button>}
+    </div>
 
     <section className="card gmailImports">
       {shown.length?<>
@@ -194,7 +222,7 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
             <div className="gmailImportActions"><button className="secondary" disabled={busy||previewLoading} onClick={()=>previewOne(item)}><Eye size={15}/> Ver factura</button><a className="secondary gmailLink" href={gmailMessageUrl(item)} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Ver correo</a>{!imported&&item.status!=='ignored'?<button className="primary" disabled={busy||scanning} onClick={()=>importOne(item)}>{busy?<LoaderCircle className="spin" size={15}/>:<Sparkles size={15}/>} {busy?'Importando…':reimportable?'Reimportar':'Importar'}</button>:null}{!imported?<button className="link" disabled={busy} onClick={()=>ignore(item)}>{item.status==='ignored'?'Recuperar':'Ignorar'}</button>:null}</div>
           </article>})}</div>
         <div className="gmailPagination"><span>Mostrando <strong>{pageFrom}-{pageTo}</strong> de <strong>{shown.length}</strong></span><div><button className="secondary" disabled={page<=1} onClick={()=>setPage(current=>Math.max(1,current-1))}><ChevronLeft size={15}/> Anterior</button><span>Página {page} de {totalPages}</span><button className="secondary" disabled={page>=totalPages} onClick={()=>setPage(current=>Math.min(totalPages,current+1))}>Siguiente <ChevronRight size={15}/></button></div></div>
-      </>:<div className="emptyState large">{connection?'No hay adjuntos de factura que coincidan con la búsqueda.':'Conecta Gmail para empezar a localizar facturas.'}</div>}
+      </>:<div className="emptyState large">{connection?'No hay adjuntos de factura que coincidan con los filtros.':'Conecta Gmail para empezar a localizar facturas.'}</div>}
     </section>
 
     <div className="grid2 gmailFeatures"><section className="card feature"><Sparkles/><h3>Misma lectura inteligente</h3><p>Cada adjunto importado pasa por el mismo lector de PDF/OCR: proveedor, número, fecha, base, IVA, total y líneas de producto. Si es mercancía, los productos nuevos se crean automáticamente.</p></section><section className="card feature"><ShieldCheck/><h3>Siempre pendiente primero</h3><p>Importar desde Gmail crea la factura en estado pendiente. Después puedes abrir el documento original, revisar los datos y decidir cuándo marcarla como revisada o contabilizada.</p></section></div>
