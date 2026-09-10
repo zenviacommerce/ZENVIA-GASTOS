@@ -69,6 +69,13 @@ export interface AppData {
   categories: ExpenseCategory[];
 }
 
+export interface NewInvoiceLineInput {
+  description: string;
+  quantity: number;
+  unitPrice?: number | null;
+  lineTotal?: number | null;
+}
+
 export interface NewInvoiceInput {
   file: File;
   source: InvoiceSource;
@@ -80,4 +87,8 @@ export interface NewInvoiceInput {
   vat: number;
   withholding: number;
   total: number;
+  ocrText?: string;
+  extraction?: Record<string, unknown>;
+  extractionConfidence?: number;
+  lines?: NewInvoiceLineInput[];
 }
