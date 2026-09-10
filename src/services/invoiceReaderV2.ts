@@ -16,7 +16,9 @@ export function parseMoneyV2(value: string | undefined | null): number {
 }
 
 function moneyMatches(line: string) {
-  return [...line.matchAll(/-?\d{1,3}(?:[.\s]\d{3})*(?:,\d{2,6})|-?\d+(?:[.,]\d{2,6})/g)];
+  // No tratamos espacios como separadores de miles aquí porque en tablas aparecen secuencias
+  // como "C/3 360,00" y el 3 pertenece a la descripción, no a la cantidad.
+  return [...line.matchAll(/-?\d{1,3}(?:\.\d{3})*,\d{2,6}|-?\d+\.\d{2,6}/g)];
 }
 
 function hasLegalSuffix(value: string) {
@@ -30,12 +32,10 @@ function normalizeSupplierCandidate(value: string, fullText: string) {
     .trim();
   if (!result) return '';
 
-  // En facturas españolas, un CIF que empieza por B identifica normalmente una sociedad limitada.
-  // Si el OCR ha perdido el sufijo legal del logotipo, lo recuperamos solo cuando hay una razón
-  // social clara obtenida del propio documento.
-  if (!hasLegalSuffix(result) && /\bC\.?\s*I\.?\s*F\.?\s*[:.\-]?\s*B[\s\-]?\d{7,8}\b/i.test(fullText)) {
-    result += ' S.L.';
-  }
+  // Los OCR suelen confundir "C.I.F." con "C.LF.". Si el documento muestra un CIF tipo B
+  // y hemos encontrado una razón social clara del emisor, recuperamos el sufijo S.L. perdido.
+  const spanishLimitedCompany = /\bC[.\s]*[I1L][.\s]*F[.\s]*[:.\-]?\s*B[\s\-]*\d{7,8}\b/i.test(fullText);
+  if (!hasLegalSuffix(result) && spanishLimitedCompany) result += ' S.L.';
   return result.slice(0, 120);
 }
 
@@ -103,7 +103,6 @@ function parseProductGroup(group: ProductGroup): NewInvoiceLineInput | null {
   let lineTotal = rawLineTotal;
   if (expectedTotal > 0 && rawLineTotal > 0) {
     const difference = Math.abs(rawLineTotal - expectedTotal) / expectedTotal;
-    // Corrige errores OCR evidentes como 95,05 leído donde 50 x 1,101 = 55,05.
     if (difference > 0.15) lineTotal = expectedTotal;
   }
 
@@ -141,10 +140,7 @@ export function extractStructuredProductLines(lines: string[]): NewInvoiceLineIn
       current = { sku, rest, continuation: [] };
       continue;
     }
-    if (current) {
-      // Las descripciones suelen continuar en una segunda línea sin importes.
-      if (moneyMatches(line).length === 0 && line.length <= 120) current.continuation.push(line);
-    }
+    if (current && moneyMatches(line).length === 0 && line.length <= 120) current.continuation.push(line);
   }
   flush();
 
@@ -165,14 +161,10 @@ export function repairInvoiceAmounts(subtotal: number, vat: number, withholding:
 
   let repairedTotal = total;
   const maxTail = tailValues.length ? Math.max(...tailValues) : 0;
-  if (!repairedTotal || (vat > 0 && repairedTotal <= vat) || (subtotal > 0 && repairedTotal < subtotal)) {
-    repairedTotal = maxTail;
-  }
+  if (!repairedTotal || (vat > 0 && repairedTotal <= vat) || (subtotal > 0 && repairedTotal < subtotal)) repairedTotal = maxTail;
 
   let repairedSubtotal = subtotal;
-  if (!repairedSubtotal && repairedTotal > vat) {
-    repairedSubtotal = Math.round((repairedTotal - vat + withholding) * 100) / 100;
-  }
+  if (!repairedSubtotal && repairedTotal > vat) repairedSubtotal = Math.round((repairedTotal - vat + withholding) * 100) / 100;
 
   return { subtotal: repairedSubtotal, total: repairedTotal };
 }
