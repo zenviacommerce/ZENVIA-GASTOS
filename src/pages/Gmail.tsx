@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, ExternalLink, FileText, Link2, Link2Off, LoaderCircle, Mail, Paperclip, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ExternalLink, Eye, FileText, Link2, Link2Off, LoaderCircle, Mail, Paperclip, RefreshCw, Search, ShieldCheck, Sparkles, X } from 'lucide-react';
 import type { ExpenseCategory } from '../types';
-import { connectGmail, disconnectGmail, getCachedGmailConnection, gmailMessageUrl, gmailOAuthConfigured, saveGmailCandidates, searchGmailInvoiceCandidates, updateGmailImport, type GmailCandidate, type GmailConnection } from '../services/gmail';
+import { connectGmail, disconnectGmail, downloadGmailAttachment, getCachedGmailConnection, gmailMessageUrl, gmailOAuthConfigured, saveGmailCandidates, searchGmailInvoiceCandidates, updateGmailImport, type GmailCandidate, type GmailConnection } from '../services/gmail';
 import { importGmailCandidate } from '../services/gmailImport';
 import { loadRecoverableGmailImports } from '../services/invoiceLifecycle';
 
@@ -24,6 +24,10 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
   const [importingId,setImportingId]=useState<string|null>(null);
   const [message,setMessage]=useState('');
   const [error,setError]=useState('');
+  const [previewItem,setPreviewItem]=useState<GmailCandidate|null>(null);
+  const [previewUrl,setPreviewUrl]=useState('');
+  const [previewLoading,setPreviewLoading]=useState(false);
+  const [previewError,setPreviewError]=useState('');
 
   const refreshImports=async()=>{
     try { setImports(await loadRecoverableGmailImports()); }
@@ -31,6 +35,7 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
   };
 
   useEffect(()=>{ void refreshImports(); },[]);
+  useEffect(()=>()=>{ if(previewUrl) URL.revokeObjectURL(previewUrl); },[previewUrl]);
 
   const shown=useMemo(()=>{
     const q=query.trim().toLowerCase();
@@ -94,8 +99,34 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
     catch(e){setError(e instanceof Error?e.message:'No se pudo actualizar el adjunto.');}
   };
 
+  const closePreview=()=>{
+    setPreviewItem(null);
+    setPreviewUrl('');
+    setPreviewError('');
+    setPreviewLoading(false);
+  };
+
+  const previewOne=async(candidate:GmailCandidate)=>{
+    setPreviewItem(candidate);
+    setPreviewUrl('');
+    setPreviewError('');
+    setPreviewLoading(true);
+    try{
+      const active=await ensureConnection();
+      const file=await downloadGmailAttachment(active.accessToken,candidate);
+      setPreviewUrl(URL.createObjectURL(file));
+    }catch(e){
+      setPreviewError(e instanceof Error?e.message:'No se pudo abrir el adjunto de Gmail.');
+      setConnection(getCachedGmailConnection());
+    }finally{
+      setPreviewLoading(false);
+    }
+  };
+
   const pendingCount=imports.filter(item=>item.status==='found'||item.status==='error').length;
   const importedCount=imports.filter(item=>item.status==='imported').length;
+  const previewIsPdf=Boolean(previewItem&&(previewItem.mimeType==='application/pdf'||previewItem.attachmentName.toLowerCase().endsWith('.pdf')));
+  const previewCanImport=Boolean(previewItem&&previewItem.status!=='imported'&&previewItem.status!=='ignored');
 
   return <div className="page">
     <div className="pageHead"><div><div className="eyebrow">AUTOMATIZACIÓN</div><h1>Facturas desde Gmail</h1><p>Busca adjuntos de facturas, revísalos e impórtalos directamente en ZENVIA Gastos.</p></div><div className="actions">{connection?<><button className="secondary" onClick={disconnect}><Link2Off size={16}/> Desconectar</button><button className="primary" disabled={scanning} onClick={scan}>{scanning?<LoaderCircle className="spin" size={16}/>:<RefreshCw size={16}/>} Buscar facturas</button></>:<button className="primary" disabled={connecting||!gmailOAuthConfigured()} onClick={()=>connect(true)}>{connecting?<LoaderCircle className="spin" size={16}/>:<Link2 size={16}/>} Conectar Gmail</button>}</div></div>
@@ -115,8 +146,10 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
       const busy=importingId===item.id;
       const imported=item.status==='imported';
       const reimportable=item.status==='found'&&item.metadata?.reopenReason==='invoice_deleted';
-      return <article className="gmailImportRow" key={item.id||`${item.messageId}-${item.attachmentId}`}><div className="gmailFileIcon"><FileText/></div><div className="gmailImportMain"><div className="gmailImportTop"><strong>{item.attachmentName}</strong><span className={`gmailStatus ${item.status}`}>{statusLabel(item.status)}</span></div><span className="gmailSubject">{item.subject||'Sin asunto'}</span><small>{item.sender||'Remitente desconocido'}{item.receivedAt?` · ${new Date(item.receivedAt).toLocaleDateString('es-ES')}`:''}{item.size?` · ${formatBytes(item.size)}`:''}</small>{item.status==='error'&&typeof item.metadata?.lastError==='string'?<em>{item.metadata.lastError}</em>:null}</div><div className="gmailImportActions"><a className="secondary gmailLink" href={gmailMessageUrl(item)} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Ver correo</a>{!imported&&item.status!=='ignored'?<button className="primary" disabled={busy||scanning} onClick={()=>importOne(item)}>{busy?<LoaderCircle className="spin" size={15}/>:<Sparkles size={15}/>} {busy?'Importando…':reimportable?'Reimportar':'Importar'}</button>:null}{!imported?<button className="link" disabled={busy} onClick={()=>ignore(item)}>{item.status==='ignored'?'Recuperar':'Ignorar'}</button>:null}</div></article>})}</div>:<div className="emptyState large">{connection?'Pulsa “Buscar facturas” para revisar los adjuntos encontrados en Gmail.':'Conecta Gmail para empezar a localizar facturas.'}</div>}</section>
+      return <article className="gmailImportRow" key={item.id||`${item.messageId}-${item.attachmentId}`}><div className="gmailFileIcon"><FileText/></div><div className="gmailImportMain"><div className="gmailImportTop"><strong>{item.attachmentName}</strong><span className={`gmailStatus ${item.status}`}>{statusLabel(item.status)}</span></div><span className="gmailSubject">{item.subject||'Sin asunto'}</span><small>{item.sender||'Remitente desconocido'}{item.receivedAt?` · ${new Date(item.receivedAt).toLocaleDateString('es-ES')}`:''}{item.size?` · ${formatBytes(item.size)}`:''}</small>{item.status==='error'&&typeof item.metadata?.lastError==='string'?<em>{item.metadata.lastError}</em>:null}</div><div className="gmailImportActions"><button className="secondary" disabled={busy||previewLoading} onClick={()=>previewOne(item)}><Eye size={15}/> Ver factura</button><a className="secondary gmailLink" href={gmailMessageUrl(item)} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Ver correo</a>{!imported&&item.status!=='ignored'?<button className="primary" disabled={busy||scanning} onClick={()=>importOne(item)}>{busy?<LoaderCircle className="spin" size={15}/>:<Sparkles size={15}/>} {busy?'Importando…':reimportable?'Reimportar':'Importar'}</button>:null}{!imported?<button className="link" disabled={busy} onClick={()=>ignore(item)}>{item.status==='ignored'?'Recuperar':'Ignorar'}</button>:null}</div></article>})}</div>:<div className="emptyState large">{connection?'Pulsa “Buscar facturas” para revisar los adjuntos encontrados en Gmail.':'Conecta Gmail para empezar a localizar facturas.'}</div>}</section>
 
     <div className="grid2 gmailFeatures"><section className="card feature"><Sparkles/><h3>Misma lectura inteligente</h3><p>Cada adjunto importado pasa por el mismo lector de PDF/OCR: proveedor, número, fecha, base, IVA, total y líneas de producto. Si es mercancía, los productos nuevos se crean automáticamente.</p></section><section className="card feature"><ShieldCheck/><h3>Siempre pendiente primero</h3><p>Importar desde Gmail crea la factura en estado pendiente. Después puedes abrir el documento original, revisar los datos y decidir cuándo marcarla como revisada o contabilizada.</p></section></div>
+
+    {previewItem&&<div className="modalBackdrop gmailPreviewBackdrop" onMouseDown={closePreview}><section className="modal gmailPreviewModal" onMouseDown={e=>e.stopPropagation()}><div className="gmailPreviewHead"><div><span className={`gmailStatus ${previewItem.status}`}>{statusLabel(previewItem.status)}</span><h3>{previewItem.attachmentName}</h3><small>{previewItem.sender||'Remitente desconocido'}{previewItem.receivedAt?` · ${new Date(previewItem.receivedAt).toLocaleDateString('es-ES')}`:''}</small></div><button className="iconBtn" onClick={closePreview} aria-label="Cerrar vista previa"><X size={18}/></button></div><div className="gmailPreviewBody">{previewLoading?<div className="gmailPreviewLoading"><LoaderCircle className="spin"/><span>Descargando adjunto desde Gmail…</span></div>:previewError?<div className="gmailPreviewError"><AlertCircle/><span>{previewError}</span></div>:previewUrl?(previewIsPdf?<iframe className="gmailPdfFrame" src={previewUrl} title={`Vista previa de ${previewItem.attachmentName}`}/>:<img className="gmailImagePreview" src={previewUrl} alt={previewItem.attachmentName}/>):null}</div><div className="gmailPreviewActions"><a className="secondary gmailLink" href={gmailMessageUrl(previewItem)} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Ver correo</a>{previewUrl&&<a className="secondary gmailLink" href={previewUrl} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Abrir aparte</a>}{previewCanImport&&<button className="primary" disabled={importingId===previewItem.id||previewLoading||Boolean(previewError)} onClick={()=>{const item=previewItem;closePreview();void importOne(item)}}><Sparkles size={15}/> {previewItem.metadata?.reopenReason==='invoice_deleted'?'Reimportar':'Importar'}</button>}<button className="link" onClick={closePreview}>Cerrar</button></div></section></div>}
   </div>;
 }
