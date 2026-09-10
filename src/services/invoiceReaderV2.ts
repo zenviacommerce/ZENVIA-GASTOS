@@ -16,24 +16,27 @@ export function parseMoneyV2(value: string | undefined | null): number {
 }
 
 function moneyMatches(line: string) {
-  // No tratamos espacios como separadores de miles aquí porque en tablas aparecen secuencias
-  // como "C/3 360,00" y el 3 pertenece a la descripción, no a la cantidad.
   return [...line.matchAll(/-?\d{1,3}(?:\.\d{3})*,\d{2,6}|-?\d+\.\d{2,6}/g)];
 }
 
+const legalSuffix = '(?:S\\.?\\s*L\\.?\\s*U?\\.?|S\\.?\\s*A\\.?|SLU|SL|SA|LTD|LIMITED|GMBH|SAS|B\\.?\\s*V\\.?)';
+
 function hasLegalSuffix(value: string) {
-  return /\b(?:S\.?\s*L\.?\s*U?\.?|S\.?\s*A\.?|SLU|SL|SA|LTD|LIMITED|GMBH|SAS|BV)\b/i.test(value);
+  return new RegExp(`\\b${legalSuffix}(?=\\s|$|[,;])`, 'i').test(value);
 }
 
 function normalizeSupplierCandidate(value: string, fullText: string) {
   let result = compact(value)
+    .replace(/^(?:un\s+cordial\s+saludo|cordialmente|atentamente|saludos?|gracias)[,:;\s-]+/i, '')
     .replace(/^[\s:;,.\-]+|[\s:;,.\-]+$/g, '')
     .replace(/\s+(?:se\s+encuentran|se\s+encuentra|disponibles|en\s+la\s+web).*$/i, '')
+    .replace(/\s+(?:contacto|contact|detalles\s+de\s+la\s+empresa|company\s+details).*$/i, '')
     .trim();
   if (!result) return '';
 
-  // Los OCR suelen confundir "C.I.F." con "C.LF.". Si el documento muestra un CIF tipo B
-  // y hemos encontrado una razón social clara del emisor, recuperamos el sufijo S.L. perdido.
+  const legalMatch = result.match(new RegExp(`^(.{2,100}?\\b${legalSuffix})(?=\\s|$|[,;])`, 'i'));
+  if (legalMatch?.[1]) result = compact(legalMatch[1]);
+
   const spanishLimitedCompany = /\bC[.\s]*[I1L][.\s]*F[.\s]*[:.\-]?\s*B[\s\-]*\d{7,8}\b/i.test(fullText);
   if (!hasLegalSuffix(result) && spanishLimitedCompany) result += ' S.L.';
   return result.slice(0, 120);
@@ -59,10 +62,12 @@ export function extractSupplierV2(lines: string[], fullText: string): string {
     .filter(value => value.length >= 4 && value.length <= 120)
     .filter(value => hasLegalSuffix(value))
     .filter(value => !/zenvia\s+commerce/i.test(value))
-    .filter(value => !/factura|invoice|cliente|customer|cif|nif|vat|iva/i.test(value));
-  if (legalCandidates.length) return normalizeSupplierCandidate(legalCandidates[0], fullText);
+    .filter(value => !/factura|invoice|cliente|customer|cif|nif|vat|iva/i.test(value))
+    .map(value => normalizeSupplierCandidate(value, fullText))
+    .filter(Boolean);
+  if (legalCandidates.length) return legalCandidates[0];
 
-  const ignored = /factura|invoice|fecha|date|cif|nif|vat|iva|total|base|cliente|customer|direcci[oó]n|tel[eé]fono|telf\.?|fax|mail|email|p[aá]gina|www\.|zenvia commerce|medio ambiente|comprometidos/i;
+  const ignored = /factura|invoice|fecha|date|cif|nif|vat|iva|total|base|cliente|customer|direcci[oó]n|tel[eé]fono|telf\.?|fax|mail|email|p[aá]gina|www\.|zenvia commerce|medio ambiente|comprometidos|cordial saludo|atentamente/i;
   const address = /\b(avda\.?|avenida|calle|c\/|ctra\.?|carretera|pol[ií]gono|p\.?\s*i\.?|nave|plaza|camino|c\.p\.?|cp)\b/i;
   const candidate = lines.slice(0, 30).map(compact).find(value =>
     value.length >= 4 && value.length <= 90
@@ -145,6 +150,42 @@ export function extractStructuredProductLines(lines: string[]): NewInvoiceLineIn
   flush();
 
   return groups.map(parseProductGroup).filter((line): line is NewInvoiceLineInput => Boolean(line)).slice(0, 50);
+}
+
+export function extractServiceTableLines(lines: string[]): NewInvoiceLineInput[] {
+  const result: NewInvoiceLineInput[] = [];
+  const taxMarker = /\b(?:inv\.?\s*pasivo|reverse\s+charge|\d{1,2}(?:[.,]\d+)?\s*%)\b/i;
+  const skipDescription = /^(?:iva|base imponible|importe total|importe no imponible|subtotal|total)$/i;
+
+  for (const raw of lines) {
+    const line = compact(raw);
+    const marker = line.match(taxMarker);
+    if (!marker || marker.index == null) continue;
+    const description = compact(line.slice(0, marker.index));
+    if (description.length < 3 || skipDescription.test(description)) continue;
+
+    const afterMarker = line.slice(marker.index + marker[0].length);
+    const amounts = moneyMatches(afterMarker);
+    if (amounts.length < 2) continue;
+
+    const first = amounts[0];
+    const last = amounts[amounts.length - 1];
+    const unitPrice = parseMoneyV2(first[0]);
+    const lineTotal = parseMoneyV2(last[0]);
+    const between = afterMarker.slice((first.index ?? 0) + first[0].length, last.index ?? afterMarker.length);
+    const quantityToken = between.match(/(?:^|[^\d])(-?\d+(?:[.,]\d+)?)(?=$|[^\d])/i)?.[1];
+    const quantity = quantityToken ? parseMoneyV2(quantityToken) : 1;
+    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000) continue;
+
+    result.push({
+      description: description.slice(0, 250),
+      quantity,
+      unitPrice,
+      lineTotal,
+    });
+  }
+
+  return result.slice(0, 50);
 }
 
 export function detectMerchandiseCategory(categories: ExpenseCategory[], fullText: string, lines: NewInvoiceLineInput[]): string | undefined {
