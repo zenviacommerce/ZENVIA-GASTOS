@@ -80,7 +80,7 @@ export default function App(){
    {page==='invoices'&&<Invoices invoices={data.invoices} onUpload={()=>setUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice}/>} 
    {page==='products'&&<Products products={data.products} onAdd={()=>setProductModal(true)}/>} 
    {page==='suppliers'&&<Suppliers suppliers={data.suppliers} onAdd={openNewSupplier} onEdit={openEditSupplier} onDelete={removeSupplier}/>} 
-   {page==='gmail'&&<GmailPage/>}
+   {page==='gmail'&&<GmailPage categories={data.categories} onImported={refresh}/>} 
  </main>
  <UploadInvoiceModal open={upload} onClose={()=>setUpload(false)} onSave={saveInvoice} categories={data.categories}/>
  <ProductModal open={productModal} onClose={()=>setProductModal(false)} onSave={saveProduct}/>
