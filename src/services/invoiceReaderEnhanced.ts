@@ -21,6 +21,9 @@ export async function readInvoiceDocumentEnhanced(
   const merchandiseCategoryId = detectMerchandiseCategory(categories, base.text, invoiceLines);
   const categoryId = merchandiseCategoryId || base.categoryId;
   const repaired = repairInvoiceAmounts(base.subtotal, base.vat, base.withholding, base.total, textLines);
+  const reverseCharge = /inv\.?\s*pasivo|reverse\s+charge|inversi[oó]n\s+del\s+sujeto\s+pasivo/i.test(base.text);
+  const reverseChargeTotal = Math.round((repaired.subtotal - base.withholding) * 100) / 100;
+  const vat = reverseCharge && repaired.subtotal > 0 && repaired.total > 0 && Math.abs(reverseChargeTotal - repaired.total) <= 0.02 ? 0 : base.vat;
 
   const gainedSupplier = supplierName && supplierName !== base.supplierName;
   const gainedLines = specializedLines.length >= 2 && specializedLines.length >= base.lines.length;
@@ -31,6 +34,7 @@ export async function readInvoiceDocumentEnhanced(
     supplierName,
     categoryId,
     subtotal: repaired.subtotal,
+    vat,
     total: repaired.total,
     lines: invoiceLines,
     confidence: Math.min(0.99, base.confidence + confidenceBoost),
