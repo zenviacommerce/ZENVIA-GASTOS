@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { emailError, nameError, normalizeEmail } from './validation';
 
 export type MenuPermission = 'dashboard' | 'invoices' | 'products' | 'suppliers' | 'gmail';
 export type AppRole = 'admin' | 'user';
@@ -66,17 +67,27 @@ async function invokeAdmin<T>(body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
+function validateManagedUser(email: string, fullName: string, password?: string) {
+  const emailMessage = emailError(email, true);
+  if (emailMessage) throw new Error(emailMessage);
+  const nameMessage = nameError(fullName, 'El nombre');
+  if (nameMessage) throw new Error(nameMessage);
+  if (password !== undefined && password.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres.');
+}
+
 export async function listManagedUsers(): Promise<ManagedUser[]> {
   const result = await invokeAdmin<{ users: ManagedUser[] }>({ action: 'list' });
   return result.users || [];
 }
 
 export async function createManagedUser(input: { email: string; fullName: string; password: string; permissions: MenuPermission[] }) {
-  return invokeAdmin<{ ok: true; userId: string }>({ action: 'create', ...input });
+  validateManagedUser(input.email, input.fullName, input.password);
+  return invokeAdmin<{ ok: true; userId: string }>({ action: 'create', ...input, email: normalizeEmail(input.email), fullName: input.fullName.trim() });
 }
 
 export async function updateManagedUser(input: { userId: string; email: string; fullName: string; password?: string; active: boolean; permissions: MenuPermission[] }) {
-  return invokeAdmin<{ ok: true }>({ action: 'update', ...input });
+  validateManagedUser(input.email, input.fullName, input.password);
+  return invokeAdmin<{ ok: true }>({ action: 'update', ...input, email: normalizeEmail(input.email), fullName: input.fullName.trim() });
 }
 
 export async function deleteManagedUser(userId: string) {
