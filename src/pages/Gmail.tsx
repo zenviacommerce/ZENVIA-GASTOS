@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, ExternalLink, Eye, FileText, Link2, Link2Off, LoaderCircle, Mail, Paperclip, RefreshCw, Search, ShieldCheck, Sparkles, X } from 'lucide-react';
 import type { ExpenseCategory } from '../types';
-import { connectGmail, disconnectGmail, downloadGmailAttachment, getCachedGmailConnection, gmailMessageUrl, gmailOAuthConfigured, saveGmailCandidates, searchGmailInvoiceCandidates, updateGmailImport, type GmailCandidate, type GmailConnection } from '../services/gmail';
+import { connectGmail, disconnectGmail, downloadGmailAttachment, getCachedGmailConnection, gmailMessageUrl, gmailOAuthConfigured, saveGmailCandidates, updateGmailImport, type GmailCandidate, type GmailConnection } from '../services/gmail';
+import { searchGmailInvoiceCandidatesStable } from '../services/gmailStableSearch';
 import { importGmailCandidate } from '../services/gmailImport';
 import { loadRecoverableGmailImports } from '../services/invoiceLifecycle';
 
@@ -71,12 +72,26 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
     setScanning(true);setError('');setMessage('Conectando con Gmail…');
     try{
       const active=await ensureConnection();
-      const candidates=await searchGmailInvoiceCandidates(active.accessToken,months,setMessage);
-      const merged=await saveGmailCandidates(candidates);
+      const knownMessageIds=new Set(imports.map(item=>item.messageId).filter(Boolean));
+      const result=await searchGmailInvoiceCandidatesStable(active.accessToken,months,active.email,knownMessageIds,setMessage);
+      const merged=await saveGmailCandidates(result.candidates);
       setImports(merged);
-      setMessage(candidates.length?`Búsqueda completada: ${candidates.length} adjunto${candidates.length===1?'':'s'} candidato${candidates.length===1?'':'s'} encontrado${candidates.length===1?'':'s'}.`:'Búsqueda completada. No encontramos adjuntos candidatos en ese periodo.');
-    }catch(e){setError(e instanceof Error?e.message:'No se pudo buscar en Gmail.');setConnection(getCachedGmailConnection());}
-    finally{setScanning(false);}
+
+      if(result.skippedMessages>0){
+        const importedText=result.candidates.length?` Se encontraron ${result.candidates.length} adjunto${result.candidates.length===1?'':'s'} nuevo${result.candidates.length===1?'':'s'}.`:'';
+        setMessage(`Actualización completada. ${result.skippedMessages} correo${result.skippedMessages===1?'':'s'} se omitieron temporalmente por límites de Gmail.${importedText} Puedes volver a actualizar más tarde.`);
+      }else if(result.newMessages===0){
+        setMessage(`Gmail actualizado. No hay correos nuevos; ${result.cachedMessages} correo${result.cachedMessages===1?' ya estaba':'s ya estaban'} revisado${result.cachedMessages===1?'':'s'}.`);
+      }else if(result.candidates.length){
+        setMessage(`Búsqueda completada: ${result.candidates.length} adjunto${result.candidates.length===1?'':'s'} nuevo${result.candidates.length===1?'':'s'} encontrado${result.candidates.length===1?'':'s'} en ${result.newMessages} correo${result.newMessages===1?'':'s'} nuevo${result.newMessages===1?'':'s'}.`);
+      }else{
+        setMessage(`Gmail actualizado. Se revisaron ${result.newMessages} correo${result.newMessages===1?'':'s'} nuevo${result.newMessages===1?'':'s'} y no contenían nuevas facturas.`);
+      }
+    }catch(e){
+      const text=e instanceof Error?e.message:'No se pudo buscar en Gmail.';
+      setError(text);
+      setConnection(getCachedGmailConnection());
+    }finally{setScanning(false);}
   };
 
   const importOne=async(candidate:GmailCandidate)=>{
