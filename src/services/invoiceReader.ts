@@ -35,7 +35,9 @@ function parseMoney(value: string | undefined | null): number {
 }
 
 function moneyTokens(line: string): string[] {
-  return line.match(/-?\d{1,3}(?:[.\s]\d{3})*(?:,\d{2,6})|-?\d+(?:[.,]\d{2,6})/g) ?? [];
+  // Los espacios no se consideran separadores de miles: en facturas reales suelen
+  // separar un número de pedido/ticket de un importe y unirlos crea cifras absurdas.
+  return line.match(/-?\d{1,3}(?:\.\d{3})*(?:,\d{2,6})|-?\d+(?:[.,]\d{2,6})/g) ?? [];
 }
 
 function lastMoney(line: string): number {
@@ -68,17 +70,23 @@ function findAmount(lines: string[], terms: RegExp, excluded?: RegExp): number {
 }
 
 function extractInvoiceNumber(lines: string[], fullText: string): string {
+  // Primero formatos explícitos. Evitamos el antiguo patrón "nº" sin límite de
+  // palabra porque podía interpretar el inicio de "Nombre" como N.º y devolver "mbre".
   const patterns = [
-    /(?:n[ºo°]\.?\s*(?:factura)?|n[uú]mero\s*(?:de\s*)?factura|factura\s*(?:n[ºo°]\.?|núm(?:ero)?\.?)?|invoice\s*(?:no\.?|number)?)[\s:#-]*([A-Z0-9][A-Z0-9._\/-]{2,})/i,
-    /(?:serie\s*\/\s*n[uú]mero|n[uú]m\.?)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})/i,
+    /\bfactura\s*(?:n[ºo°]\.?|n[uú]m(?:ero)?\.?)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})\b/i,
+    /\binvoice\s*(?:no\.?|number)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})\b/i,
+    /\bn[uú]mero\s+(?:de\s+)?factura\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})\b/i,
+    /\bn(?:º|°|o)\.?\s+(?:de\s+)?factura\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})\b/i,
+    /(?:serie\s*\/\s*n[uú]mero|\bn[uú]m\.)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})\b/i,
   ];
   for (const pattern of patterns) {
     const match = fullText.match(pattern);
     if (match?.[1]) return match[1].trim();
   }
-  for (const line of lines.slice(0, 20)) {
-    if (!/factura|invoice/i.test(line)) continue;
-    const candidate = line.match(/\b[A-Z0-9]{1,8}[-/]?[A-Z0-9._/-]{2,}\b/i)?.[0];
+  for (const line of lines.slice(0, 30)) {
+    if (!/\bfactura\b|\binvoice\b/i.test(line)) continue;
+    const withoutLabel = line.replace(/^.*?\b(?:factura|invoice)\b\s*/i, '');
+    const candidate = withoutLabel.match(/\b[A-Z0-9][A-Z0-9._/-]{2,}\b/i)?.[0];
     if (candidate && !/^20\d{2}$/.test(candidate)) return candidate;
   }
   return '';
@@ -159,12 +167,12 @@ function parseInvoiceText(text: string, categories: ExpenseCategory[], usedOcr: 
   }
   if (!invoiceDate) invoiceDate = parseDate(fullText);
 
-  const subtotal = findAmount(lines, /base\s+imponible|subtotal|importe\s+neto|total\s+neto/i);
-  const vat = findAmount(lines, /\biva\b|i\.v\.a\.|vat/i, /cif|nif|vat\s*(?:id|number|no)/i);
+  const subtotal = findAmount(lines, /base\s+imponible|subtotal|importe\s+neto|importe\s+bruto|total\s+neto/i);
+  const vat = findAmount(lines, /\biva\b|i\.v\.a\.|vat|\bimpuestos\b/i, /cif|nif|vat\s*(?:id|number|no)/i);
   const withholding = findAmount(lines, /retenci[oó]n|\birpf\b/i);
-  let total = findAmount(lines, /\btotal\b|total\s+factura|importe\s+total|a\s+pagar/i, /subtotal|base\s+imponible/i);
+  let total = findAmount(lines, /total\s+factura|importe\s+total|a\s+pagar|\btotal\b/i, /subtotal|base\s+imponible/i);
   if (!total) {
-    const candidates = lines.slice(-20).flatMap(line => moneyTokens(line).map(parseMoney)).filter(v => v > 0);
+    const candidates = lines.slice(-30).flatMap(line => moneyTokens(line).map(parseMoney)).filter(v => v > 0);
     total = candidates.length ? Math.max(...candidates) : 0;
   }
 
@@ -180,7 +188,9 @@ async function extractPdfText(file: File): Promise<{ text: string; pdf: any }> {
   const data = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjsLib.getDocument({ data }).promise;
   const pages: string[] = [];
-  const maxPages = Math.min(pdf.numPages, 10);
+  // Leemos facturas largas completas hasta un límite razonable. Antes se cortaban
+  // en la página 10 y se perdía el resumen fiscal de documentos como MRW (12 páginas).
+  const maxPages = Math.min(pdf.numPages, 40);
   for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
@@ -214,9 +224,15 @@ async function ocrPdf(pdf: any, onProgress?: (message: string) => void): Promise
   const worker = await createWorker('spa');
   const pages: string[] = [];
   try {
-    const maxPages = Math.min(pdf.numPages, 4);
-    for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
-      onProgress?.(`Leyendo página ${pageNumber} de ${maxPages}…`);
+    // En PDFs escaneados largos incluimos también las dos últimas páginas, donde
+    // normalmente están base, impuestos y total, sin OCRizar decenas de páginas.
+    const pageNumbers = pdf.numPages <= 6
+      ? Array.from({ length: pdf.numPages }, (_, index) => index + 1)
+      : [1, 2, 3, 4, Math.max(5, pdf.numPages - 1), pdf.numPages];
+    const uniquePages = [...new Set(pageNumbers)];
+    for (let index = 0; index < uniquePages.length; index += 1) {
+      const pageNumber = uniquePages[index];
+      onProgress?.(`Leyendo página ${pageNumber} (${index + 1} de ${uniquePages.length})…`);
       const page = await pdf.getPage(pageNumber);
       const viewport = page.getViewport({ scale: 1.7 });
       const canvas = document.createElement('canvas');
