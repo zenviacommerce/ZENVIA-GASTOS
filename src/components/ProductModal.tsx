@@ -1,0 +1,8 @@
+import { useState } from 'react';
+import { X } from 'lucide-react';
+export function ProductModal({open,onClose,onSave}:{open:boolean;onClose:()=>void;onSave:(v:{name:string;sku?:string;category?:string;unit:string})=>Promise<void>}){
+ const [name,setName]=useState(''); const [sku,setSku]=useState(''); const [category,setCategory]=useState(''); const [unit,setUnit]=useState('ud'); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
+ if(!open)return null;
+ const save=async()=>{if(!name.trim())return;setBusy(true);setError('');try{await onSave({name,sku,category,unit});onClose();setName('');setSku('');setCategory('');setUnit('ud');}catch(e){setError(e instanceof Error?e.message:'Error');}finally{setBusy(false)}};
+ return <div className="modalBackdrop"><div className="modal smallModal"><div className="modalHead"><div><h3>Nuevo producto</h3><p>Producto interno para controlar costes.</p></div><button onClick={onClose}><X/></button></div><div className="stackForm"><label>Nombre *<input value={name} onChange={e=>setName(e.target.value)}/></label><label>SKU interno<input value={sku} onChange={e=>setSku(e.target.value)}/></label><label>Categoría<input value={category} onChange={e=>setCategory(e.target.value)} placeholder="Film, bolsas, vasos…"/></label><label>Unidad base<input value={unit} onChange={e=>setUnit(e.target.value)} placeholder="ud, rollo, kg…"/></label></div>{error&&<div className="errorBox">{error}</div>}<div className="modalActions"><button className="secondary" onClick={onClose}>Cancelar</button><button className="primary" onClick={save} disabled={busy||!name.trim()}>{busy?'Guardando…':'Crear producto'}</button></div></div></div>
+}
