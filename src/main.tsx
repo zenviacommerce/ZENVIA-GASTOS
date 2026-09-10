@@ -5,6 +5,7 @@ import './styles.css';
 import './enhancements.css';
 import './sidebar-brand.css';
 import './gmail.css';
+import './gmail-filter.css';
 import './mobile-nav.css';
 import './gmail-mobile.css';
 import './gmail-preview.css';
