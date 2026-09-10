@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, FileUp, X, ScanLine, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Camera, FileUp, X, ScanLine, CheckCircle2, AlertCircle, LoaderCircle } from 'lucide-react';
 import { imageFilesToPdf } from '../services/pdf';
+import { readInvoiceDocument, type InvoiceReadResult } from '../services/invoiceReader';
 import type { ExpenseCategory, InvoiceSource, NewInvoiceInput } from '../types';
 
 export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolean;onClose:()=>void;onSave:(input:NewInvoiceInput)=>Promise<void>;categories:ExpenseCategory[]}) {
@@ -11,6 +12,9 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
   const [status,setStatus]=useState('');
   const [error,setError]=useState('');
   const [saving,setSaving]=useState(false);
+  const [reading,setReading]=useState(false);
+  const [readerMessage,setReaderMessage]=useState('');
+  const [extraction,setExtraction]=useState<InvoiceReadResult|null>(null);
   const [supplierName,setSupplierName]=useState('');
   const [invoiceNumber,setInvoiceNumber]=useState('');
   const [invoiceDate,setInvoiceDate]=useState(new Date().toISOString().slice(0,10));
@@ -20,8 +24,37 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
   const [withholding,setWithholding]=useState('0');
   const [total,setTotal]=useState('');
 
-  useEffect(()=>{ if(!open){setFile(null);setStatus('');setError('');setSupplierName('');setInvoiceNumber('');setCategoryId('');setSubtotal('');setVat('');setWithholding('0');setTotal('');}},[open]);
+  useEffect(()=>{
+    if(!open){
+      setFile(null);setStatus('');setError('');setReaderMessage('');setExtraction(null);setReading(false);
+      setSupplierName('');setInvoiceNumber('');setInvoiceDate(new Date().toISOString().slice(0,10));setCategoryId('');setSubtotal('');setVat('');setWithholding('0');setTotal('');
+    }
+  },[open]);
   if(!open) return null;
+
+  const applyExtraction = (result: InvoiceReadResult) => {
+    setExtraction(result);
+    if(result.supplierName) setSupplierName(result.supplierName);
+    if(result.invoiceNumber) setInvoiceNumber(result.invoiceNumber);
+    if(result.invoiceDate) setInvoiceDate(result.invoiceDate);
+    if(result.categoryId) setCategoryId(result.categoryId);
+    if(result.subtotal) setSubtotal(String(result.subtotal));
+    if(result.vat) setVat(String(result.vat));
+    if(result.withholding) setWithholding(String(result.withholding));
+    if(result.total) setTotal(String(result.total));
+  };
+
+  const runReader = async (prepared: File) => {
+    setReading(true); setReaderMessage('Analizando factura…'); setExtraction(null);
+    try {
+      const result = await readInvoiceDocument(prepared, categories, setReaderMessage);
+      applyExtraction(result);
+      const percent = Math.round(result.confidence * 100);
+      setReaderMessage(`Lectura completada · confianza ${percent}%${result.lines.length ? ` · ${result.lines.length} línea${result.lines.length>1?'s':''} detectada${result.lines.length>1?'s':''}` : ''}. Revisa los datos antes de guardar.`);
+    } catch(e) {
+      setReaderMessage(`No se pudo completar la lectura automática. Puedes rellenar los datos manualmente. ${e instanceof Error?e.message:''}`.trim());
+    } finally { setReading(false); }
+  };
 
   const handleFiles = async (files: File[], nextSource: InvoiceSource) => {
     if(!files.length) return;
@@ -29,7 +62,8 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
     try {
       const prepared = files.every(f=>f.type.startsWith('image/')) ? await imageFilesToPdf(files) : files[0];
       setFile(prepared); setSource(nextSource);
-      setStatus(nextSource === 'camera' ? `Escaneo convertido a PDF (${files.length} página${files.length>1?'s':''}).` : 'Documento listo para guardar.');
+      setStatus(nextSource === 'camera' ? `Escaneo convertido a PDF (${files.length} página${files.length>1?'s':''}).` : 'Documento listo.');
+      await runReader(prepared);
     } catch(e){ setError(e instanceof Error?e.message:'No se pudo procesar el archivo.'); }
   };
 
@@ -37,7 +71,23 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
     if(!file || !supplierName.trim() || !invoiceDate) { setError('Selecciona un archivo e indica proveedor y fecha.'); return; }
     setSaving(true); setError('');
     try {
-      await onSave({file,source,supplierName,invoiceNumber,invoiceDate,categoryId:categoryId||undefined,subtotal:Number(subtotal||0),vat:Number(vat||0),withholding:Number(withholding||0),total:Number(total||0)});
+      const extractionMetadata = extraction ? {
+        parser: extraction.usedOcr ? 'browser-ocr-v1' : 'pdf-text-v1',
+        supplierName: extraction.supplierName,
+        invoiceNumber: extraction.invoiceNumber,
+        invoiceDate: extraction.invoiceDate,
+        categoryId: extraction.categoryId ?? null,
+        subtotal: extraction.subtotal,
+        vat: extraction.vat,
+        withholding: extraction.withholding,
+        total: extraction.total,
+        lineCount: extraction.lines.length,
+      } : undefined;
+      await onSave({
+        file,source,supplierName,invoiceNumber,invoiceDate,categoryId:categoryId||undefined,
+        subtotal:Number(subtotal||0),vat:Number(vat||0),withholding:Number(withholding||0),total:Number(total||0),
+        ocrText:extraction?.text,extraction:extractionMetadata,extractionConfidence:extraction?.confidence,lines:extraction?.lines,
+      });
       onClose();
     } catch(e){ setError(e instanceof Error?e.message:'No se pudo guardar la factura.'); }
     finally{setSaving(false);}
@@ -52,6 +102,12 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
     <input hidden ref={fileRef} type="file" accept="application/pdf,image/*" onChange={e=>handleFiles(Array.from(e.target.files??[]),'manual')}/>
     <input hidden ref={cameraRef} type="file" accept="image/*" capture="environment" multiple onChange={e=>handleFiles(Array.from(e.target.files??[]),'camera')}/>
     {file && <div className="selectedFile"><CheckCircle2 size={18}/><div><strong>{file.name}</strong><span>{(file.size/1024/1024).toFixed(2)} MB · {source==='camera'?'Cámara':'Archivo'}</span></div></div>}
+
+    <div className={`aiNote ${reading?'reading':extraction?'done':''}`}>
+      {reading?<LoaderCircle className="spin"/>:<ScanLine/>}
+      <div><strong>{reading?'Lectura inteligente en curso':extraction?'Lectura inteligente completada':'Lectura inteligente automática'}</strong><span>{readerMessage || 'Al seleccionar una factura intentaremos detectar proveedor, número, fecha, importes, categoría y líneas de producto.'}</span></div>
+    </div>
+
     <div className="invoiceFormGrid">
       <label>Proveedor *<input value={supplierName} onChange={e=>setSupplierName(e.target.value)} placeholder="Ej. MRW"/></label>
       <label>Nº de factura<input value={invoiceNumber} onChange={e=>setInvoiceNumber(e.target.value)} placeholder="FV-2026-001"/></label>
@@ -62,9 +118,9 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
       <label>Retención (€)<input type="number" step="0.01" value={withholding} onChange={e=>setWithholding(e.target.value)}/></label>
       <label>Total (€)<input type="number" step="0.01" value={total} onChange={e=>setTotal(e.target.value)}/></label>
     </div>
-    <div className="aiNote"><ScanLine/><div><strong>Lectura inteligente preparada</strong><span>En la siguiente fase conectaremos el motor IA para rellenar estos campos y las líneas de producto automáticamente.</span></div></div>
+    {extraction?.lines.length ? <div className="detectedLines"><strong>{extraction.lines.length} líneas detectadas</strong><span>Se guardarán junto con la factura y podrás revisarlas desde el detalle.</span></div> : null}
     {status && <div className="success"><CheckCircle2 size={18}/>{status}</div>}
     {error && <div className="errorBox"><AlertCircle size={18}/>{error}</div>}
-    <div className="modalActions"><button className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={saving||!file} onClick={submit}>{saving?'Guardando…':'Guardar factura'}</button></div>
+    <div className="modalActions"><button className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={saving||reading||!file} onClick={submit}>{saving?'Guardando…':reading?'Leyendo…':'Guardar factura'}</button></div>
   </div></div>;
 }

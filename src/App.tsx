@@ -12,8 +12,8 @@ import { Products } from './pages/Products';
 import { Suppliers } from './pages/Suppliers';
 import { GmailPage } from './pages/Gmail';
 import { supabase } from './services/supabase';
-import { addProduct, addSupplier, bootstrapUser, createInvoice, loadAppData, updateInvoiceStatus } from './services/repository';
-import type { AppData, NewInvoiceInput } from './types';
+import { addProduct, addSupplier, bootstrapUser, createInvoice, deleteInvoice, getInvoiceFileUrl, loadAppData, updateInvoiceStatus } from './services/repository';
+import type { AppData, Invoice, NewInvoiceInput } from './types';
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
 
@@ -51,6 +51,14 @@ export default function App(){
 
  const saveInvoice=async(input:NewInvoiceInput)=>{await createInvoice(input);await refresh()};
  const changeStatus=async(id:string,status:'pending'|'reviewed'|'accounted')=>{await updateInvoiceStatus(id,status);await refresh()};
+ const removeInvoice=async(invoice:Invoice)=>{await deleteInvoice(invoice.id,invoice.filePath);await refresh()};
+ const openInvoice=async(invoice:Invoice)=>{
+   if(!invoice.filePath) throw new Error('Esta factura no tiene un documento asociado.');
+   const url=await getInvoiceFileUrl(invoice.filePath);
+   const a=document.createElement('a');
+   a.href=url;a.target='_blank';a.rel='noopener noreferrer';
+   document.body.appendChild(a);a.click();a.remove();
+ };
  const saveProduct=async(input:{name:string;sku?:string;category?:string;unit:string})=>{await addProduct(input);await refresh()};
  const saveSupplier=async(input:{name:string;taxId?:string;email?:string;supplierType:'goods'|'service'|'both'})=>{await addSupplier(input);await refresh()};
 
@@ -58,7 +66,7 @@ export default function App(){
    {error&&<div className="globalError">{error}<button onClick={refresh}>Reintentar</button></div>}
    {loading&&<div className="syncBadge"><LoaderCircle className="spin" size={14}/> Sincronizando</div>}
    {page==='dashboard'&&<Dashboard invoices={data.invoices} products={data.products} onUpload={()=>setUpload(true)} onProducts={()=>setPage('products')}/>} 
-   {page==='invoices'&&<Invoices invoices={data.invoices} onUpload={()=>setUpload(true)} onStatusChange={changeStatus}/>} 
+   {page==='invoices'&&<Invoices invoices={data.invoices} onUpload={()=>setUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice}/>} 
    {page==='products'&&<Products products={data.products} onAdd={()=>setProductModal(true)}/>} 
    {page==='suppliers'&&<Suppliers suppliers={data.suppliers} onAdd={()=>setSupplierModal(true)}/>} 
    {page==='gmail'&&<GmailPage/>}

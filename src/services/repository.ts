@@ -124,7 +124,7 @@ export async function createInvoice(input: NewInvoiceInput) {
   });
   if (storageError) throw storageError;
 
-  const { error } = await supabase.from('invoices').insert({
+  const { data: invoice, error } = await supabase.from('invoices').insert({
     supplier_id: supplierId,
     invoice_number: input.invoiceNumber.trim() || null,
     issue_date: input.invoiceDate || null,
@@ -139,17 +139,51 @@ export async function createInvoice(input: NewInvoiceInput) {
     file_name: input.file.name,
     mime_type: input.file.type || 'application/pdf',
     file_hash: fileHash,
-  });
+    ocr_text: input.ocrText || null,
+    extraction: input.extraction ?? {},
+    extraction_confidence: input.extractionConfidence ?? null,
+  }).select('id').single();
 
   if (error) {
     await supabase.storage.from(INVOICE_BUCKET).remove([storagePath]);
     throw error;
+  }
+
+  if (input.lines?.length) {
+    const { error: lineError } = await supabase.from('invoice_lines').insert(input.lines.map(line => ({
+      invoice_id: invoice.id,
+      description: line.description,
+      quantity: line.quantity || 1,
+      unit_price: line.unitPrice ?? null,
+      line_net: line.lineTotal ?? null,
+      line_total: line.lineTotal ?? null,
+    })));
+    if (lineError) {
+      await supabase.from('invoices').delete().eq('id', invoice.id);
+      await supabase.storage.from(INVOICE_BUCKET).remove([storagePath]);
+      throw lineError;
+    }
   }
 }
 
 export async function updateInvoiceStatus(invoiceId: string, status: 'pending' | 'reviewed' | 'accounted') {
   const { error } = await supabase.from('invoices').update({ status }).eq('id', invoiceId);
   if (error) throw error;
+}
+
+export async function deleteInvoice(invoiceId: string, filePath?: string | null) {
+  const { error } = await supabase.from('invoices').delete().eq('id', invoiceId);
+  if (error) throw error;
+  if (filePath) {
+    const { error: storageError } = await supabase.storage.from(INVOICE_BUCKET).remove([filePath]);
+    if (storageError) console.warn('La factura se eliminó, pero no se pudo borrar el archivo de Storage.', storageError);
+  }
+}
+
+export async function getInvoiceFileUrl(path: string) {
+  const { data, error } = await supabase.storage.from(INVOICE_BUCKET).createSignedUrl(path, 300);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 export async function addProduct(input: { name: string; sku?: string; category?: string; unit: string }) {

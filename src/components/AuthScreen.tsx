@@ -1,4 +1,5 @@
 import { FormEvent, useState } from 'react';
+import { ZENVIA_LOGO } from '../branding';
 import { LockKeyhole, ReceiptText } from 'lucide-react';
 import { supabase } from '../services/supabase';
 
@@ -28,7 +29,7 @@ export function AuthScreen() {
 
   return <div className="authPage">
     <div className="authPanel">
-      <div className="authLogo"><div className="brandMark">Z</div><div><strong>ZENVIA COMMERCE</strong><span>Gestión de gastos</span></div></div>
+      <div className="authLogo"><img src={ZENVIA_LOGO} alt="ZENVIA COMMERCE"/><span>Gestión de gastos</span></div>
       <div className="authHeroIcon"><ReceiptText/></div>
       <h1>{mode === 'login' ? 'Accede a ZENVIA Gastos' : 'Crea tu acceso'}</h1>
       <p>Facturas, proveedores y costes de producto centralizados y protegidos.</p>
