@@ -12,7 +12,8 @@ import { Products } from './pages/Products';
 import { Suppliers } from './pages/Suppliers';
 import { GmailPage } from './pages/Gmail';
 import { supabase } from './services/supabase';
-import { addProduct, addSupplier, bootstrapUser, createInvoice, deleteInvoice, deleteSupplier, getInvoiceFileUrl, loadAppData, updateInvoiceStatus, updateSupplier } from './services/repository';
+import { addProduct, addSupplier, bootstrapUser, createInvoice, deleteSupplier, getInvoiceFileUrl, loadAppData, updateInvoiceStatus, updateSupplier } from './services/repository';
+import { deleteInvoiceWithGmailRecovery } from './services/invoiceLifecycle';
 import type { AppData, Invoice, NewInvoiceInput, Supplier } from './types';
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
@@ -54,7 +55,7 @@ export default function App(){
 
  const saveInvoice=async(input:NewInvoiceInput)=>{await createInvoice(input);await refresh()};
  const changeStatus=async(id:string,status:'pending'|'reviewed'|'accounted')=>{await updateInvoiceStatus(id,status);await refresh()};
- const removeInvoice=async(invoice:Invoice)=>{await deleteInvoice(invoice.id,invoice.filePath);await refresh()};
+ const removeInvoice=async(invoice:Invoice)=>{await deleteInvoiceWithGmailRecovery(invoice.id,invoice.filePath);await refresh()};
  const openInvoice=async(invoice:Invoice)=>{
    if(!invoice.filePath) throw new Error('Esta factura no tiene un documento asociado.');
    const url=await getInvoiceFileUrl(invoice.filePath);
