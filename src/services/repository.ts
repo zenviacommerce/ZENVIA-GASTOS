@@ -196,13 +196,30 @@ export async function addProduct(input: { name: string; sku?: string; category?:
   if (error) throw error;
 }
 
-export async function addSupplier(input: { name: string; taxId?: string; email?: string; supplierType: 'goods' | 'service' | 'both' }) {
+type SupplierInput = { name: string; taxId?: string; email?: string; supplierType: 'goods' | 'service' | 'both' };
+
+export async function addSupplier(input: SupplierInput) {
   const { error } = await supabase.from('suppliers').insert({
     name: input.name.trim(),
     tax_id: input.taxId?.trim() || null,
     email: input.email?.trim() || null,
     supplier_type: input.supplierType,
   });
+  if (error) throw error;
+}
+
+export async function updateSupplier(supplierId: string, input: SupplierInput) {
+  const { error } = await supabase.from('suppliers').update({
+    name: input.name.trim(),
+    tax_id: input.taxId?.trim() || null,
+    email: input.email?.trim() || null,
+    supplier_type: input.supplierType,
+  }).eq('id', supplierId);
+  if (error) throw error;
+}
+
+export async function deleteSupplier(supplierId: string) {
+  const { error } = await supabase.from('suppliers').delete().eq('id', supplierId);
   if (error) throw error;
 }
 
