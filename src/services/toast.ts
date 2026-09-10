@@ -20,5 +20,11 @@ export function showError(message: string, duration = 5200) {
 }
 
 export function errorMessage(error: unknown, fallback = 'Se ha producido un error.') {
-  return error instanceof Error && error.message ? error.message : fallback;
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+  if (typeof error === 'string' && error.trim()) return error;
+  return fallback;
 }
