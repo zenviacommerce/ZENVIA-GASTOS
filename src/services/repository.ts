@@ -2,6 +2,12 @@ import { supabase, INVOICE_BUCKET } from './supabase';
 import type { AppData, ExpenseCategory, Invoice, NewInvoiceInput, Product, Supplier } from '../types';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
+const normalizeProductKey = (value: string) => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
 
 export async function bootstrapUser() {
   const { error } = await supabase.rpc('bootstrap_expense_categories');
@@ -104,6 +110,119 @@ async function ensureSupplier(name: string): Promise<string> {
   return data.id;
 }
 
+async function isMerchandiseCategory(categoryId?: string) {
+  if (!categoryId) return false;
+  const { data, error } = await supabase.from('expense_categories').select('name').eq('id', categoryId).maybeSingle();
+  if (error) throw error;
+  return Boolean(data?.name && normalizeProductKey(data.name).includes('mercancia'));
+}
+
+async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: string, input: NewInvoiceInput) {
+  if (!input.lines?.length) return;
+
+  const autoCreateProducts = await isMerchandiseCategory(input.categoryId);
+  const createdProductIds: string[] = [];
+  const createdSupplierProductIds: string[] = [];
+
+  const [productsResult, supplierProductsResult] = autoCreateProducts
+    ? await Promise.all([
+        supabase.from('products').select('id,name,base_unit').eq('active', true),
+        supabase.from('supplier_products').select('id,product_id,supplier_description').eq('supplier_id', supplierId),
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }];
+
+  if (productsResult.error) throw productsResult.error;
+  if (supplierProductsResult.error) throw supplierProductsResult.error;
+
+  const productByName = new Map<string, { id: string; unit: string }>();
+  for (const product of productsResult.data ?? []) {
+    const key = normalizeProductKey(product.name);
+    if (key && !productByName.has(key)) productByName.set(key, { id: product.id, unit: product.base_unit || 'ud' });
+  }
+
+  const supplierProductByDescription = new Map<string, { id: string; productId: string }>();
+  for (const supplierProduct of supplierProductsResult.data ?? []) {
+    const key = normalizeProductKey(supplierProduct.supplier_description);
+    if (key && !supplierProductByDescription.has(key)) {
+      supplierProductByDescription.set(key, { id: supplierProduct.id, productId: supplierProduct.product_id });
+    }
+  }
+
+  const lineRows: Record<string, unknown>[] = [];
+
+  try {
+    for (const line of input.lines) {
+      const description = line.description.trim().slice(0, 250);
+      if (!description) continue;
+
+      const key = normalizeProductKey(description);
+      const unit = line.unit?.trim() || 'ud';
+      let productId: string | null = null;
+      let supplierProductId: string | null = null;
+
+      if (autoCreateProducts && key) {
+        const supplierMatch = supplierProductByDescription.get(key);
+        if (supplierMatch) {
+          supplierProductId = supplierMatch.id;
+          productId = supplierMatch.productId;
+        } else {
+          let product = productByName.get(key);
+          if (!product) {
+            const { data: created, error: productError } = await supabase.from('products').insert({
+              name: description,
+              sku: null,
+              category: 'Mercancía',
+              base_unit: unit,
+            }).select('id,base_unit').single();
+            if (productError) throw productError;
+            product = { id: created.id, unit: created.base_unit || unit };
+            createdProductIds.push(created.id);
+            productByName.set(key, product);
+          }
+          productId = product.id;
+
+          const { data: supplierProduct, error: supplierProductError } = await supabase.from('supplier_products').insert({
+            supplier_id: supplierId,
+            product_id: productId,
+            supplier_sku: line.supplierSku?.trim() || null,
+            supplier_description: description,
+            purchase_unit: unit,
+            units_per_purchase: 1,
+          }).select('id').single();
+          if (supplierProductError) throw supplierProductError;
+          supplierProductId = supplierProduct.id;
+          createdSupplierProductIds.push(supplierProduct.id);
+          supplierProductByDescription.set(key, { id: supplierProduct.id, productId });
+        }
+      }
+
+      const normalizedPrice = productId && line.unitPrice != null ? line.unitPrice : null;
+      lineRows.push({
+        invoice_id: invoiceId,
+        product_id: productId,
+        supplier_product_id: supplierProductId,
+        description,
+        supplier_sku: line.supplierSku?.trim() || null,
+        quantity: line.quantity || 1,
+        unit,
+        unit_price: line.unitPrice ?? null,
+        normalized_unit_price: normalizedPrice,
+        line_net: line.lineTotal ?? null,
+        line_total: line.lineTotal ?? null,
+        price_update_status: normalizedPrice != null ? 'confirmed' : 'pending',
+      });
+    }
+
+    if (!lineRows.length) return;
+    const { error: lineError } = await supabase.from('invoice_lines').insert(lineRows);
+    if (lineError) throw lineError;
+  } catch (error) {
+    if (createdSupplierProductIds.length) await supabase.from('supplier_products').delete().in('id', createdSupplierProductIds);
+    if (createdProductIds.length) await supabase.from('products').delete().in('id', createdProductIds);
+    throw error;
+  }
+}
+
 export async function createInvoice(input: NewInvoiceInput) {
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
@@ -149,20 +268,12 @@ export async function createInvoice(input: NewInvoiceInput) {
     throw error;
   }
 
-  if (input.lines?.length) {
-    const { error: lineError } = await supabase.from('invoice_lines').insert(input.lines.map(line => ({
-      invoice_id: invoice.id,
-      description: line.description,
-      quantity: line.quantity || 1,
-      unit_price: line.unitPrice ?? null,
-      line_net: line.lineTotal ?? null,
-      line_total: line.lineTotal ?? null,
-    })));
-    if (lineError) {
-      await supabase.from('invoices').delete().eq('id', invoice.id);
-      await supabase.storage.from(INVOICE_BUCKET).remove([storagePath]);
-      throw lineError;
-    }
+  try {
+    await createInvoiceLinesWithProducts(invoice.id, supplierId, input);
+  } catch (lineError) {
+    await supabase.from('invoices').delete().eq('id', invoice.id);
+    await supabase.storage.from(INVOICE_BUCKET).remove([storagePath]);
+    throw lineError;
   }
 }
 
