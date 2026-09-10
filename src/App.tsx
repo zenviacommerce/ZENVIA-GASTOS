@@ -16,6 +16,7 @@ import { AdminPage } from './pages/Admin';
 import { supabase } from './services/supabase';
 import { loadAccessProfile, type AccessProfile, type MenuPermission } from './services/access';
 import { addSupplier, bootstrapUser, createInvoice, deleteProduct, deleteSupplier, getInvoiceFileUrl, loadAppData, updateInvoiceStatus, updateSupplier } from './services/repository';
+import { updateInvoiceSupplier } from './services/invoiceEditor';
 import { addProduct, updateProduct, type ProductInput } from './services/productEditor';
 import { deleteInvoiceWithGmailRecovery } from './services/invoiceLifecycle';
 import { errorMessage, showError, showSuccess } from './services/toast';
@@ -114,6 +115,10 @@ export default function App(){
    const labels={pending:'pendiente',reviewed:'revisada',accounted:'contabilizada'} as const;
    await runAction(async()=>{await updateInvoiceStatus(id,status);await refresh()},`Factura marcada como ${labels[status]}.`,'No se pudo cambiar el estado de la factura.');
  };
+ const changeInvoiceSupplier=async(invoiceId:string,supplierId:string)=>{
+   if(!can('invoices'))throw new Error('No tienes permiso para modificar facturas.');
+   await runAction(async()=>{await updateInvoiceSupplier(invoiceId,supplierId);await refresh()},'Proveedor de la factura actualizado correctamente.','No se pudo cambiar el proveedor de la factura.');
+ };
  const removeInvoice=async(invoice:Invoice)=>{
    if(!can('invoices'))throw new Error('No tienes permiso para eliminar facturas.');
    await runAction(async()=>{await deleteInvoiceWithGmailRecovery(invoice.id,invoice.filePath);await refresh()},'Factura eliminada correctamente.','No se pudo eliminar la factura.');
@@ -162,7 +167,7 @@ export default function App(){
    {error&&<div className="globalError">{error}<button onClick={refresh}>Reintentar</button></div>}
    {loading&&<div className="syncBadge"><LoaderCircle className="spin" size={14}/> Sincronizando</div>}
    {page==='dashboard'&&can('dashboard')&&<Dashboard invoices={data.invoices} products={data.products} suppliers={data.suppliers} onUpload={can('invoices')?()=>setUpload(true):undefined} onProducts={can('products')?()=>navigate('products'):undefined}/>} 
-   {page==='invoices'&&can('invoices')&&<Invoices invoices={data.invoices} suppliers={data.suppliers} onUpload={()=>setUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice}/>} 
+   {page==='invoices'&&can('invoices')&&<Invoices invoices={data.invoices} suppliers={data.suppliers} onUpload={()=>setUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice} onSupplierChange={changeInvoiceSupplier}/>} 
    {page==='products'&&can('products')&&<Products products={data.products} onAdd={openNewProduct} onEdit={openEditProduct} onDelete={removeProduct}/>} 
    {page==='suppliers'&&can('suppliers')&&<Suppliers suppliers={data.suppliers} onAdd={openNewSupplier} onEdit={openEditSupplier} onDelete={removeSupplier}/>} 
    {page==='gmail'&&can('gmail')&&<GmailPage categories={data.categories} onImported={refresh}/>} 
