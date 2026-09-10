@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { ZENVIA_LOGO } from '../branding';
 import { LockKeyhole, ReceiptText } from 'lucide-react';
 import { supabase } from '../services/supabase';
+import { emailError, normalizeEmail } from '../services/validation';
 
 export function AuthScreen() {
   const [email, setEmail] = useState('');
@@ -11,9 +12,13 @@ export function AuthScreen() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    setBusy(true); setMessage('');
+    setMessage('');
+    const emailMessage=emailError(email,true);
+    if(emailMessage){setMessage(emailMessage);return;}
+    if(password.length<8){setMessage('La contraseña debe tener al menos 8 caracteres.');return;}
+    setBusy(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({ email: normalizeEmail(email), password });
       if (error) throw error;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'No se pudo iniciar sesión.');
@@ -26,8 +31,8 @@ export function AuthScreen() {
       <div className="authHeroIcon"><ReceiptText/></div>
       <h1>Accede a ZENVIA Gastos</h1>
       <p>Acceso privado para usuarios autorizados por ZENVIA COMMERCE.</p>
-      <form onSubmit={submit} className="authForm">
-        <label>Email<input type="email" required autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} placeholder="usuario@zenviacommerce.com"/></label>
+      <form onSubmit={submit} className="authForm" noValidate>
+        <label>Email<input type="email" required inputMode="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} placeholder="usuario@zenviacommerce.com"/></label>
         <label>Contraseña<input type="password" required minLength={8} autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••"/></label>
         <button className="primary authSubmit" disabled={busy}><LockKeyhole size={17}/>{busy ? 'Entrando…' : 'Entrar'}</button>
       </form>
