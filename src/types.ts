@@ -72,6 +72,8 @@ export interface AppData {
 export interface NewInvoiceLineInput {
   description: string;
   quantity: number;
+  unit?: string | null;
+  supplierSku?: string | null;
   unitPrice?: number | null;
   lineTotal?: number | null;
 }
