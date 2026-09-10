@@ -350,7 +350,7 @@ export async function deleteSupplier(supplierId: string) {
 }
 
 export async function downloadInvoiceFile(path: string) {
-  const { data, error } = await supabase.storage.from(INVOICE_BUCKET').download(path);
+  const { data, error } = await supabase.storage.from(INVOICE_BUCKET).download(path);
   if (error) throw error;
   return data;
 }
