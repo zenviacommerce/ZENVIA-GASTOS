@@ -3,17 +3,17 @@ import { ZENVIA_LOGO } from '../branding';
 
 export type Page = 'dashboard' | 'invoices' | 'products' | 'suppliers' | 'gmail';
 const items = [
-  ['dashboard','Resumen',BarChart3],
-  ['invoices','Facturas',FileText],
-  ['products','Productos y costes',Package],
-  ['suppliers','Proveedores',Building2],
-  ['gmail','Gmail',Mail],
+  ['dashboard','Resumen','Resumen',BarChart3],
+  ['invoices','Facturas','Facturas',FileText],
+  ['products','Productos y costes','Productos',Package],
+  ['suppliers','Proveedores','Proveedores',Building2],
+  ['gmail','Gmail','Gmail',Mail],
 ] as const;
 
 export function Sidebar({page,onChange,onLogout}:{page:Page;onChange:(p:Page)=>void;onLogout:()=>void}) {
   return <aside className="sidebar">
     <div className="brand"><div className="brandLogoWrap"><img className="brandLogo" src={ZENVIA_LOGO} alt="ZENVIA COMMERCE"/></div><span className="brandSection">Gastos</span></div>
-    <nav>{items.map(([id,label,Icon]) => <button key={id} className={page===id?'active':''} onClick={()=>onChange(id)}><Icon size={18}/><span>{label}</span></button>)}</nav>
+    <nav>{items.map(([id,label,mobileLabel,Icon]) => <button key={id} className={page===id?'active':''} onClick={()=>onChange(id)} title={label} aria-label={label}><Icon size={18}/><span className="navLabelDesktop">{label}</span><span className="navLabelMobile">{mobileLabel}</span></button>)}</nav>
     <div className="sidebarBottom"><div className="companyBadge"><WalletCards size={18}/><span>ZENVIA COMMERCE</span></div><button onClick={onLogout}><LogOut size={18}/>Cerrar sesión</button></div>
   </aside>
 }
