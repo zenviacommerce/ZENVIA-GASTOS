@@ -23,7 +23,7 @@ const THEME_KEY = 'zenvia-gastos-theme';
 const regularPages: MenuPermission[] = ['dashboard','invoices','products','suppliers','gmail'];
 
 type SupplierInput = {name:string;taxId?:string;email?:string;supplierType:'goods'|'service'|'both'};
-type ProductInput = {name:string;sku?:string;category?:string;unit:string};
+type ProductInput = {name:string;sku?:string;category?:string;unit:string;price?:number|null};
 
 function initialTheme(): ThemeMode {
   const stored=window.localStorage.getItem(THEME_KEY);
