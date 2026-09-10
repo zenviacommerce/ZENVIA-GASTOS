@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './styles.css';
 import './enhancements.css';
+import './sidebar-brand.css';
 import './gmail.css';
 import './mobile-nav.css';
 import './gmail-mobile.css';
