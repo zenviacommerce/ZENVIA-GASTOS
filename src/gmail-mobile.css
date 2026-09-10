@@ -1,0 +1,18 @@
+@media(max-width:760px){
+  .gmailImports,.gmailImportList,.gmailImportRow,.gmailImportMain,.gmailImportActions{min-width:0;max-width:100%}
+  .gmailImportRow{display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px 12px;align-items:start;width:100%;overflow:hidden;padding:14px}
+  .gmailFileIcon{width:40px;height:40px}
+  .gmailImportMain{width:100%;overflow:hidden}
+  .gmailImportTop{display:flex;align-items:flex-start;gap:6px;min-width:0}
+  .gmailImportTop strong{min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word;line-height:1.25}
+  .gmailStatus{flex:0 0 auto}
+  .gmailSubject{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.35}
+  .gmailImportMain small{overflow-wrap:anywhere;line-height:1.35}
+  .gmailImportActions{grid-column:1/-1;width:100%;padding-left:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;justify-content:stretch}
+  .gmailImportActions .gmailLink,.gmailImportActions .primary,.gmailImportActions .secondary{width:100%;min-width:0;display:flex;justify-content:center;white-space:nowrap}
+  .gmailImportActions .link{grid-column:1/-1;width:100%;justify-content:center;border:1px solid #e2e8f0;background:#f8fafc;padding:9px 12px}
+}
+@media(max-width:390px){
+  .gmailImportActions{grid-template-columns:1fr}
+  .gmailImportActions .link{grid-column:auto}
+}
