@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Building2, Pencil, Trash2 } from 'lucide-react';
 import type { Supplier } from '../types';
+import '../supplier-actions.css';
 
 export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[];onAdd:()=>void;onEdit:(supplier:Supplier)=>void;onDelete:(supplier:Supplier)=>Promise<void>}){
  const [busyId,setBusyId]=useState<string|null>(null);
