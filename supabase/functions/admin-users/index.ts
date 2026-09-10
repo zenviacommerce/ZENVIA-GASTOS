@@ -32,6 +32,22 @@ function fail(message: string, status = 400) {
   return new Response(JSON.stringify({ error: message }), { status, headers: jsonHeaders });
 }
 
+async function writeAudit(admin: any, caller: any, actorEmail: string | null | undefined, action: string, targetId: string, targetEmail: string, summary: string, details: Record<string, unknown> = {}) {
+  const { error } = await admin.from('audit_logs').insert({
+    workspace_owner_id: caller.data_owner_id,
+    actor_user_id: caller.user_id,
+    actor_email: actorEmail || null,
+    module: 'admin',
+    action,
+    entity_type: 'app_user',
+    entity_id: targetId,
+    entity_label: targetEmail,
+    summary,
+    details,
+  });
+  if (error) console.error('No se pudo registrar la auditoría administrativa:', error.message);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return fail('Método no permitido.', 405);
@@ -119,6 +135,7 @@ Deno.serve(async (req: Request) => {
         await admin.auth.admin.deleteUser(created.user.id).catch(() => undefined);
         throw profileError;
       }
+      await writeAudit(admin, caller, userData.user.email, 'create_user', created.user.id, email, `Creó el usuario ${email}`, { full_name: fullName, permissions, active: true });
       return new Response(JSON.stringify({ ok: true, userId: created.user.id }), { headers: jsonHeaders });
     }
 
@@ -160,6 +177,20 @@ Deno.serve(async (req: Request) => {
         updated_at: new Date().toISOString(),
       }).eq('user_id', targetId);
       if (profileError) throw profileError;
+
+      const auditAction = target.active !== active ? (active ? 'activate_user' : 'deactivate_user') : 'update_user';
+      const summary = target.active !== active ? `${active ? 'Activó' : 'Desactivó'} el usuario ${email}` : `Modificó el usuario ${email}`;
+      await writeAudit(admin, caller, userData.user.email, auditAction, targetId, email, summary, {
+        previous_email: target.email,
+        email,
+        previous_full_name: target.full_name,
+        full_name: fullName,
+        previous_active: target.active,
+        active,
+        previous_permissions: target.permissions,
+        permissions,
+        password_changed: Boolean(password),
+      });
       return new Response(JSON.stringify({ ok: true }), { headers: jsonHeaders });
     }
 
@@ -167,6 +198,7 @@ Deno.serve(async (req: Request) => {
       if (target.role === 'admin' || targetId === callerId) return fail('El administrador principal no se puede eliminar.');
       const { error } = await admin.auth.admin.deleteUser(targetId);
       if (error) return fail(error.message);
+      await writeAudit(admin, caller, userData.user.email, 'delete_user', targetId, target.email, `Eliminó el usuario ${target.email}`, { full_name: target.full_name, permissions: target.permissions, active: target.active });
       return new Response(JSON.stringify({ ok: true }), { headers: jsonHeaders });
     }
 

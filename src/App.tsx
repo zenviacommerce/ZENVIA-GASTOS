@@ -5,6 +5,7 @@ import { Sidebar, type Page, type ThemeMode } from './components/Sidebar';
 import { UploadInvoiceModal } from './components/UploadInvoiceModal';
 import { ProductModal } from './components/ProductModal';
 import { SupplierModal } from './components/SupplierModal';
+import { ToastHost } from './components/ToastHost';
 import { AuthScreen } from './components/AuthScreen';
 import { Dashboard } from './pages/Dashboard';
 import { Invoices } from './pages/Invoices';
@@ -17,6 +18,7 @@ import { loadAccessProfile, type AccessProfile, type MenuPermission } from './se
 import { addSupplier, bootstrapUser, createInvoice, deleteProduct, deleteSupplier, getInvoiceFileUrl, loadAppData, updateInvoiceStatus, updateSupplier } from './services/repository';
 import { addProduct, updateProduct, type ProductInput } from './services/productEditor';
 import { deleteInvoiceWithGmailRecovery } from './services/invoiceLifecycle';
+import { errorMessage, showError, showSuccess } from './services/toast';
 import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './types';
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
@@ -94,15 +96,28 @@ export default function App(){
  },[accessReady,access,allowedPages,page]);
 
  if(!authReady) return <div className="fullLoader"><LoaderCircle className="spin"/> Cargando…</div>;
- if(!session) return <AuthScreen/>;
- if(!accessReady) return <div className="fullLoader"><LoaderCircle className="spin"/> Comprobando acceso…</div>;
- if(!access||!access.active||!allowedPages.length) return <div className="authPage"><div className="authPanel accessDeniedPanel"><div className="authHeroIcon"><LockKeyhole/></div><h1>Acceso no autorizado</h1><p>{access&&!access.active?'Tu acceso a ZENVIA Gastos está desactivado.':'Esta cuenta no está autorizada para utilizar ZENVIA Gastos.'} Contacta con el administrador.</p><button className="secondary" onClick={()=>supabase.auth.signOut()}>Cerrar sesión</button></div></div>;
+ if(!session) return <><ToastHost/><AuthScreen/></>;
+ if(!accessReady) return <><ToastHost/><div className="fullLoader"><LoaderCircle className="spin"/> Comprobando acceso…</div></>;
+ if(!access||!access.active||!allowedPages.length) return <><ToastHost/><div className="authPage"><div className="authPanel accessDeniedPanel"><div className="authHeroIcon"><LockKeyhole/></div><h1>Acceso no autorizado</h1><p>{access&&!access.active?'Tu acceso a ZENVIA Gastos está desactivado.':'Esta cuenta no está autorizada para utilizar ZENVIA Gastos.'} Contacta con el administrador.</p><button className="secondary" onClick={()=>supabase.auth.signOut()}>Cerrar sesión</button></div></div></>;
 
  const navigate=(next:Page)=>{if(allowedPages.includes(next))setPage(next)};
  const toggleTheme=()=>setTheme(current=>current==='dark'?'light':'dark');
- const saveInvoice=async(input:NewInvoiceInput)=>{if(!can('invoices')&&!can('gmail'))throw new Error('No tienes permiso para crear facturas.');await createInvoice(input);await refresh()};
- const changeStatus=async(id:string,status:'pending'|'reviewed'|'accounted')=>{if(!can('invoices'))throw new Error('No tienes permiso para modificar facturas.');await updateInvoiceStatus(id,status);await refresh()};
- const removeInvoice=async(invoice:Invoice)=>{if(!can('invoices'))throw new Error('No tienes permiso para eliminar facturas.');await deleteInvoiceWithGmailRecovery(invoice.id,invoice.filePath);await refresh()};
+ const runAction=async(work:()=>Promise<void>,success:string,fallback:string)=>{
+   try{await work();showSuccess(success)}catch(e){showError(errorMessage(e,fallback));throw e}
+ };
+ const saveInvoice=async(input:NewInvoiceInput)=>{
+   if(!can('invoices')&&!can('gmail'))throw new Error('No tienes permiso para crear facturas.');
+   await runAction(async()=>{await createInvoice(input);await refresh()},'Factura guardada correctamente.','No se pudo guardar la factura.');
+ };
+ const changeStatus=async(id:string,status:'pending'|'reviewed'|'accounted')=>{
+   if(!can('invoices'))throw new Error('No tienes permiso para modificar facturas.');
+   const labels={pending:'pendiente',reviewed:'revisada',accounted:'contabilizada'} as const;
+   await runAction(async()=>{await updateInvoiceStatus(id,status);await refresh()},`Factura marcada como ${labels[status]}.`,'No se pudo cambiar el estado de la factura.');
+ };
+ const removeInvoice=async(invoice:Invoice)=>{
+   if(!can('invoices'))throw new Error('No tienes permiso para eliminar facturas.');
+   await runAction(async()=>{await deleteInvoiceWithGmailRecovery(invoice.id,invoice.filePath);await refresh()},'Factura eliminada correctamente.','No se pudo eliminar la factura.');
+ };
  const openInvoice=async(invoice:Invoice)=>{
    if(!invoice.filePath) throw new Error('Esta factura no tiene un documento asociado.');
    const url=await getInvoiceFileUrl(invoice.filePath);
@@ -115,23 +130,33 @@ export default function App(){
  const closeProductModal=()=>{setProductModal(false);setProductToEdit(null)};
  const saveProduct=async(input:ProductInput)=>{
    if(!can('products'))throw new Error('No tienes permiso para modificar productos.');
-   if(productToEdit) await updateProduct(productToEdit.id,input);
-   else await addProduct(input);
-   await refresh();
+   const editing=Boolean(productToEdit);
+   await runAction(async()=>{
+     if(productToEdit) await updateProduct(productToEdit.id,input); else await addProduct(input);
+     await refresh();
+   },editing?'Producto modificado correctamente.':'Producto creado correctamente.','No se pudo guardar el producto.');
  };
- const removeProduct=async(product:Product)=>{if(!can('products'))throw new Error('No tienes permiso para eliminar productos.');await deleteProduct(product.id);await refresh()};
+ const removeProduct=async(product:Product)=>{
+   if(!can('products'))throw new Error('No tienes permiso para eliminar productos.');
+   await runAction(async()=>{await deleteProduct(product.id);await refresh()},'Producto eliminado correctamente.','No se pudo eliminar el producto.');
+ };
  const openNewSupplier=()=>{if(can('suppliers')){setSupplierToEdit(null);setSupplierModal(true)}};
  const openEditSupplier=(supplier:Supplier)=>{if(can('suppliers')){setSupplierToEdit(supplier);setSupplierModal(true)}};
  const closeSupplierModal=()=>{setSupplierModal(false);setSupplierToEdit(null)};
  const saveSupplier=async(input:SupplierInput)=>{
    if(!can('suppliers'))throw new Error('No tienes permiso para modificar proveedores.');
-   if(supplierToEdit) await updateSupplier(supplierToEdit.id,input);
-   else await addSupplier(input);
-   await refresh();
+   const editing=Boolean(supplierToEdit);
+   await runAction(async()=>{
+     if(supplierToEdit) await updateSupplier(supplierToEdit.id,input); else await addSupplier(input);
+     await refresh();
+   },editing?'Proveedor modificado correctamente.':'Proveedor creado correctamente.','No se pudo guardar el proveedor.');
  };
- const removeSupplier=async(supplier:Supplier)=>{if(!can('suppliers'))throw new Error('No tienes permiso para eliminar proveedores.');await deleteSupplier(supplier.id);await refresh()};
+ const removeSupplier=async(supplier:Supplier)=>{
+   if(!can('suppliers'))throw new Error('No tienes permiso para eliminar proveedores.');
+   await runAction(async()=>{await deleteSupplier(supplier.id);await refresh()},'Proveedor eliminado correctamente.','No se pudo eliminar el proveedor.');
+ };
 
- return <div className="app"><Sidebar page={page} onChange={navigate} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme} allowedPages={allowedPages} isAdmin={access.role==='admin'}/><main>
+ return <div className="app"><ToastHost/><Sidebar page={page} onChange={navigate} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme} allowedPages={allowedPages} isAdmin={access.role==='admin'}/><main>
    <button className="mobileLogoutButton" onClick={()=>supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut size={19}/></button>
    <button className="mobileThemeToggle" onClick={toggleTheme} title={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'} aria-label={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'}>{theme==='dark'?<Sun size={19}/>:<Moon size={19}/>}</button>
    {error&&<div className="globalError">{error}<button onClick={refresh}>Reintentar</button></div>}
