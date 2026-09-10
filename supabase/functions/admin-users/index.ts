@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
 const allowedPermissions = ['dashboard', 'invoices', 'products', 'suppliers', 'gmail'] as const;
+const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 
 type Permission = typeof allowedPermissions[number];
 
@@ -30,6 +31,13 @@ function sanitizePermissions(value: unknown): Permission[] {
 
 function fail(message: string, status = 400) {
   return new Response(JSON.stringify({ error: message }), { status, headers: jsonHeaders });
+}
+
+function validateIdentity(email: string, fullName: string) {
+  if (!email || email.length > 254 || !emailRe.test(email)) return 'Indica un email válido, por ejemplo nombre@empresa.com.';
+  if (fullName.length < 2) return 'El nombre debe tener al menos 2 caracteres.';
+  if (fullName.length > 150) return 'El nombre es demasiado largo.';
+  return '';
 }
 
 async function writeAudit(admin: any, caller: any, actorEmail: string | null | undefined, action: string, targetId: string, targetEmail: string, summary: string, details: Record<string, unknown> = {}) {
@@ -109,7 +117,8 @@ Deno.serve(async (req: Request) => {
       const fullName = String(body?.fullName || '').trim();
       const password = String(body?.password || '');
       const permissions = sanitizePermissions(body?.permissions);
-      if (!email || !email.includes('@')) return fail('Indica un email válido.');
+      const identityError = validateIdentity(email, fullName);
+      if (identityError) return fail(identityError);
       if (password.length < 8) return fail('La contraseña debe tener al menos 8 caracteres.');
       if (!permissions.length) return fail('Selecciona al menos un permiso.');
 
@@ -157,7 +166,8 @@ Deno.serve(async (req: Request) => {
       const isAdmin = target.role === 'admin';
       const permissions = isAdmin ? [...allowedPermissions] : sanitizePermissions(body?.permissions ?? target.permissions);
       const active = isAdmin ? true : (typeof body?.active === 'boolean' ? body.active : target.active);
-      if (!email || !email.includes('@')) return fail('Indica un email válido.');
+      const identityError = validateIdentity(email, fullName);
+      if (identityError) return fail(identityError);
       if (!isAdmin && !permissions.length) return fail('Selecciona al menos un permiso.');
       if (password && password.length < 8) return fail('La nueva contraseña debe tener al menos 8 caracteres.');
 
