@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { LoaderCircle } from 'lucide-react';
-import { Sidebar, type Page } from './components/Sidebar';
+import { LoaderCircle, Moon, Sun } from 'lucide-react';
+import { Sidebar, type Page, type ThemeMode } from './components/Sidebar';
 import { UploadInvoiceModal } from './components/UploadInvoiceModal';
 import { ProductModal } from './components/ProductModal';
 import { SupplierModal } from './components/SupplierModal';
@@ -17,8 +17,15 @@ import { deleteInvoiceWithGmailRecovery } from './services/invoiceLifecycle';
 import type { AppData, Invoice, NewInvoiceInput, Supplier } from './types';
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
+const THEME_KEY = 'zenvia-gastos-theme';
 
 type SupplierInput = {name:string;taxId?:string;email?:string;supplierType:'goods'|'service'|'both'};
+
+function initialTheme(): ThemeMode {
+  const stored=window.localStorage.getItem(THEME_KEY);
+  if(stored==='dark'||stored==='light') return stored;
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';
+}
 
 export default function App(){
  const [session,setSession]=useState<Session|null>(null);
@@ -31,6 +38,13 @@ export default function App(){
  const [productModal,setProductModal]=useState(false);
  const [supplierModal,setSupplierModal]=useState(false);
  const [supplierToEdit,setSupplierToEdit]=useState<Supplier|null>(null);
+ const [theme,setTheme]=useState<ThemeMode>(initialTheme);
+
+ useEffect(()=>{
+   document.documentElement.dataset.theme=theme;
+   document.documentElement.style.colorScheme=theme;
+   window.localStorage.setItem(THEME_KEY,theme);
+ },[theme]);
 
  const refresh=useCallback(async()=>{
    setLoading(true); setError('');
@@ -53,6 +67,7 @@ export default function App(){
  if(!authReady) return <div className="fullLoader"><LoaderCircle className="spin"/> Cargando…</div>;
  if(!session) return <AuthScreen/>;
 
+ const toggleTheme=()=>setTheme(current=>current==='dark'?'light':'dark');
  const saveInvoice=async(input:NewInvoiceInput)=>{await createInvoice(input);await refresh()};
  const changeStatus=async(id:string,status:'pending'|'reviewed'|'accounted')=>{await updateInvoiceStatus(id,status);await refresh()};
  const removeInvoice=async(invoice:Invoice)=>{await deleteInvoiceWithGmailRecovery(invoice.id,invoice.filePath);await refresh()};
@@ -74,11 +89,12 @@ export default function App(){
  };
  const removeSupplier=async(supplier:Supplier)=>{await deleteSupplier(supplier.id);await refresh()};
 
- return <div className="app"><Sidebar page={page} onChange={setPage} onLogout={()=>supabase.auth.signOut()}/><main>
+ return <div className="app"><Sidebar page={page} onChange={setPage} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme}/><main>
+   <button className="mobileThemeToggle" onClick={toggleTheme} title={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'} aria-label={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'}>{theme==='dark'?<Sun size={19}/>:<Moon size={19}/>}</button>
    {error&&<div className="globalError">{error}<button onClick={refresh}>Reintentar</button></div>}
    {loading&&<div className="syncBadge"><LoaderCircle className="spin" size={14}/> Sincronizando</div>}
-   {page==='dashboard'&&<Dashboard invoices={data.invoices} products={data.products} onUpload={()=>setUpload(true)} onProducts={()=>setPage('products')}/>} 
-   {page==='invoices'&&<Invoices invoices={data.invoices} onUpload={()=>setUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice}/>} 
+   {page==='dashboard'&&<Dashboard invoices={data.invoices} products={data.products} suppliers={data.suppliers} onUpload={()=>setUpload(true)} onProducts={()=>setPage('products')}/>} 
+   {page==='invoices'&&<Invoices invoices={data.invoices} suppliers={data.suppliers} onUpload={()=>setUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice}/>} 
    {page==='products'&&<Products products={data.products} onAdd={()=>setProductModal(true)}/>} 
    {page==='suppliers'&&<Suppliers suppliers={data.suppliers} onAdd={openNewSupplier} onEdit={openEditSupplier} onDelete={removeSupplier}/>} 
    {page==='gmail'&&<GmailPage categories={data.categories} onImported={refresh}/>} 

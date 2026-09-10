@@ -7,4 +7,5 @@ import './gmail.css';
 import './mobile-nav.css';
 import './gmail-mobile.css';
 import './gmail-preview.css';
+import './history-theme.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
