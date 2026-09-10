@@ -3,6 +3,22 @@ import { supabase } from './supabase';
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 const TOKEN_STORAGE_KEY = 'zenvia-gmail-access';
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60_000;
+const GMAIL_MAX_RETRIES = 3;
+
+class GmailAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GmailAuthError';
+  }
+}
+
+class GmailTemporaryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GmailTemporaryError';
+  }
+}
 
 declare global {
   interface Window {
@@ -72,7 +88,7 @@ export function getCachedGmailConnection(): GmailConnection | null {
     const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as GmailConnection;
-    if (!parsed.accessToken || parsed.expiresAt <= Date.now() + 60_000) {
+    if (!parsed.accessToken || parsed.expiresAt <= Date.now() + TOKEN_REFRESH_BUFFER_MS) {
       sessionStorage.removeItem(TOKEN_STORAGE_KEY);
       return null;
     }
@@ -83,19 +99,72 @@ export function getCachedGmailConnection(): GmailConnection | null {
   }
 }
 
+const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
+
+function parseGmailError(text: string) {
+  try {
+    const parsed = JSON.parse(text) as any;
+    const error = parsed?.error;
+    const detail = Array.isArray(error?.errors) ? error.errors[0] : null;
+    return {
+      reason: String(detail?.reason || error?.status || ''),
+      message: String(error?.message || detail?.message || text || ''),
+    };
+  } catch {
+    return { reason: '', message: text || '' };
+  }
+}
+
 async function gmailFetch<T>(accessToken: string, path: string): Promise<T> {
-  const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (response.status === 401 || response.status === 403) {
-    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-    throw new Error('La autorización de Gmail ha caducado o no tiene permisos. Vuelve a conectar Gmail.');
-  }
-  if (!response.ok) {
+  for (let attempt = 0; attempt <= GMAIL_MAX_RETRIES; attempt += 1) {
+    const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (response.ok) return response.json() as Promise<T>;
+
     const text = await response.text();
-    throw new Error(`Gmail respondió con un error (${response.status}). ${text.slice(0, 220)}`);
+    const { reason, message } = parseGmailError(text);
+    const normalizedReason = reason.toLowerCase();
+    const normalizedMessage = message.toLowerCase();
+
+    const isAuthError = response.status === 401
+      || normalizedReason === 'autherror'
+      || normalizedReason === 'insufficientpermissions'
+      || normalizedMessage.includes('insufficient authentication scopes')
+      || normalizedMessage.includes('invalid credentials');
+
+    if (isAuthError) {
+      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      throw new GmailAuthError('La autorización de Gmail ha caducado o ya no tiene el permiso de lectura. Pulsa «Conectar Gmail» para renovarla.');
+    }
+
+    const isTemporary = response.status === 429
+      || response.status >= 500
+      || (response.status === 403 && (
+        normalizedReason.includes('ratelimit')
+        || normalizedReason.includes('quota')
+        || normalizedReason === 'resource_exhausted'
+        || normalizedMessage.includes('rate limit')
+        || normalizedMessage.includes('quota')
+        || normalizedMessage.includes('too many requests')
+      ));
+
+    if (isTemporary && attempt < GMAIL_MAX_RETRIES) {
+      const retryAfter = Number(response.headers.get('retry-after') || 0);
+      const delay = retryAfter > 0 ? retryAfter * 1000 : 900 * (2 ** attempt) + Math.floor(Math.random() * 350);
+      await sleep(Math.min(delay, 8_000));
+      continue;
+    }
+
+    if (isTemporary) {
+      throw new GmailTemporaryError('Gmail está aplicando un límite temporal de peticiones. La conexión sigue activa; espera unos segundos y vuelve a pulsar «Buscar facturas».');
+    }
+
+    throw new Error(`Gmail respondió con un error (${response.status}). ${message.slice(0, 220)}`);
   }
-  return response.json() as Promise<T>;
+
+  throw new GmailTemporaryError('Gmail no respondió tras varios reintentos. Vuelve a intentarlo en unos segundos.');
 }
 
 export async function connectGmail(forceConsent = false): Promise<GmailConnection> {
@@ -201,38 +270,49 @@ export async function searchGmailInvoiceCandidates(
   if (!messages.length) return [];
 
   let done = 0;
-  const groups = await mapWithConcurrency(messages, 6, async message => {
-    const full = await gmailFetch<any>(accessToken, `messages/${encodeURIComponent(message.id)}?format=full`);
-    done += 1;
-    onProgress?.(`Analizando correos ${done} de ${messages.length}…`);
-    const headers = full.payload?.headers as Array<{ name?: string; value?: string }> | undefined;
-    const subject = headerValue(headers, 'Subject');
-    const sender = headerValue(headers, 'From');
-    const snippet = String(full.snippet || '');
-    const attachments: Array<{ attachmentId: string; partId?: string; filename: string; mimeType: string; size?: number }> = [];
-    collectAttachmentParts(full.payload, attachments);
-    const receivedAt = full.internalDate ? new Date(Number(full.internalDate)).toISOString() : null;
+  let skipped = 0;
+  const groups = await mapWithConcurrency(messages, 3, async message => {
+    try {
+      const full = await gmailFetch<any>(accessToken, `messages/${encodeURIComponent(message.id)}?format=full`);
+      done += 1;
+      onProgress?.(`Analizando correos ${done} de ${messages.length}…`);
+      const headers = full.payload?.headers as Array<{ name?: string; value?: string }> | undefined;
+      const subject = headerValue(headers, 'Subject');
+      const sender = headerValue(headers, 'From');
+      const snippet = String(full.snippet || '');
+      const attachments: Array<{ attachmentId: string; partId?: string; filename: string; mimeType: string; size?: number }> = [];
+      collectAttachmentParts(full.payload, attachments);
+      const receivedAt = full.internalDate ? new Date(Number(full.internalDate)).toISOString() : null;
 
-    return attachments
-      .filter(attachment => looksLikeInvoice(attachment.filename, subject, snippet, attachment.mimeType))
-      .map(attachment => ({
-        messageId: full.id || message.id,
-        threadId: full.threadId || message.threadId || null,
-        sender: sender || null,
-        subject: subject || null,
-        receivedAt,
-        attachmentId: attachment.attachmentId,
-        attachmentName: attachment.filename,
-        mimeType: attachment.mimeType,
-        size: attachment.size || null,
-        snippet: snippet || null,
-        partId: attachment.partId || null,
-        status: 'found' as const,
-        invoiceId: null,
-        metadata: { snippet, partId: attachment.partId || null },
-      }));
+      return attachments
+        .filter(attachment => looksLikeInvoice(attachment.filename, subject, snippet, attachment.mimeType))
+        .map(attachment => ({
+          messageId: full.id || message.id,
+          threadId: full.threadId || message.threadId || null,
+          sender: sender || null,
+          subject: subject || null,
+          receivedAt,
+          attachmentId: attachment.attachmentId,
+          attachmentName: attachment.filename,
+          mimeType: attachment.mimeType,
+          size: attachment.size || null,
+          snippet: snippet || null,
+          partId: attachment.partId || null,
+          status: 'found' as const,
+          invoiceId: null,
+          metadata: { snippet, partId: attachment.partId || null },
+        }));
+    } catch (error) {
+      if (error instanceof GmailAuthError || error instanceof GmailTemporaryError) throw error;
+      skipped += 1;
+      done += 1;
+      console.warn(`No se pudo leer el correo ${message.id}.`, error);
+      onProgress?.(`Analizando correos ${done} de ${messages.length}…`);
+      return [];
+    }
   });
 
+  if (skipped) onProgress?.(`Búsqueda completada. ${skipped} correo${skipped === 1 ? '' : 's'} no se pudo${skipped === 1 ? '' : 'ieron'} analizar.`);
   return groups.flat().sort((a, b) => String(b.receivedAt || '').localeCompare(String(a.receivedAt || '')));
 }
 
