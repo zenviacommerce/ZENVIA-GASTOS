@@ -13,9 +13,11 @@
     "jspdf": "2.5.1",
     "jszip": "3.10.1",
     "lucide-react": "0.468.0",
+    "pdfjs-dist": "4.10.38",
     "react": "19.2.1",
     "react-dom": "19.2.1",
-    "recharts": "2.15.4"
+    "recharts": "2.15.4",
+    "tesseract.js": "5.1.1"
   },
   "devDependencies": {
     "@types/node": "22.14.0",
