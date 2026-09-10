@@ -10,4 +10,5 @@ import './gmail-preview.css';
 import './history-theme.css';
 import './mobile-session.css';
 import './toast.css';
+import './validation.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
