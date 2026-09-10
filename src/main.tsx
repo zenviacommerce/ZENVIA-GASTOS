@@ -8,4 +8,5 @@ import './mobile-nav.css';
 import './gmail-mobile.css';
 import './gmail-preview.css';
 import './history-theme.css';
+import './mobile-session.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
