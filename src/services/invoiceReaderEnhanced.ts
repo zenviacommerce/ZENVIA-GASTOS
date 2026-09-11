@@ -47,9 +47,36 @@ function explicitTaxBase(text: string) {
   return 0;
 }
 
-function professionalServicesCategory(categories: ExpenseCategory[], text: string) {
-  if (!/\b(honorarios|minuta|registro\s+mercantil|registrador(?:es)?|asesor[ií]a|gestor[ií]a|consultor[ií]a|abogad[oa]|servicios?\s+profesionales?)\b/i.test(text)) return undefined;
-  return categories.find(category => /servicios?\s+profesionales?/i.test(category.name))?.id;
+function normalizedCategoryName(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function findCategory(categories: ExpenseCategory[], needle: RegExp) {
+  return categories.find(category => needle.test(normalizedCategoryName(category.name)))?.id;
+}
+
+/**
+ * Segunda barrera antes de considerar una factura como mercancía. Las tablas de
+ * honorarios, cuotas, portes o suscripciones pueden parecer tablas de artículos
+ * al OCR, pero sus conceptos no deben crear registros en el maestro de productos.
+ */
+function serviceCategoryByContent(categories: ExpenseCategory[], text: string) {
+  if (/\b(honorarios|minuta|registro\s+mercantil|registrador(?:es)?|asesor[ií]a|gestor[ií]a|consultor[ií]a|abogad[oa]|servicios?\s+profesionales?)\b/i.test(text)) {
+    return findCategory(categories, /servicios? profesionales?/);
+  }
+  if (/\b(suscripci[oó]n|subscription|licencia|license|software|cloud|workspace|hosting|saas)\b/i.test(text)) {
+    return findCategory(categories, /software|suscripciones?/);
+  }
+  if (/\b(transporte|log[ií]stica|portes?|env[ií]o|shipping|freight|courier|fedex|mrw|correos express)\b/i.test(text)) {
+    return findCategory(categories, /transporte|logistica/);
+  }
+  if (/\b(publicidad|marketing|campaign|campa[nñ]a|ads?|google ads|meta ads)\b/i.test(text)) {
+    return findCategory(categories, /publicidad|marketing/);
+  }
+  if (/\b(comisi[oó]n|commission|marketplace|amazon fees?|seller fees?)\b/i.test(text)) {
+    return findCategory(categories, /comisiones?|marketplaces?/);
+  }
+  return undefined;
 }
 
 export async function readInvoiceDocumentEnhanced(
@@ -72,7 +99,7 @@ export async function readInvoiceDocumentEnhanced(
   const serviceLines = extractServiceTableLines(textLines);
   const specializedLines = structuredLines.length >= 2 ? structuredLines : serviceLines.length >= 2 ? serviceLines : [];
   const invoiceLines = retailCorrection ? retailCorrection.lines : specializedLines.length ? specializedLines : base.lines;
-  const serviceCategoryId = professionalServicesCategory(categories, base.text);
+  const serviceCategoryId = serviceCategoryByContent(categories, base.text);
   const merchandiseCategoryId = serviceCategoryId ? undefined : detectMerchandiseCategory(categories, base.text, invoiceLines);
   const categoryId = serviceCategoryId || merchandiseCategoryId || base.categoryId;
   const repaired = repairInvoiceAmounts(base.subtotal, base.vat, base.withholding, base.total, textLines);
