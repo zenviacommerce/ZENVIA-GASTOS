@@ -54,6 +54,11 @@ function normalizeAttachmentFile(file: File) {
   return new File([file], file.name, { type: normalizedType, lastModified: file.lastModified });
 }
 
+function invoiceNumberFromFilename(filename: string) {
+  const base = filename.trim().replace(/\.[^.]+$/, '');
+  return /^\d{6,20}$/.test(base) ? base : '';
+}
+
 async function sha256(file: File) {
   const buffer = await file.arrayBuffer();
   const digest = await crypto.subtle.digest('SHA-256', buffer);
@@ -144,8 +149,10 @@ export async function importGmailCandidate(
     const supplierName = extraction.supplierName || senderFallback(candidate.sender);
     const receivedDate = validIsoDate(candidate.receivedAt?.slice(0, 10));
     const invoiceDate = validIsoDate(extraction.invoiceDate) || receivedDate || new Date().toISOString().slice(0, 10);
+    const filenameInvoiceNumber = invoiceNumberFromFilename(candidate.attachmentName);
+    const invoiceNumber = filenameInvoiceNumber || extraction.invoiceNumber;
 
-    const duplicateBySupplierNumber = await findInvoiceBySupplierAndNumber(supplierName, extraction.invoiceNumber);
+    const duplicateBySupplierNumber = await findInvoiceBySupplierAndNumber(supplierName, invoiceNumber);
     if (duplicateBySupplierNumber) {
       return markDuplicateAsImported(candidate, duplicateBySupplierNumber, 'supplier_invoice_number');
     }
@@ -154,7 +161,7 @@ export async function importGmailCandidate(
       file,
       source: 'gmail',
       supplierName,
-      invoiceNumber: extraction.invoiceNumber,
+      invoiceNumber,
       invoiceDate,
       categoryId: extraction.categoryId,
       subtotal: extraction.subtotal,
@@ -169,7 +176,9 @@ export async function importGmailCandidate(
         originalMimeType: candidate.mimeType,
         normalizedMimeType: file.type,
         supplierName: extraction.supplierName,
-        invoiceNumber: extraction.invoiceNumber,
+        extractedInvoiceNumber: extraction.invoiceNumber,
+        filenameInvoiceNumber: filenameInvoiceNumber || null,
+        invoiceNumber,
         invoiceDate: extraction.invoiceDate,
         normalizedInvoiceDate: invoiceDate,
         categoryId: extraction.categoryId ?? null,
@@ -190,7 +199,7 @@ export async function importGmailCandidate(
       await createInvoice(invoiceInput);
     } catch (firstSaveError) {
       if (isSupplierNumberDuplicate(firstSaveError)) {
-        const duplicateId = await findInvoiceBySupplierAndNumber(supplierName, extraction.invoiceNumber);
+        const duplicateId = await findInvoiceBySupplierAndNumber(supplierName, invoiceNumber);
         if (duplicateId) return markDuplicateAsImported(candidate, duplicateId, 'supplier_invoice_number_race');
       }
 
@@ -212,7 +221,7 @@ export async function importGmailCandidate(
         });
       } catch (fallbackError) {
         if (isSupplierNumberDuplicate(fallbackError)) {
-          const duplicateId = await findInvoiceBySupplierAndNumber(supplierName, extraction.invoiceNumber);
+          const duplicateId = await findInvoiceBySupplierAndNumber(supplierName, invoiceNumber);
           if (duplicateId) return markDuplicateAsImported(candidate, duplicateId, 'supplier_invoice_number_race');
         }
         throw new Error(`No se pudo guardar la factura. Primer intento: ${firstMessage}. Reintento sin líneas: ${errorMessage(fallbackError)}`);
@@ -230,6 +239,7 @@ export async function importGmailCandidate(
       detectedLineCount: extraction.lines.length,
       originalMimeType: candidate.mimeType,
       normalizedMimeType: file.type,
+      invoiceNumber,
       ...(lineImportWarning ? { lineImportWarning } : {}),
     });
     return invoiceId;
