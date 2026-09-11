@@ -32,7 +32,7 @@ function matchesStatusFilter(item: GmailCandidate, filter: GmailViewFilter) {
   switch (filter) {
     case 'pending': return item.status === 'found' || item.status === 'error';
     case 'imported': return item.status === 'imported';
-    case 'not_imported': return item.status !== 'imported';
+    case 'not_imported': return item.status === 'found' || item.status === 'error';
     case 'ignored': return item.status === 'ignored';
     case 'not_ignored': return item.status !== 'ignored';
     case 'error': return item.status === 'error';
