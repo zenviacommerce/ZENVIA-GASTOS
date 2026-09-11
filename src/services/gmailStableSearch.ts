@@ -1,9 +1,10 @@
-import type { GmailCandidate } from './gmail';
+import { downloadGmailAttachment, type GmailCandidate } from './gmail';
+import { classifyInvoiceFile, shouldInspectInvoiceAttachment } from './invoiceCandidateClassifier';
 
 const MAX_RETRIES = 5;
 const BASE_DELAY_MS = 1200;
 const MAX_DELAY_MS = 15000;
-const CACHE_PREFIX = 'zenvia-gmail-scanned-v2:';
+const CACHE_PREFIX = 'zenvia-gmail-scanned-v3:';
 const LIST_PAGE_SIZE = 500;
 const MAX_LIST_PAGES = 20;
 const MAX_MESSAGES_PER_SCAN = 200;
@@ -127,23 +128,20 @@ export function isDecorativeGmailImage(candidate: Pick<GmailCandidate, 'attachme
   return false;
 }
 
-function looksLikeInvoice(filename: string, subject: string, snippet: string, mimeType: string, size?: number) {
+function looksLikePossibleInvoice(filename: string, subject: string, snippet: string, mimeType: string, size?: number) {
   const lower = filename.toLowerCase();
-  if (mimeType === 'application/pdf' || lower.endsWith('.pdf')) return true;
-
   const candidate = { attachmentName: filename, mimeType, size: size || null, subject, snippet };
   if (isDecorativeGmailImage(candidate)) return false;
 
+  if (mimeType === 'application/pdf' || lower.endsWith('.pdf')) {
+    return shouldInspectInvoiceAttachment({ filename, subject, snippet });
+  }
+
   const filenameSaysInvoice = invoiceWords.test(filename);
   invoiceWords.lastIndex = 0;
-  if (filenameSaysInvoice) return true;
-
   const contextSaysInvoice = invoiceWords.test(`${subject} ${snippet}`);
   invoiceWords.lastIndex = 0;
-  if (!contextSaysInvoice) return false;
-
-  // Para imágenes genéricas exigimos un tamaño mínimo. Esto evita logos de firmas
-  // como image001.jpg de pocos KB aunque el asunto del correo diga «factura».
+  if (!filenameSaysInvoice && !contextSaysInvoice) return false;
   return !size || size >= MIN_GENERIC_IMAGE_BYTES;
 }
 
@@ -227,6 +225,18 @@ async function listMatchingMessages(accessToken: string, q: string, onProgress?:
   return { messages, pagesLoaded, truncated };
 }
 
+function normalizeDownloadedFile(file: File) {
+  const currentType = String(file.type || '').toLowerCase();
+  if (currentType && currentType !== 'application/octet-stream') return file;
+  const lower = file.name.toLowerCase();
+  const type = lower.endsWith('.pdf') ? 'application/pdf'
+    : /\.jpe?g$/i.test(lower) ? 'image/jpeg'
+      : lower.endsWith('.png') ? 'image/png'
+        : lower.endsWith('.webp') ? 'image/webp'
+          : currentType || 'application/octet-stream';
+  return type === currentType ? file : new File([file], file.name, { type, lastModified: file.lastModified });
+}
+
 export async function searchGmailInvoiceCandidatesStable(
   accessToken: string,
   months: number,
@@ -273,8 +283,10 @@ export async function searchGmailInvoiceCandidatesStable(
       const attachments: AttachmentPart[] = [];
       collectAttachmentParts(full.payload, attachments);
 
-      for (const attachment of attachments.filter(item => looksLikeInvoice(item.filename, subject, snippet, item.mimeType, item.size))) {
-        candidates.push({
+      const possible = attachments.filter(item => looksLikePossibleInvoice(item.filename, subject, snippet, item.mimeType, item.size));
+      for (let attachmentIndex = 0; attachmentIndex < possible.length; attachmentIndex += 1) {
+        const attachment = possible[attachmentIndex];
+        const candidate: GmailCandidate = {
           messageId: full.id || message.id,
           threadId: full.threadId || message.threadId || null,
           sender: sender || null,
@@ -289,7 +301,30 @@ export async function searchGmailInvoiceCandidatesStable(
           status: 'found',
           invoiceId: null,
           metadata: { snippet, partId: attachment.partId || null },
-        });
+        };
+
+        onProgress?.(`Inspeccionando documento ${attachmentIndex + 1} de ${possible.length}: ${attachment.filename}…`);
+        try {
+          const downloaded = normalizeDownloadedFile(await downloadGmailAttachment(accessToken, candidate));
+          const classification = await classifyInvoiceFile(downloaded, {
+            filename: attachment.filename,
+            subject,
+            snippet,
+            sender,
+          });
+          if (!classification.isInvoice) continue;
+
+          candidate.metadata = {
+            ...(candidate.metadata || {}),
+            invoiceClassificationVersion: 1,
+            invoiceClassificationScore: classification.score,
+            invoiceClassificationSignals: classification.signals,
+            invoiceClassificationNegativeSignals: classification.negativeSignals,
+          };
+          candidates.push(candidate);
+        } catch (classificationError) {
+          console.warn(`No se pudo validar ${attachment.filename} como factura.`, classificationError);
+        }
       }
 
       scannedIds.add(message.id);
