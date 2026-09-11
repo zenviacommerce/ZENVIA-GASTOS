@@ -1,8 +1,16 @@
 import type { ExpenseCategory, NewInvoiceInput } from '../types';
+import { classifyInvoiceFile } from './invoiceCandidateClassifier';
 import { readInvoiceDocumentEnhanced } from './invoiceReaderEnhanced';
 import { createInvoice } from './repository';
 import { supabase } from './supabase';
 import { downloadGmailAttachment, updateGmailImport, type GmailCandidate } from './gmail';
+
+class NotInvoiceDocumentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NotInvoiceDocumentError';
+  }
+}
 
 function senderFallback(sender?: string | null) {
   if (!sender) return 'Proveedor Gmail';
@@ -143,6 +151,31 @@ export async function importGmailCandidate(
       return markDuplicateAsImported(candidate, existingInvoiceId, 'file_hash');
     }
 
+    // Los candidatos nuevos ya llegan validados desde la búsqueda. Para registros
+    // antiguos, creados con el filtro permisivo, hacemos la validación antes de
+    // permitir que creen una factura real.
+    if (candidate.metadata?.invoiceClassificationVersion !== 1) {
+      stage = 'validar que el documento sea una factura';
+      onProgress?.('Comprobando que el documento sea realmente una factura…');
+      const classification = await classifyInvoiceFile(file, {
+        filename: candidate.attachmentName,
+        subject: candidate.subject,
+        snippet: candidate.snippet,
+        sender: candidate.sender,
+      });
+      if (!classification.isInvoice) {
+        await updateGmailImport(candidate.id, 'ignored', null, {
+          autoRejected: true,
+          autoRejectedAt: new Date().toISOString(),
+          invoiceClassificationVersion: 1,
+          invoiceClassificationScore: classification.score,
+          invoiceClassificationSignals: classification.signals,
+          invoiceClassificationNegativeSignals: classification.negativeSignals,
+        });
+        throw new NotInvoiceDocumentError('El PDF se ha descartado porque no contiene una estructura suficiente de factura. Puedes recuperarlo desde «Ignoradas» si quieres revisarlo manualmente.');
+      }
+    }
+
     stage = 'leer la factura';
     onProgress?.('Leyendo la factura…');
     const extraction = await readInvoiceDocumentEnhanced(file, categories, onProgress);
@@ -244,6 +277,7 @@ export async function importGmailCandidate(
     });
     return invoiceId;
   } catch (error) {
+    if (error instanceof NotInvoiceDocumentError) throw error;
     const detail = errorMessage(error);
     const fullMessage = `Error al ${stage}: ${detail}`;
     await updateGmailImport(candidate.id, 'error', null, {
