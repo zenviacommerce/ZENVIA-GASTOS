@@ -1,6 +1,6 @@
 const compact = (value: string) => value.replace(/\s+/g, ' ').trim();
 
-const legalSuffixPattern = '(?:S\\.?\\s*L\\.?\\s*U?\\.?|S\\.?\\s*A\\.?|SLU|SL|SA|LTD\\.?|LIMITED|GMBH|SAS|B\\.?\\s*V\\.?|BV|LLC|INC\\.?|PLC)';
+const legalSuffixPattern = '(?:S\\.?\\s*L\\.?\\s*U?\\.?|S\\.?\\s*A\\.?|SLU|SL|SA|C\\.?\\s*B\\.?|CB|LTD\\.?|LIMITED|GMBH|SAS|B\\.?\\s*V\\.?|BV|LLC|INC\\.?|PLC)';
 const legalSuffixRegex = new RegExp(`\\b${legalSuffixPattern}(?=\\s|$|[,;:.])`, 'i');
 
 /**
@@ -41,7 +41,7 @@ export function supplierIdentityKey(value: string): string {
 
 export function supplierCoreKey(value: string): string {
   return supplierIdentityKey(value)
-    .replace(/\s+(?:s\s*l\s*u|slu|s\s*l|sl|s\s*a|sa|b\s*v|bv|ltd|limited|gmbh|sas|llc|inc|plc)$/i, '')
+    .replace(/\s+(?:s\s*l\s*u|slu|s\s*l|sl|s\s*a|sa|c\s*b|cb|b\s*v|bv|ltd|limited|gmbh|sas|llc|inc|plc)$/i, '')
     .trim();
 }
 
@@ -62,10 +62,34 @@ export function isLikelySameSupplier(a: string, b: string): boolean {
 
 /**
  * Busca una razón social explícita en cualquier línea, incluso si en la misma
- * línea aparecen NIF/VAT u otros datos. Es especialmente útil en facturas cuyo
- * encabezado mezcla empresa y datos fiscales, como FedEx.
+ * línea aparecen NIF/VAT u otros datos. También soporta encabezados de dos líneas
+ * como "EMISOR:" seguido por la razón social en la línea siguiente.
  */
 export function extractExplicitLegalSupplier(lines: string[]): string {
+  const labelOnly = /^(?:proveedor|supplier|emisor|raz[oó]n\s+social)\s*[:.\-]?\s*$/i;
+  const inlineLabel = /^(?:proveedor|supplier|emisor|raz[oó]n\s+social)\s*[:.\-]\s*(.+)$/i;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = compact(lines[index]);
+    if (!line) continue;
+
+    const inline = line.match(inlineLabel)?.[1];
+    if (inline) {
+      const candidate = canonicalizeSupplierName(inline);
+      if (candidate && !/zenvia\s+commerce/i.test(candidate) && candidate.length >= 4) return candidate;
+    }
+
+    if (labelOnly.test(line)) {
+      for (let offset = 1; offset <= 3; offset += 1) {
+        const next = canonicalizeSupplierName(lines[index + offset] || '');
+        if (!next) continue;
+        if (/zenvia\s+commerce/i.test(next)) break;
+        if (/^(?:cliente|customer|interesado|destinatario|nif|cif|vat|direcci[oó]n)\b/i.test(next)) break;
+        if (next.length >= 4) return next;
+      }
+    }
+  }
+
   for (const raw of lines) {
     const line = compact(raw);
     if (line.length < 4 || line.length > 180) continue;
