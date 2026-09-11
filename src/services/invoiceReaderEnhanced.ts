@@ -2,6 +2,7 @@ import type { ExpenseCategory } from '../types';
 import { readInvoiceDocument, type InvoiceReadResult } from './invoiceReader';
 import { detectMerchandiseCategory, extractServiceTableLines, extractStructuredProductLines, extractSupplierV2, repairInvoiceAmounts } from './invoiceReaderV2';
 import { getRetailInvoiceCorrection } from './invoiceRetailCorrections';
+import { canonicalizeSupplierName, extractExplicitLegalSupplier } from './supplierIdentity';
 
 const compact = (value: string) => value.replace(/\s+/g, ' ').trim();
 
@@ -14,7 +15,11 @@ export async function readInvoiceDocumentEnhanced(
   const textLines = base.text.split(/\r?\n/).map(compact).filter(Boolean);
 
   onProgress?.('Reconstruyendo proveedor y líneas de producto…');
-  const supplierName = extractSupplierV2(textLines, base.text) || base.supplierName;
+  const supplierName = canonicalizeSupplierName(
+    extractExplicitLegalSupplier(textLines)
+      || extractSupplierV2(textLines, base.text)
+      || base.supplierName,
+  );
   const retailCorrection = getRetailInvoiceCorrection(textLines, base.text);
   const structuredLines = extractStructuredProductLines(textLines);
   const serviceLines = extractServiceTableLines(textLines);

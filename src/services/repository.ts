@@ -1,5 +1,6 @@
 import { supabase, INVOICE_BUCKET } from './supabase';
 import type { AppData, ExpenseCategory, Invoice, NewInvoiceInput, Product, Supplier } from '../types';
+import { canonicalizeSupplierName, isLikelySameSupplier, supplierIdentityKey } from './supplierIdentity';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
 const normalizeProductKey = (value: string) => value
@@ -101,10 +102,29 @@ async function sha256(file: File) {
 }
 
 async function ensureSupplier(name: string): Promise<string> {
-  const clean = name.trim();
-  const { data: existing, error: findError } = await supabase.from('suppliers').select('id').ilike('name', clean).limit(1);
+  const clean = canonicalizeSupplierName(name) || name.trim().slice(0, 120);
+  const cleanKey = supplierIdentityKey(clean);
+
+  const { data: existing, error: findError } = await supabase
+    .from('suppliers')
+    .select('id,name,tax_id,email');
   if (findError) throw findError;
-  if (existing?.[0]?.id) return existing[0].id;
+
+  const ranked = (existing ?? [])
+    .map((supplier: any) => {
+      const existingKey = supplierIdentityKey(supplier.name || '');
+      let score = 0;
+      if (cleanKey && existingKey === cleanKey) score = 100;
+      else if (isLikelySameSupplier(clean, supplier.name || '')) score = 80;
+      if (score && supplier.tax_id) score += 3;
+      if (score && supplier.email) score += 1;
+      return { id: supplier.id as string, score };
+    })
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (ranked[0]?.id) return ranked[0].id;
+
   const { data, error } = await supabase.from('suppliers').insert({ name: clean }).select('id').single();
   if (error) throw error;
   return data.id;
