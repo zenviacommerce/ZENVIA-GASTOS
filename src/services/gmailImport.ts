@@ -39,6 +39,21 @@ function validIsoDate(value?: string | null): string {
   return parsed.toISOString().slice(0, 10) === date ? date : '';
 }
 
+function normalizeAttachmentFile(file: File) {
+  const currentType = String(file.type || '').toLowerCase();
+  if (currentType && currentType !== 'application/octet-stream') return file;
+
+  const name = file.name.toLowerCase();
+  let normalizedType = currentType || 'application/octet-stream';
+  if (name.endsWith('.pdf')) normalizedType = 'application/pdf';
+  else if (/\.jpe?g$/i.test(name)) normalizedType = 'image/jpeg';
+  else if (name.endsWith('.png')) normalizedType = 'image/png';
+  else if (name.endsWith('.webp')) normalizedType = 'image/webp';
+
+  if (normalizedType === currentType) return file;
+  return new File([file], file.name, { type: normalizedType, lastModified: file.lastModified });
+}
+
 async function sha256(file: File) {
   const buffer = await file.arrayBuffer();
   const digest = await crypto.subtle.digest('SHA-256', buffer);
@@ -57,6 +72,50 @@ async function findInvoiceByHash(fileHash: string) {
   return data?.id as string | undefined;
 }
 
+async function findInvoiceBySupplierAndNumber(supplierName: string, invoiceNumber?: string | null) {
+  const cleanSupplier = supplierName.trim();
+  const cleanNumber = String(invoiceNumber || '').trim();
+  if (!cleanSupplier || !cleanNumber) return undefined;
+
+  const { data: suppliers, error: supplierError } = await supabase
+    .from('suppliers')
+    .select('id')
+    .ilike('name', cleanSupplier)
+    .limit(5);
+  if (supplierError) throw supplierError;
+  const supplierIds = (suppliers || []).map((supplier: any) => supplier.id).filter(Boolean);
+  if (!supplierIds.length) return undefined;
+
+  const { data: invoices, error: invoiceError } = await supabase
+    .from('invoices')
+    .select('id')
+    .in('supplier_id', supplierIds)
+    .eq('invoice_number', cleanNumber)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (invoiceError) throw invoiceError;
+  return invoices?.[0]?.id as string | undefined;
+}
+
+function isSupplierNumberDuplicate(error: unknown) {
+  if (!error || typeof error !== 'object') return false;
+  const value = error as Record<string, unknown>;
+  const haystack = [value.code, value.message, value.details, value.hint]
+    .filter(item => typeof item === 'string')
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes('invoices_supplier_number_uidx') || (haystack.includes('23505') && haystack.includes('invoice'));
+}
+
+async function markDuplicateAsImported(candidate: GmailCandidate, invoiceId: string, reason: string) {
+  await updateGmailImport(candidate.id!, 'imported', invoiceId, {
+    importedAt: new Date().toISOString(),
+    duplicateResolved: true,
+    duplicateReason: reason,
+  });
+  return invoiceId;
+}
+
 export async function importGmailCandidate(
   accessToken: string,
   candidate: GmailCandidate,
@@ -67,27 +126,29 @@ export async function importGmailCandidate(
 
   let stage = 'iniciando importación';
   try {
-    stage = 'descargando el adjunto de Gmail';
+    stage = 'descargar el adjunto de Gmail';
     onProgress?.('Descargando adjunto de Gmail…');
-    const file = await downloadGmailAttachment(accessToken, candidate);
+    const downloadedFile = await downloadGmailAttachment(accessToken, candidate);
+    const file = normalizeAttachmentFile(downloadedFile);
 
-    stage = 'comprobando duplicados';
+    stage = 'comprobar duplicados';
     const fileHash = await sha256(file);
     const existingInvoiceId = await findInvoiceByHash(fileHash);
     if (existingInvoiceId) {
-      await updateGmailImport(candidate.id, 'imported', existingInvoiceId, {
-        importedAt: new Date().toISOString(),
-        duplicateResolved: true,
-      });
-      return existingInvoiceId;
+      return markDuplicateAsImported(candidate, existingInvoiceId, 'file_hash');
     }
 
-    stage = 'leyendo la factura';
+    stage = 'leer la factura';
     onProgress?.('Leyendo la factura…');
     const extraction = await readInvoiceDocumentEnhanced(file, categories, onProgress);
     const supplierName = extraction.supplierName || senderFallback(candidate.sender);
     const receivedDate = validIsoDate(candidate.receivedAt?.slice(0, 10));
     const invoiceDate = validIsoDate(extraction.invoiceDate) || receivedDate || new Date().toISOString().slice(0, 10);
+
+    const duplicateBySupplierNumber = await findInvoiceBySupplierAndNumber(supplierName, extraction.invoiceNumber);
+    if (duplicateBySupplierNumber) {
+      return markDuplicateAsImported(candidate, duplicateBySupplierNumber, 'supplier_invoice_number');
+    }
 
     const invoiceInput: NewInvoiceInput = {
       file,
@@ -105,6 +166,8 @@ export async function importGmailCandidate(
         parser: extraction.usedOcr ? 'gmail-browser-ocr-v2' : 'gmail-pdf-text-v2',
         gmailMessageId: candidate.messageId,
         gmailAttachmentId: candidate.attachmentId,
+        originalMimeType: candidate.mimeType,
+        normalizedMimeType: file.type,
         supplierName: extraction.supplierName,
         invoiceNumber: extraction.invoiceNumber,
         invoiceDate: extraction.invoiceDate,
@@ -121,15 +184,20 @@ export async function importGmailCandidate(
     };
 
     let lineImportWarning = '';
-    stage = 'guardando la factura y sus líneas';
+    stage = 'guardar la factura y sus líneas';
     onProgress?.('Guardando factura y líneas de producto…');
     try {
       await createInvoice(invoiceInput);
     } catch (firstSaveError) {
+      if (isSupplierNumberDuplicate(firstSaveError)) {
+        const duplicateId = await findInvoiceBySupplierAndNumber(supplierName, extraction.invoiceNumber);
+        if (duplicateId) return markDuplicateAsImported(candidate, duplicateId, 'supplier_invoice_number_race');
+      }
+
       const firstMessage = errorMessage(firstSaveError);
       if (!extraction.lines.length) throw new Error(firstMessage);
 
-      stage = 'guardando la factura sin líneas automáticas';
+      stage = 'guardar la factura sin líneas automáticas';
       onProgress?.('Las líneas automáticas dieron un problema. Guardando la factura para revisión…');
       lineImportWarning = firstMessage;
       try {
@@ -143,11 +211,15 @@ export async function importGmailCandidate(
           },
         });
       } catch (fallbackError) {
+        if (isSupplierNumberDuplicate(fallbackError)) {
+          const duplicateId = await findInvoiceBySupplierAndNumber(supplierName, extraction.invoiceNumber);
+          if (duplicateId) return markDuplicateAsImported(candidate, duplicateId, 'supplier_invoice_number_race');
+        }
         throw new Error(`No se pudo guardar la factura. Primer intento: ${firstMessage}. Reintento sin líneas: ${errorMessage(fallbackError)}`);
       }
     }
 
-    stage = 'confirmando la importación';
+    stage = 'confirmar la importación';
     const invoiceId = await findInvoiceByHash(fileHash);
     if (!invoiceId) throw new Error('La factura se guardó, pero no se pudo recuperar su identificador.');
 
@@ -156,6 +228,8 @@ export async function importGmailCandidate(
       confidence: extraction.confidence,
       lineCount: lineImportWarning ? 0 : extraction.lines.length,
       detectedLineCount: extraction.lines.length,
+      originalMimeType: candidate.mimeType,
+      normalizedMimeType: file.type,
       ...(lineImportWarning ? { lineImportWarning } : {}),
     });
     return invoiceId;
