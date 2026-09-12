@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, FileUp, X, ScanLine, CheckCircle2, AlertCircle, LoaderCircle } from 'lucide-react';
 import { imageFilesToPdf } from '../services/pdf';
-import { readInvoiceDocumentEnhanced } from '../services/invoiceReaderEnhanced';
+import { isMultiInvoiceDocumentError, readInvoiceDocumentEnhanced } from '../services/invoiceReaderEnhanced';
 import type { InvoiceReadResult } from '../services/invoiceReader';
 import type { ExpenseCategory, InvoiceSource, NewInvoiceInput } from '../types';
 
@@ -14,6 +14,7 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
   const [error,setError]=useState('');
   const [saving,setSaving]=useState(false);
   const [reading,setReading]=useState(false);
+  const [readerBlocked,setReaderBlocked]=useState(false);
   const [readerMessage,setReaderMessage]=useState('');
   const [extraction,setExtraction]=useState<InvoiceReadResult|null>(null);
   const [supplierName,setSupplierName]=useState('');
@@ -27,7 +28,7 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
 
   useEffect(()=>{
     if(!open){
-      setFile(null);setStatus('');setError('');setReaderMessage('');setExtraction(null);setReading(false);
+      setFile(null);setStatus('');setError('');setReaderMessage('');setExtraction(null);setReading(false);setReaderBlocked(false);
       setSupplierName('');setInvoiceNumber('');setInvoiceDate(new Date().toISOString().slice(0,10));setCategoryId('');setSubtotal('');setVat('');setWithholding('0');setTotal('');
     }
   },[open]);
@@ -46,20 +47,26 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
   };
 
   const runReader = async (prepared: File) => {
-    setReading(true); setReaderMessage('Analizando factura…'); setExtraction(null);
+    setReading(true); setReaderBlocked(false); setReaderMessage('Analizando factura…'); setExtraction(null);
     try {
       const result = await readInvoiceDocumentEnhanced(prepared, categories, setReaderMessage);
       applyExtraction(result);
       const percent = Math.round(result.confidence * 100);
       setReaderMessage(`Lectura completada · confianza ${percent}%${result.lines.length ? ` · ${result.lines.length} línea${result.lines.length>1?'s':''} detectada${result.lines.length>1?'s':''}` : ''}. Revisa los datos antes de guardar.`);
     } catch(e) {
-      setReaderMessage(`No se pudo completar la lectura automática. Puedes rellenar los datos manualmente. ${e instanceof Error?e.message:''}`.trim());
+      if(isMultiInvoiceDocumentError(e)) {
+        setReaderBlocked(true);
+        setError(e.message);
+        setReaderMessage('Documento bloqueado: contiene varias facturas o abonos y no debe contabilizarse como una sola factura.');
+      } else {
+        setReaderMessage(`No se pudo completar la lectura automática. Puedes rellenar los datos manualmente. ${e instanceof Error?e.message:''}`.trim());
+      }
     } finally { setReading(false); }
   };
 
   const handleFiles = async (files: File[], nextSource: InvoiceSource) => {
     if(!files.length) return;
-    setError(''); setStatus('Preparando documento…');
+    setError(''); setReaderBlocked(false); setStatus('Preparando documento…');
     try {
       const prepared = files.every(f=>f.type.startsWith('image/')) ? await imageFilesToPdf(files) : files[0];
       setFile(prepared); setSource(nextSource);
@@ -69,6 +76,7 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
   };
 
   const submit = async () => {
+    if(readerBlocked) { setError('Este documento contiene varias facturas o abonos. Divídelo antes de guardarlo.'); return; }
     if(!file || !supplierName.trim() || !invoiceDate) { setError('Selecciona un archivo e indica proveedor y fecha.'); return; }
     setSaving(true); setError('');
     try {
@@ -106,7 +114,7 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
 
     <div className={`aiNote ${reading?'reading':extraction?'done':''}`}>
       {reading?<LoaderCircle className="spin"/>:<ScanLine/>}
-      <div><strong>{reading?'Lectura inteligente en curso':extraction?'Lectura inteligente completada':'Lectura inteligente automática'}</strong><span>{readerMessage || 'Al seleccionar una factura intentaremos detectar proveedor, número, fecha, importes, categoría y líneas de producto.'}</span></div>
+      <div><strong>{reading?'Lectura inteligente en curso':extraction?'Lectura inteligente completada':readerBlocked?'Documento con varias facturas':'Lectura inteligente automática'}</strong><span>{readerMessage || 'Al seleccionar una factura intentaremos detectar proveedor, número, fecha, importes, categoría y líneas de producto.'}</span></div>
     </div>
 
     <div className="invoiceFormGrid">
@@ -122,6 +130,6 @@ export function UploadInvoiceModal({open,onClose,onSave,categories}:{open:boolea
     {extraction?.lines.length ? <div className="detectedLines"><strong>{extraction.lines.length} líneas detectadas</strong><span>Se guardarán junto con la factura y podrás revisarlas desde el detalle.</span></div> : null}
     {status && <div className="success"><CheckCircle2 size={18}/>{status}</div>}
     {error && <div className="errorBox"><AlertCircle size={18}/>{error}</div>}
-    <div className="modalActions"><button className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={saving||reading||!file} onClick={submit}>{saving?'Guardando…':reading?'Leyendo…':'Guardar factura'}</button></div>
+    <div className="modalActions"><button className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={saving||reading||!file||readerBlocked} onClick={submit}>{saving?'Guardando…':reading?'Leyendo…':readerBlocked?'Divide el documento':'Guardar factura'}</button></div>
   </div></div>;
 }
