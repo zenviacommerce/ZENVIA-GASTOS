@@ -15,7 +15,9 @@ export interface InvoiceCandidateClassification {
 }
 
 const invoiceWord = /\b(factura|invoice|tax invoice|receipt|recibo|ticket|billing statement|fattura|fatura|rechnung|facture|nota de abono|credit note|factura rectificativa)\b/i;
-const invoiceNumberLabel = /(?:n(?:º|°|o)\.?\s*factura|n[uú]mero\s+(?:de\s+)?factura|factura\s*(?:n[ºo°]\.?|no\.?|number|n[uú]m(?:ero)?\.?)?|invoice\s*(?:no\.?|number)?|receipt\s*(?:no\.?|number)?|ticket\s*(?:no\.?|number)?)\s*[:#-]?\s*[A-Z0-9][A-Z0-9._\/-]{2,}/i;
+// Exige al menos un dígito en el identificador para que «Factura Dublin» o
+// «Factura original» no cuenten como número de factura explícito.
+const invoiceNumberLabel = /(?:n(?:º|°|o)\.?\s*factura|n[uú]mero\s+(?:de\s+)?factura|factura\s*(?:n[ºo°]\.?|no\.?|number|n[uú]m(?:ero)?\.?)?|invoice\s*(?:no\.?|number)?|receipt\s*(?:no\.?|number)?|ticket\s*(?:no\.?|number)?)\s*[:#-]?\s*(?=[A-Z0-9._\/-]{3,}\b)(?=[A-Z0-9._\/-]*\d)[A-Z0-9][A-Z0-9._\/-]{2,}/i;
 const totalLabel = /\b(total\s+factura|importe\s+total|total\s+a\s+pagar|total\s+due|amount\s+due|invoice\s+total|grand\s+total|importe\s+adeudado|total\s+pendiente)\b/i;
 const subtotalLabel = /\b(base\s+imponible|subtotal|importe\s+neto|importe\s+base\s+total|net\s+amount|taxable\s+amount|importe\s+bruto)\b/i;
 const taxLabel = /\b(iva|i\.v\.a\.|vat|impuestos?|tax(?:es)?|gst)\b/i;
@@ -26,7 +28,7 @@ const currencyAmount = /(?:€|eur|usd|gbp|\$|£)\s*-?\d|\d[\d.,]*\s*(?:€|eur|
 
 // Si alguno de estos términos aparece como título/cabecera, el documento no es una
 // factura contable aunque tenga importes parecidos a una factura.
-const hardNegative = /\b(proforma|presupuesto|quotation|quote|oferta\s+comercial)\b/i;
+const hardNegative = /\b(proforma|presupuesto|quotation|quote|oferta\s+comercial|pedido\s+de\s+cliente|customer\s+order)\b/i;
 // Estos términos pueden aparecer dentro de una factura real (por ejemplo, una factura
 // de transporte puede mencionar albaranes/certificados), por lo que solo penalizan.
 const softNegative = /\b(albar[aá]n|delivery\s+note|packing\s+list|manual|cat[aá]logo|catalogue|brochure|folleto|ficha\s+t[eé]cnica|datasheet|hoja\s+de\s+datos|certificado|certificate|condiciones\s+generales|terms\s+and\s+conditions|gu[ií]a\s+de\s+usuario|user\s+guide)\b/i;
@@ -74,7 +76,7 @@ export async function classifyInvoiceFile(
 
   const hardMetadataNegative = hardNegative.test(`${context.filename} ${context.subject || ''}`);
   hardNegative.lastIndex = 0;
-  if (hardMetadataNegative) { score -= 8; negativeSignals.push('metadatos de proforma/presupuesto/oferta'); }
+  if (hardMetadataNegative) { score -= 8; negativeSignals.push('metadatos de proforma/presupuesto/oferta/pedido'); }
 
   if (softNegative.test(metadata)) { score -= 1; negativeSignals.push('metadatos de documento auxiliar'); }
   softNegative.lastIndex = 0;
@@ -128,7 +130,7 @@ export async function classifyInvoiceFile(
   currencyAmount.lastIndex = 0;
   if (amountMatches.length >= 2) { score += 1; signals.push('varios importes monetarios'); }
 
-  if (hardDocumentNegative) { score -= 8; negativeSignals.push('documento identificado como proforma/presupuesto/oferta'); }
+  if (hardDocumentNegative) { score -= 8; negativeSignals.push('documento identificado como proforma/presupuesto/oferta/pedido'); }
   if (softDocumentNegative) { score -= 2; negativeSignals.push('contiene referencias a documento auxiliar'); }
   if (weakDocumentNegative && !hasInvoiceNumber && !hasTotal) { score -= 0.75; negativeSignals.push('documento principalmente informativo'); }
 
@@ -140,8 +142,8 @@ export async function classifyInvoiceFile(
     || (metadataInvoice && hasInvoiceNumber && (hasSubtotal || hasTax) && amountMatches.length >= 2)
     || (/\b(receipt|recibo|ticket)\b/i.test(normalized) && hasTotal && hasDate && amountMatches.length >= 2);
 
-  // Una proforma/presupuesto en la cabecera se descarta siempre. En cambio, palabras
-  // como "albarán" o "certificado" no anulan una factura fiscal bien estructurada.
+  // Una proforma/presupuesto/pedido en la cabecera se descarta siempre. En cambio,
+  // palabras como «albarán» o «certificado» no anulan una factura fiscal bien estructurada.
   const isInvoice = score >= 6 && strongStructure && !hardMetadataNegative && !hardDocumentNegative;
   return { isInvoice, score: Math.round(score * 10) / 10, signals, negativeSignals };
 }
