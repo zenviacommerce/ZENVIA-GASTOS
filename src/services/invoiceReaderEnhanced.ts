@@ -62,22 +62,67 @@ function detectBundledInvoiceNumbers(lines: string[], fullText: string) {
   return [];
 }
 
+function normalizeInvoiceNumberCandidate(value: string | undefined | null) {
+  const candidate = compact(String(value || ''))
+    .replace(/^[#:\s-]+/, '')
+    .replace(/[.,;:\s]+$/, '');
+  if (!candidate || candidate.length < 3 || candidate.length > 60) return '';
+
+  // Un número de factura real debe contener al menos un dígito. Esto evita que
+  // ciudades, cabeceras o palabras próximas a «Factura» terminen como número.
+  if (!/\d/.test(candidate)) return '';
+
+  // Una fecha nunca debe convertirse en número de factura.
+  if (/^\d{1,2}[-/.]\d{1,2}[-/.](?:\d{2}|\d{4})$/.test(candidate)) return '';
+  if (/^20\d{2}[-/.]\d{1,2}[-/.]\d{1,2}$/.test(candidate)) return '';
+
+  // Rechazamos etiquetas conocidas aunque un OCR les haya añadido algún símbolo.
+  if (/^(?:factura|invoice|original|copia|fecha|date|proforma)$/i.test(candidate)) return '';
+
+  return candidate;
+}
+
+function invoiceNumberFromFilename(filename: string) {
+  const base = filename.trim().replace(/\.[^.]+$/, '');
+
+  // PDFs cuyo nombre es el propio número: Google, FedEx, etc.
+  if (/^\d{6,20}$/.test(base)) return base;
+
+  // Sendcloud_invoice_1-26-ES0047507_1-9-2026.pdf
+  const labelled = base.match(/(?:invoice|factura)[_-]+((?:[A-Z0-9]+-){2,}[A-Z0-9]+)/i)?.[1];
+  const validLabelled = normalizeInvoiceNumberCandidate(labelled);
+  if (validLabelled) return validLabelled;
+
+  // A28799120_15436385G_F260510648_2026.pdf
+  const prefixed = base.match(/(?:^|[_-])([A-Z]\d{5,20})(?=[_-]|$)/i)?.[1];
+  const validPrefixed = normalizeInvoiceNumberCandidate(prefixed);
+  if (validPrefixed) return validPrefixed;
+
+  // TRUFA_PET_585256540.pdf
+  const trailingDigits = base.match(/(?:^|[_-])(\d{6,20})$/)?.[1];
+  return normalizeInvoiceNumberCandidate(trailingDigits);
+}
+
 function explicitInvoiceNumber(text: string, lines: string[]) {
+  // Priorizamos etiquetas inequívocas. Los patrones genéricos quedan al final para
+  // evitar errores como «Factura Dublin 2» -> Dublin o «Factura original» -> original.
   const patterns = [
-    /\bn(?:º|°|o)\.?\s*factura\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})\b/i,
     /\bn[uú]mero\s+(?:de\s+)?factura\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})\b/i,
-    /\bfactura\s+(?:n(?:º|°|o)\.?|n[uú]m(?:ero)?\.?)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})\b/i,
+    /\bn(?:º|°|o)\.?\s*factura\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})\b/i,
+    /\bbill\s*#\s*([A-Z0-9][A-Z0-9._\/-]{2,})\b/i,
     /\binvoice\s+(?:no\.?|number)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})\b/i,
+    /\bfactura\s+(?:n(?:º|°|o)\.?|n[uú]m(?:ero)?\.?)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})\b/i,
+    /\bfactura\s+([A-Z]*\d[A-Z0-9._\/-]{2,})\b/i,
   ];
   for (const pattern of patterns) {
-    const value = text.match(pattern)?.[1]?.trim();
-    if (value && !/^(?:factura|invoice|fecha|date)$/i.test(value)) return value;
+    const value = normalizeInvoiceNumberCandidate(text.match(pattern)?.[1]);
+    if (value) return value;
   }
 
   // Formato frecuente en facturas de Sierra Nevada: la fecha y el número
   // aparecen al final de la línea de forma de pago, sin una etiqueta intermedia.
   for (const line of lines) {
-    const value = line.match(/\b\d{2}\/\d{2}\/\d{2,4}\s+(\d{5,12})\s*$/)?.[1];
+    const value = normalizeInvoiceNumberCandidate(line.match(/\b\d{2}\/\d{2}\/\d{2,4}\s+(\d{5,12})\s*$/)?.[1]);
     if (value) return value;
   }
   return '';
@@ -199,7 +244,10 @@ export async function readInvoiceDocumentEnhanced(
       || extractSupplierV2(textLines, base.text)
       || base.supplierName,
   );
-  const invoiceNumber = explicitInvoiceNumber(base.text, textLines) || base.invoiceNumber;
+  const explicitNumber = explicitInvoiceNumber(base.text, textLines);
+  const filenameNumber = invoiceNumberFromFilename(file.name);
+  const baseNumber = normalizeInvoiceNumberCandidate(base.invoiceNumber);
+  const invoiceNumber = explicitNumber || filenameNumber || baseNumber;
   const retailCorrection = getRetailInvoiceCorrection(textLines, base.text);
   const structuredLines = extractStructuredProductLines(textLines);
   const serviceLines = extractServiceTableLines(textLines);
