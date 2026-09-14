@@ -8,10 +8,11 @@ import { SupplierModal } from './components/SupplierModal';
 import { ToastHost } from './components/ToastHost';
 import { AuthScreen } from './components/AuthScreen';
 import { Dashboard } from './pages/Dashboard';
-import { Invoices } from './pages/Invoices';
+import { ExpenseInvoicesHub } from './pages/ExpenseInvoicesHub';
+import { SalesInvoices } from './pages/SalesInvoices';
+import { Clients } from './pages/Clients';
 import { Products } from './pages/Products';
 import { Suppliers } from './pages/Suppliers';
-import { GmailPage } from './pages/Gmail';
 import { AdminPage } from './pages/Admin';
 import { supabase } from './services/supabase';
 import { loadAccessProfile, type AccessProfile, type MenuPermission } from './services/access';
@@ -24,11 +25,11 @@ import { errorMessage, showError, showSuccess } from './services/toast';
 import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './types';
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
-const THEME_KEY = 'zenvia-gastos-theme';
-const regularPages: MenuPermission[] = ['dashboard','invoices','products','suppliers','gmail'];
+const THEME_KEY = 'zenvia-gestion-theme';
+const regularPages: MenuPermission[] = ['dashboard','sales','invoices','clients','products','suppliers'];
 
 function initialTheme(): ThemeMode {
-  const stored=window.localStorage.getItem(THEME_KEY);
+  const stored=window.localStorage.getItem(THEME_KEY) || window.localStorage.getItem('zenvia-gastos-theme');
   if(stored==='dark'||stored==='light') return stored;
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';
 }
@@ -98,7 +99,7 @@ export default function App(){
  if(!authReady) return <div className="fullLoader"><LoaderCircle className="spin"/> Cargando…</div>;
  if(!session) return <><ToastHost/><AuthScreen/></>;
  if(!accessReady) return <><ToastHost/><div className="fullLoader"><LoaderCircle className="spin"/> Comprobando acceso…</div></>;
- if(!access||!access.active||!allowedPages.length) return <><ToastHost/><div className="authPage"><div className="authPanel accessDeniedPanel"><div className="authHeroIcon"><LockKeyhole/></div><h1>Acceso no autorizado</h1><p>{access&&!access.active?'Tu acceso a ZENVIA Gastos está desactivado.':'Esta cuenta no está autorizada para utilizar ZENVIA Gastos.'} Contacta con el administrador.</p><button className="secondary" onClick={()=>supabase.auth.signOut()}>Cerrar sesión</button></div></div></>;
+ if(!access||!access.active||!allowedPages.length) return <><ToastHost/><div className="authPage"><div className="authPanel accessDeniedPanel"><div className="authHeroIcon"><LockKeyhole/></div><h1>Acceso no autorizado</h1><p>{access&&!access.active?'Tu acceso a ZENVIA Gestión está desactivado.':'Esta cuenta no está autorizada para utilizar ZENVIA Gestión.'} Contacta con el administrador.</p><button className="secondary" onClick={()=>supabase.auth.signOut()}>Cerrar sesión</button></div></div></>;
 
  const navigate=(next:Page)=>{if(allowedPages.includes(next))setPage(next)};
  const toggleTheme=()=>setTheme(current=>current==='dark'?'light':'dark');
@@ -106,7 +107,7 @@ export default function App(){
    try{await work();showSuccess(success)}catch(e){showError(errorMessage(e,fallback));throw e}
  };
  const saveInvoice=async(input:NewInvoiceInput)=>{
-   if(!can('invoices')&&!can('gmail'))throw new Error('No tienes permiso para crear facturas.');
+   if(!can('invoices'))throw new Error('No tienes permiso para crear facturas de gastos.');
    await runAction(async()=>{await createInvoice(input);await refresh()},'Factura guardada correctamente.','No se pudo guardar la factura.');
  };
  const changeStatus=async(id:string,status:'pending'|'reviewed'|'accounted')=>{
@@ -170,10 +171,11 @@ export default function App(){
    {error&&<div className="globalError">{error}<button onClick={refresh}>Reintentar</button></div>}
    {loading&&<div className="syncBadge"><LoaderCircle className="spin" size={14}/> Sincronizando</div>}
    {page==='dashboard'&&can('dashboard')&&<Dashboard invoices={data.invoices} products={data.products} suppliers={data.suppliers} onUpload={can('invoices')?()=>setUpload(true):undefined} onProducts={can('products')?()=>navigate('products'):undefined}/>} 
-   {page==='invoices'&&can('invoices')&&<Invoices invoices={data.invoices} suppliers={data.suppliers} categories={data.categories} onUpload={()=>setUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice} onSupplierChange={changeInvoiceSupplier} onCategoryChange={changeInvoiceCategory}/>} 
+   {page==='sales'&&can('sales')&&<SalesInvoices/>}
+   {page==='invoices'&&can('invoices')&&<ExpenseInvoicesHub invoices={data.invoices} suppliers={data.suppliers} categories={data.categories} onUpload={()=>setUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice} onSupplierChange={changeInvoiceSupplier} onCategoryChange={changeInvoiceCategory} onImported={refresh}/>} 
+   {page==='clients'&&can('clients')&&<Clients/>}
    {page==='products'&&can('products')&&<Products products={data.products} onAdd={openNewProduct} onEdit={openEditProduct} onDelete={removeProduct}/>} 
    {page==='suppliers'&&can('suppliers')&&<Suppliers suppliers={data.suppliers} onAdd={openNewSupplier} onEdit={openEditSupplier} onDelete={removeSupplier}/>} 
-   {page==='gmail'&&can('gmail')&&<GmailPage categories={data.categories} onImported={refresh}/>} 
    {page==='admin'&&access.role==='admin'&&<AdminPage currentUserId={session.user.id}/>} 
  </main>
  {can('invoices')&&<UploadInvoiceModal open={upload} onClose={()=>setUpload(false)} onSave={saveInvoice} categories={data.categories}/>} 
