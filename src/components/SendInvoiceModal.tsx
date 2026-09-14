@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Mail, X } from 'lucide-react';
+import { Mail, Send, X } from 'lucide-react';
 import type { BusinessSettings, SalesInvoice } from '../services/sales';
 import { markSalesInvoiceSent } from '../services/sales';
 import { createSalesInvoicePdfBlob, salesInvoicePdfFilename } from '../services/salesInvoicePdf';
 import { sendInvoiceViaGmail } from '../services/gmailSender';
+import { errorMessage, showError, showSuccess } from '../services/toast';
 
 export function SendInvoiceModal({invoice,settings,onClose,onSent}:{invoice:SalesInvoice|null;settings:BusinessSettings;onClose:()=>void;onSent:()=>Promise<void>}){
   const [to,setTo]=useState('');
@@ -31,20 +32,24 @@ export function SendInvoiceModal({invoice,settings,onClose,onSent}:{invoice:Sale
       await sendInvoiceViaGmail({to:to.trim(),subject:subject.trim(),body:body.trim(),pdf,filename:salesInvoicePdfFilename(invoice)});
       await markSalesInvoiceSent(invoice.id);
       await onSent();
+      showSuccess('Factura enviada por Gmail correctamente.');
       onClose();
-    }catch(e){setError(e instanceof Error?e.message:'No se pudo enviar la factura.');}
+    }catch(e){const message=errorMessage(e,'No se pudo enviar la factura.');setError(message);showError(message);}
     finally{setBusy(false);}
   };
 
-  return <div className="modalBackdrop"><div className="modal salesClientModal">
-    <div className="modalHead"><div><h3>Enviar factura por Gmail</h3><p>Se adjuntará automáticamente el PDF de {invoice.invoiceNumber}.</p></div><button onClick={onClose}><X/></button></div>
-    <div className="stackForm">
-      <label>Para<input type="email" inputMode="email" value={to} onChange={e=>setTo(e.target.value)} placeholder="cliente@empresa.com"/></label>
-      <label>Asunto<input value={subject} onChange={e=>setSubject(e.target.value)}/></label>
-      <label>Mensaje<textarea rows={7} value={body} onChange={e=>setBody(e.target.value)}/></label>
-      <div className="aiNote"><Mail size={17}/><div><strong>Primera vez</strong><span>Google te pedirá autorización para que ZENVIA Gestión pueda enviar este correo desde tu cuenta. La conexión usada para leer facturas de gastos sigue siendo independiente.</span></div></div>
-    </div>
+  return <div className="modalBackdrop"><div className="modal salesClientModal polishedModal salesSendModal">
+    <div className="modalHead salesModalHead"><div><div className="eyebrow">ENVÍO</div><h3>Enviar factura por Gmail</h3><p>Se adjuntará automáticamente el PDF de {invoice.invoiceNumber}.</p></div><button onClick={onClose}><X/></button></div>
+    <section className="salesFormSection">
+      <div className="salesSectionTitle"><Mail size={18}/><div><strong>Destinatario y mensaje</strong><span>Revisa los datos antes de enviar</span></div></div>
+      <div className="salesFormGrid">
+        <label className="salesSpan2">Para<input type="email" inputMode="email" value={to} onChange={e=>setTo(e.target.value)} placeholder="cliente@empresa.com"/></label>
+        <label className="salesSpan2">Asunto<input value={subject} onChange={e=>setSubject(e.target.value)}/></label>
+        <label className="salesSpan2">Mensaje<textarea rows={7} value={body} onChange={e=>setBody(e.target.value)}/></label>
+      </div>
+      <div className="aiNote"><Mail size={17}/><div><strong>Autorización de Google</strong><span>La primera vez Google te pedirá permiso para enviar desde tu cuenta. La conexión de lectura de facturas de gastos sigue siendo independiente.</span></div></div>
+    </section>
     {error&&<div className="errorBox">{error}</div>}
-    <div className="modalActions"><button className="secondary" onClick={onClose} disabled={busy}>Cancelar</button><button className="primary" onClick={send} disabled={busy}>{busy?'Enviando…':'Enviar factura'}</button></div>
+    <div className="modalActions salesStickyActions"><button className="secondary" onClick={onClose} disabled={busy}>Cancelar</button><button className="primary" onClick={send} disabled={busy}><Send size={16}/>{busy?'Enviando…':'Enviar factura'}</button></div>
   </div></div>;
 }
