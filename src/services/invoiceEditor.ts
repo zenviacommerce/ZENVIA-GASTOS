@@ -14,3 +14,18 @@ export async function updateInvoiceSupplier(invoiceId:string,supplierId:string) 
   if(error) throw error;
   if(!data?.id) throw new Error('No se pudo actualizar el proveedor de la factura.');
 }
+
+export async function updateInvoiceCategory(invoiceId:string,categoryId:string) {
+  if(!invoiceId) throw new Error('Factura no válida.');
+  if(!categoryId) throw new Error('Selecciona una categoría.');
+
+  const { data, error } = await supabase
+    .from('invoices')
+    .update({ expense_category_id: categoryId })
+    .eq('id', invoiceId)
+    .select('id')
+    .single();
+
+  if(error) throw error;
+  if(!data?.id) throw new Error('No se pudo actualizar la categoría de la factura.');
+}
