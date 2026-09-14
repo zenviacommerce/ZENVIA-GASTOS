@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
-const allowedPermissions = ['dashboard', 'invoices', 'products', 'suppliers', 'gmail'] as const;
+const allowedPermissions = ['dashboard', 'sales', 'invoices', 'clients', 'products', 'suppliers'] as const;
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 
 type Permission = typeof allowedPermissions[number];
