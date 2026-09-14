@@ -10,6 +10,15 @@ export async function deleteSalesInvoiceDraftSafe(id:string){
   if(!draft) throw new Error('No se ha encontrado el borrador.');
   if(draft.status!=='draft') throw new Error('Solo se pueden eliminar facturas que sigan en borrador.');
 
+  // Delete child rows while the parent is still visible as a draft. This also avoids
+  // the line immutability guard being confused by an ON DELETE CASCADE after the
+  // parent row has already disappeared from the trigger snapshot.
+  const { error: lineError } = await supabase
+    .from('sales_invoice_lines')
+    .delete()
+    .eq('invoice_id',id);
+  if(lineError) throw lineError;
+
   const { data: deleted, error } = await supabase
     .from('sales_invoices')
     .delete()
