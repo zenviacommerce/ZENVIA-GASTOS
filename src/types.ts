@@ -12,6 +12,7 @@ export interface Supplier {
   name: string;
   taxId?: string | null;
   email?: string | null;
+  phone?: string | null;
   supplierType: 'goods' | 'service' | 'both';
   defaultCategoryId?: string | null;
 }
@@ -82,6 +83,9 @@ export interface NewInvoiceInput {
   file: File;
   source: InvoiceSource;
   supplierName: string;
+  supplierTaxId?: string;
+  supplierEmail?: string;
+  supplierPhone?: string;
   invoiceNumber: string;
   invoiceDate: string;
   categoryId?: string;
