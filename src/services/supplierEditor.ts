@@ -1,12 +1,13 @@
 import { supabase } from './supabase';
 
+export type SupplierType = 'unclassified' | 'goods' | 'service' | 'both';
+
 export type SupplierInput = {
   name: string;
   taxId?: string;
   email?: string;
   phone?: string;
-  supplierType: 'goods' | 'service' | 'both';
-  defaultCategoryId?: string;
+  supplierType: SupplierType;
 };
 
 function supplierRow(input: SupplierInput) {
@@ -16,7 +17,6 @@ function supplierRow(input: SupplierInput) {
     email: input.email?.trim() || null,
     phone: input.phone?.trim() || null,
     supplier_type: input.supplierType,
-    default_category_id: input.defaultCategoryId || null,
   };
 }
 
