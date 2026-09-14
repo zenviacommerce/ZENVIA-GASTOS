@@ -14,4 +14,5 @@ import './mobile-session.css';
 import './toast.css';
 import './validation.css';
 import './pagination.css';
+import './readability.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
