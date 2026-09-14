@@ -27,10 +27,10 @@ export function AuthScreen() {
 
   return <div className="authPage">
     <div className="authPanel">
-      <div className="authLogo"><img src={ZENVIA_LOGO} alt="ZENVIA COMMERCE"/><span>Gestión de gastos</span></div>
+      <div className="authLogo"><img src={ZENVIA_LOGO} alt="ZENVIA COMMERCE"/><span>Gestión empresarial</span></div>
       <div className="authHeroIcon"><ReceiptText/></div>
-      <h1>Accede a ZENVIA Gastos</h1>
-      <p>Acceso privado para usuarios autorizados por ZENVIA COMMERCE.</p>
+      <h1>Accede a ZENVIA Gestión</h1>
+      <p>Compras, gastos, clientes, ventas y facturación en un único espacio privado.</p>
       <form onSubmit={submit} className="authForm" noValidate>
         <label>Email<input type="email" required inputMode="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} placeholder="usuario@zenviacommerce.com"/></label>
         <label>Contraseña<input type="password" required minLength={8} autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••"/></label>
