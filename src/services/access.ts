@@ -1,15 +1,16 @@
 import { supabase } from './supabase';
 import { emailError, nameError, normalizeEmail } from './validation';
 
-export type MenuPermission = 'dashboard' | 'invoices' | 'products' | 'suppliers' | 'gmail';
+export type MenuPermission = 'dashboard' | 'sales' | 'invoices' | 'clients' | 'products' | 'suppliers';
 export type AppRole = 'admin' | 'user';
 
 export const permissionOptions: Array<{ id: MenuPermission; label: string; description: string }> = [
   { id: 'dashboard', label: 'Resumen', description: 'Ver el resumen, métricas y filtros.' },
-  { id: 'invoices', label: 'Facturas', description: 'Consultar, crear, editar, borrar y exportar facturas.' },
+  { id: 'sales', label: 'Facturación', description: 'Crear, emitir, enviar y controlar cobros de facturas de venta.' },
+  { id: 'invoices', label: 'Facturas de gastos', description: 'Consultar, crear, editar, importar desde Gmail y exportar facturas de gastos.' },
+  { id: 'clients', label: 'Clientes', description: 'Consultar y mantener clientes y sus datos fiscales.' },
   { id: 'products', label: 'Productos', description: 'Consultar y mantener productos y costes.' },
   { id: 'suppliers', label: 'Proveedores', description: 'Consultar y mantener proveedores.' },
-  { id: 'gmail', label: 'Gmail', description: 'Buscar, revisar e importar facturas desde Gmail.' },
 ];
 
 export interface AccessProfile {
