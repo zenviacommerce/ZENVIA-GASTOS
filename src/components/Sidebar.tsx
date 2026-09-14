@@ -12,8 +12,8 @@ type SidebarUser = {
 
 const items = [
   ['dashboard','Resumen','Resumen',BarChart3],
-  ['invoices','Facturas','Facturas',FileText],
-  ['products','Productos y costes','Productos',Package],
+  ['invoices','Facturas de gastos','Facturas',FileText],
+  ['products','Productos','Productos',Package],
   ['suppliers','Proveedores','Proveedores',Building2],
   ['gmail','Gmail','Gmail',Mail],
   ['admin','Administración','Admin',ShieldCheck],
