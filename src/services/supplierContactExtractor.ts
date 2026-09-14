@@ -10,22 +10,38 @@ const compact = (value: string) => value.replace(/\s+/g, ' ').trim();
 const buyerMarkers = /zenvia\s+commerce|sergio\s+rojas|facturar\s+a|cliente\s*-?\s*receptor|nif\s+del\s+cliente|account\s+billed|bill\s+to|customer/i;
 const supplierMarkers = /proveedor|emisor|supplier|vendor|datos\s+de\s+la\s+empresa|company\s+details|receptor\s+imporalia/i;
 
+function normalizeText(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 function supplierTokens(name: string) {
-  return name
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
+  return normalizeText(name)
     .split(/[^a-z0-9]+/)
     .filter(token => token.length >= 5 && !['limited','express','international','sociedad','compost','paper'].includes(token));
 }
 
 function supplierContextScore(context: string, supplierName: string) {
-  const normalized = context
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-  const tokens = supplierTokens(supplierName);
-  return tokens.some(token => normalized.includes(token)) ? 25 : 0;
+  const normalized = normalizeText(context);
+  return supplierTokens(supplierName).some(token => normalized.includes(token)) ? 25 : 0;
+}
+
+function supplierProximityScore(text: string, index: number, supplierName: string) {
+  const normalizedText = normalizeText(text);
+  const normalizedName = normalizeText(supplierName).trim();
+  if (!normalizedName) return 0;
+
+  let cursor = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  while (cursor < normalizedText.length) {
+    const found = normalizedText.indexOf(normalizedName, cursor);
+    if (found < 0) break;
+    bestDistance = Math.min(bestDistance, Math.abs(found - index));
+    cursor = found + Math.max(1, normalizedName.length);
+  }
+
+  if (bestDistance <= 60) return 35;
+  if (bestDistance <= 150) return 15;
+  return 0;
 }
 
 function contextAround(text: string, index: number, radius = 180) {
@@ -51,8 +67,9 @@ function extractTaxId(text: string, supplierName: string) {
     const raw = match[1] || '';
     const value = normalizeTaxId(raw);
     if (taxIdError(value, false)) continue;
-    const context = contextAround(text, match.index || 0);
-    let score = supplierContextScore(context, supplierName);
+    const index = match.index || 0;
+    const context = contextAround(text, index);
+    let score = supplierContextScore(context, supplierName) + supplierProximityScore(text, index, supplierName);
     if (supplierMarkers.test(context)) score += 20;
     supplierMarkers.lastIndex = 0;
     if (buyerMarkers.test(context)) score -= 55;
@@ -69,8 +86,9 @@ function extractEmail(text: string, supplierName: string) {
   for (const match of text.matchAll(emailRegex)) {
     const value = normalizeEmail(match[0]);
     if (emailError(value, false)) continue;
-    const context = contextAround(text, match.index || 0);
-    let score = supplierContextScore(context, supplierName);
+    const index = match.index || 0;
+    const context = contextAround(text, index);
+    let score = supplierContextScore(context, supplierName) + supplierProximityScore(text, index, supplierName);
     if (/e-?mail|correo|contacto|contact/i.test(context)) score += 12;
     if (supplierMarkers.test(context)) score += 10;
     supplierMarkers.lastIndex = 0;
@@ -103,8 +121,9 @@ function extractPhone(text: string, supplierName: string) {
       if (/^20\d{6}$/.test(digits)) continue;
       const value = normalizePhone(raw);
       if (phoneError(value, false)) continue;
-      const context = contextAround(text, offset + (match.index || 0));
-      let score = supplierContextScore(context, supplierName);
+      const index = offset + (match.index || 0);
+      const context = contextAround(text, index);
+      let score = supplierContextScore(context, supplierName) + supplierProximityScore(text, index, supplierName);
       if (/tel(?:[ée]fono)?|telf|phone|m[oó]vil|mobile|atenci[oó]n\s+al\s+cliente|/i.test(line)) score += 20;
       if (supplierMarkers.test(context)) score += 10;
       supplierMarkers.lastIndex = 0;
@@ -116,7 +135,7 @@ function extractPhone(text: string, supplierName: string) {
   }
 
   candidates.sort((a, b) => b.score - a.score);
-  return candidates[0]?.score >= 0 ? candidates[0].value : undefined;
+  return candidates[0]?.score >= 10 ? candidates[0].value : undefined;
 }
 
 export function extractSupplierContactData(text: string, supplierName: string): SupplierContactData {
