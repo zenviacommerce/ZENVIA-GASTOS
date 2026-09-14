@@ -19,7 +19,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
    {error&&<div className="errorBox supplierPageError">{error}</div>}
    {suppliers.length?<div className="supplierGrid">{suppliers.map(s=><div className="card supplierCard" key={s.id}>
      <div className="supplierBig"><Building2/></div>
-     <div className="supplierInfo"><strong>{s.name}</strong><span>{s.supplierType==='goods'?'Mercancía':s.supplierType==='both'?'Mercancía y servicios':'Servicios'}{s.taxId?` · ${s.taxId}`:''}</span>{s.email&&<small>{s.email}</small>}</div>
+     <div className="supplierInfo"><strong>{s.name}</strong><span>{s.supplierType==='goods'?'Mercancía':s.supplierType==='both'?'Mercancía y servicios':'Servicios'}{s.taxId?` · ${s.taxId}`:''}</span>{s.email&&<small>{s.email}</small>}{s.phone&&<small>{s.phone}</small>}</div>
      <div className="supplierActions">
        <button className="iconAction" title={`Editar ${s.name}`} onClick={()=>onEdit(s)} disabled={busyId===s.id}><Pencil size={16}/></button>
        <button className="iconAction danger" title={`Eliminar ${s.name}`} onClick={()=>remove(s)} disabled={busyId===s.id}><Trash2 size={16}/></button>
