@@ -61,7 +61,7 @@ export interface Product {
   lastPrice?: number | null;
   previousPrice?: number | null;
   salePrice?: number | null;
-  salesTaxRate: number;
+  salesTaxRate?: number | null;
   invoiceDescription?: string | null;
   supplierId?: string | null;
   supplier: string;
