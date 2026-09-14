@@ -1,7 +1,7 @@
-import { BarChart3, FileText, Package, Building2, Mail, LogOut, Moon, Sun, ShieldCheck } from 'lucide-react';
+import { BarChart3, FileText, Package, Building2, LogOut, Moon, Sun, ShieldCheck, ReceiptText, Users } from 'lucide-react';
 import { ZENVIA_LOGO } from '../branding';
 
-export type Page = 'dashboard' | 'invoices' | 'products' | 'suppliers' | 'gmail' | 'admin';
+export type Page = 'dashboard' | 'sales' | 'invoices' | 'clients' | 'products' | 'suppliers' | 'admin';
 export type ThemeMode = 'light' | 'dark';
 
 type SidebarUser = {
@@ -12,10 +12,11 @@ type SidebarUser = {
 
 const items = [
   ['dashboard','Resumen','Resumen',BarChart3],
-  ['invoices','Facturas de gastos','Facturas',FileText],
+  ['sales','Facturación','Ventas',ReceiptText],
+  ['invoices','Facturas de gastos','Gastos',FileText],
+  ['clients','Clientes','Clientes',Users],
   ['products','Productos','Productos',Package],
   ['suppliers','Proveedores','Proveedores',Building2],
-  ['gmail','Gmail','Gmail',Mail],
   ['admin','Administración','Admin',ShieldCheck],
 ] as const;
 
@@ -34,7 +35,7 @@ export function Sidebar({page,onChange,onLogout,theme,onToggleTheme,allowedPages
   return <aside className="sidebar">
     <div className="brand">
       <div className="brandLogoWrap"><img className="brandLogo" src={ZENVIA_LOGO} alt="ZENVIA COMMERCE"/></div>
-      <div className="brandProductLockup"><span className="brandProductDot"/><div className="brandProductText"><strong>Gastos</strong><span>Control financiero</span></div></div>
+      <div className="brandProductLockup"><span className="brandProductDot"/><div className="brandProductText"><strong>Gestión</strong><span>Gestión empresarial</span></div></div>
     </div>
     <nav className={isAdmin?'hasAdmin':''}>{visibleItems.map(([id,label,mobileLabel,Icon]) => <button key={id} className={page===id?'active':''} onClick={()=>onChange(id)} title={label} aria-label={label}><Icon size={18}/><span className="navLabelDesktop">{label}</span><span className="navLabelMobile">{mobileLabel}</span></button>)}</nav>
     <div className="sidebarBottom">
