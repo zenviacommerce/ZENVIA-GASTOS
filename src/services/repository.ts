@@ -1,6 +1,8 @@
 import { supabase, INVOICE_BUCKET } from './supabase';
 import type { AppData, ExpenseCategory, Invoice, NewInvoiceInput, Product, Supplier } from '../types';
 import { canonicalizeSupplierName, isLikelySameSupplier, supplierIdentityKey } from './supplierIdentity';
+import { extractSupplierContactData, type SupplierContactData } from './supplierContactExtractor';
+import { emailError, normalizeEmail, normalizePhone, normalizeTaxId, phoneError, taxIdError } from './validation';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
 const normalizeProductKey = (value: string) => value
@@ -33,6 +35,7 @@ export async function loadAppData(): Promise<AppData> {
     name: s.name,
     taxId: s.tax_id,
     email: s.email,
+    phone: s.phone,
     supplierType: s.supplier_type,
     defaultCategoryId: s.default_category_id,
   }));
@@ -101,31 +104,61 @@ async function sha256(file: File) {
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function ensureSupplier(name: string): Promise<string> {
+function cleanSupplierContact(contact: SupplierContactData): SupplierContactData {
+  const taxId = contact.taxId ? normalizeTaxId(contact.taxId) : '';
+  const email = contact.email ? normalizeEmail(contact.email) : '';
+  const phone = contact.phone ? normalizePhone(contact.phone) : '';
+  return {
+    taxId: taxId && !taxIdError(taxId, false) ? taxId : undefined,
+    email: email && !emailError(email, false) ? email : undefined,
+    phone: phone && !phoneError(phone, false) ? phone : undefined,
+  };
+}
+
+async function ensureSupplier(name: string, contactInput: SupplierContactData = {}): Promise<string> {
   const clean = canonicalizeSupplierName(name) || name.trim().slice(0, 120);
   const cleanKey = supplierIdentityKey(clean);
+  const contact = cleanSupplierContact(contactInput);
 
   const { data: existing, error: findError } = await supabase
     .from('suppliers')
-    .select('id,name,tax_id,email');
+    .select('id,name,tax_id,email,phone');
   if (findError) throw findError;
 
   const ranked = (existing ?? [])
     .map((supplier: any) => {
       const existingKey = supplierIdentityKey(supplier.name || '');
+      const existingTaxId = supplier.tax_id ? normalizeTaxId(supplier.tax_id) : '';
       let score = 0;
-      if (cleanKey && existingKey === cleanKey) score = 100;
+      if (contact.taxId && existingTaxId && contact.taxId === existingTaxId) score = 140;
+      else if (cleanKey && existingKey === cleanKey) score = 100;
       else if (isLikelySameSupplier(clean, supplier.name || '')) score = 80;
       if (score && supplier.tax_id) score += 3;
       if (score && supplier.email) score += 1;
-      return { id: supplier.id as string, score };
+      return { supplier, score };
     })
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score);
 
-  if (ranked[0]?.id) return ranked[0].id;
+  const match = ranked[0]?.supplier;
+  if (match?.id) {
+    const patch: Record<string, string> = {};
+    if (!match.tax_id && contact.taxId) patch.tax_id = contact.taxId;
+    if (!match.email && contact.email) patch.email = contact.email;
+    if (!match.phone && contact.phone) patch.phone = contact.phone;
+    if (Object.keys(patch).length) {
+      const { error: updateError } = await supabase.from('suppliers').update(patch).eq('id', match.id);
+      if (updateError) throw updateError;
+    }
+    return match.id as string;
+  }
 
-  const { data, error } = await supabase.from('suppliers').insert({ name: clean }).select('id').single();
+  const { data, error } = await supabase.from('suppliers').insert({
+    name: clean,
+    tax_id: contact.taxId || null,
+    email: contact.email || null,
+    phone: contact.phone || null,
+  }).select('id').single();
   if (error) throw error;
   return data.id;
 }
@@ -253,7 +286,12 @@ export async function createInvoice(input: NewInvoiceInput) {
   if (duplicateError) throw duplicateError;
   if (duplicates?.length) throw new Error(`Esta factura parece estar subida ya (${duplicates[0].invoice_number || 'sin número'}).`);
 
-  const supplierId = await ensureSupplier(input.supplierName);
+  const extractedContact = input.ocrText ? extractSupplierContactData(input.ocrText, input.supplierName) : {};
+  const supplierId = await ensureSupplier(input.supplierName, {
+    taxId: input.supplierTaxId || extractedContact.taxId,
+    email: input.supplierEmail || extractedContact.email,
+    phone: input.supplierPhone || extractedContact.phone,
+  });
   const year = input.invoiceDate ? new Date(`${input.invoiceDate}T12:00:00`).getFullYear() : new Date().getFullYear();
   const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-100);
   const storagePath = `${user.id}/${year}/${crypto.randomUUID()}-${safeName}`;
@@ -279,7 +317,12 @@ export async function createInvoice(input: NewInvoiceInput) {
     mime_type: input.file.type || 'application/pdf',
     file_hash: fileHash,
     ocr_text: input.ocrText || null,
-    extraction: input.extraction ?? {},
+    extraction: {
+      ...(input.extraction ?? {}),
+      supplierTaxId: input.supplierTaxId || extractedContact.taxId || null,
+      supplierEmail: input.supplierEmail || extractedContact.email || null,
+      supplierPhone: input.supplierPhone || extractedContact.phone || null,
+    },
     extraction_confidence: input.extractionConfidence ?? null,
   }).select('id').single();
 
@@ -342,13 +385,14 @@ export async function deleteProduct(productId: string) {
   if (error) throw error;
 }
 
-type SupplierInput = { name: string; taxId?: string; email?: string; supplierType: 'goods' | 'service' | 'both' };
+type SupplierInput = { name: string; taxId?: string; email?: string; phone?: string; supplierType: 'goods' | 'service' | 'both' };
 
 export async function addSupplier(input: SupplierInput) {
   const { error } = await supabase.from('suppliers').insert({
     name: input.name.trim(),
     tax_id: input.taxId?.trim() || null,
     email: input.email?.trim() || null,
+    phone: input.phone?.trim() || null,
     supplier_type: input.supplierType,
   });
   if (error) throw error;
@@ -359,6 +403,7 @@ export async function updateSupplier(supplierId: string, input: SupplierInput) {
     name: input.name.trim(),
     tax_id: input.taxId?.trim() || null,
     email: input.email?.trim() || null,
+    phone: input.phone?.trim() || null,
     supplier_type: input.supplierType,
   }).eq('id', supplierId);
   if (error) throw error;
