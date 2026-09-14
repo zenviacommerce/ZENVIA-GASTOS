@@ -5,7 +5,7 @@ const REFRESH_BUFFER_MS = 5 * 60_000;
 
 declare global { interface Window { google?: any } }
 
-type SendConnection={accessToken:string;expiresAt:number;email:string};
+type SendConnection={accessToken:string;expiresAt:number};
 
 function loadGoogleIdentityServices(){
   if(window.google?.accounts?.oauth2)return Promise.resolve();
@@ -27,14 +27,10 @@ async function connectForSend():Promise<SendConnection>{
     const client=window.google.accounts.oauth2.initTokenClient({
       client_id:GOOGLE_CLIENT_ID,
       scope:GMAIL_SEND_SCOPE,
-      callback:async(response:any)=>{
+      callback:(response:any)=>{
         if(response?.error||!response?.access_token){reject(new Error(response?.error_description||response?.error||'Google no concedió permiso para enviar correos.'));return;}
-        try{
-          const profileResponse=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:`Bearer ${response.access_token}`}});
-          const profile=profileResponse.ok?await profileResponse.json():{};
-          const connection:SendConnection={accessToken:response.access_token,expiresAt:Date.now()+Number(response.expires_in||3600)*1000,email:profile.emailAddress||'Cuenta de Gmail'};
-          sessionStorage.setItem(TOKEN_KEY,JSON.stringify(connection));resolve(connection);
-        }catch(error){reject(error);}
+        const connection:SendConnection={accessToken:response.access_token,expiresAt:Date.now()+Number(response.expires_in||3600)*1000};
+        sessionStorage.setItem(TOKEN_KEY,JSON.stringify(connection));resolve(connection);
       },
       error_callback:(error:any)=>reject(new Error(error?.message||'No se pudo abrir la autorización de Google.')),
     });
