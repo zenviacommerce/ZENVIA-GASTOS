@@ -1,5 +1,6 @@
 export type InvoiceStatus = 'pending' | 'reviewed' | 'accounted';
 export type InvoiceSource = 'manual' | 'camera' | 'gmail';
+export type SupplierType = 'unclassified' | 'goods' | 'service' | 'both';
 
 export interface ExpenseCategory {
   id: string;
@@ -13,7 +14,7 @@ export interface Supplier {
   taxId?: string | null;
   email?: string | null;
   phone?: string | null;
-  supplierType: 'goods' | 'service' | 'both';
+  supplierType: SupplierType;
   defaultCategoryId?: string | null;
 }
 
