@@ -15,7 +15,8 @@ import { GmailPage } from './pages/Gmail';
 import { AdminPage } from './pages/Admin';
 import { supabase } from './services/supabase';
 import { loadAccessProfile, type AccessProfile, type MenuPermission } from './services/access';
-import { addSupplier, bootstrapUser, createInvoice, deleteProduct, deleteSupplier, getInvoiceFileUrl, loadAppData, updateInvoiceStatus, updateSupplier } from './services/repository';
+import { bootstrapUser, createInvoice, deleteProduct, deleteSupplier, getInvoiceFileUrl, loadAppData, updateInvoiceStatus } from './services/repository';
+import { addSupplier, updateSupplier, type SupplierInput } from './services/supplierEditor';
 import { updateInvoiceCategory, updateInvoiceSupplier } from './services/invoiceEditor';
 import { addProduct, updateProduct, type ProductInput } from './services/productEditor';
 import { deleteInvoiceWithGmailRecovery } from './services/invoiceLifecycle';
@@ -25,8 +26,6 @@ import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './typ
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
 const THEME_KEY = 'zenvia-gastos-theme';
 const regularPages: MenuPermission[] = ['dashboard','invoices','products','suppliers','gmail'];
-
-type SupplierInput = {name:string;taxId?:string;email?:string;supplierType:'goods'|'service'|'both'};
 
 function initialTheme(): ThemeMode {
   const stored=window.localStorage.getItem(THEME_KEY);
@@ -173,12 +172,12 @@ export default function App(){
    {page==='dashboard'&&can('dashboard')&&<Dashboard invoices={data.invoices} products={data.products} suppliers={data.suppliers} onUpload={can('invoices')?()=>setUpload(true):undefined} onProducts={can('products')?()=>navigate('products'):undefined}/>} 
    {page==='invoices'&&can('invoices')&&<Invoices invoices={data.invoices} suppliers={data.suppliers} categories={data.categories} onUpload={()=>setUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice} onSupplierChange={changeInvoiceSupplier} onCategoryChange={changeInvoiceCategory}/>} 
    {page==='products'&&can('products')&&<Products products={data.products} onAdd={openNewProduct} onEdit={openEditProduct} onDelete={removeProduct}/>} 
-   {page==='suppliers'&&can('suppliers')&&<Suppliers suppliers={data.suppliers} onAdd={openNewSupplier} onEdit={openEditSupplier} onDelete={removeSupplier}/>} 
+   {page==='suppliers'&&can('suppliers')&&<Suppliers suppliers={data.suppliers} categories={data.categories} onAdd={openNewSupplier} onEdit={openEditSupplier} onDelete={removeSupplier}/>} 
    {page==='gmail'&&can('gmail')&&<GmailPage categories={data.categories} onImported={refresh}/>} 
    {page==='admin'&&access.role==='admin'&&<AdminPage currentUserId={session.user.id}/>} 
  </main>
  {can('invoices')&&<UploadInvoiceModal open={upload} onClose={()=>setUpload(false)} onSave={saveInvoice} categories={data.categories}/>} 
  {can('products')&&<ProductModal open={productModal} product={productToEdit} onClose={closeProductModal} onSave={saveProduct}/>} 
- {can('suppliers')&&<SupplierModal open={supplierModal} supplier={supplierToEdit} onClose={closeSupplierModal} onSave={saveSupplier}/>} 
+ {can('suppliers')&&<SupplierModal open={supplierModal} supplier={supplierToEdit} categories={data.categories} onClose={closeSupplierModal} onSave={saveSupplier}/>} 
  </div>
 }
