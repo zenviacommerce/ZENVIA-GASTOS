@@ -55,10 +55,14 @@ export interface Product {
   id: string;
   name: string;
   sku?: string | null;
+  ean?: string | null;
   category?: string | null;
   unit: string;
   lastPrice?: number | null;
   previousPrice?: number | null;
+  salePrice?: number | null;
+  salesTaxRate: number;
+  invoiceDescription?: string | null;
   supplierId?: string | null;
   supplier: string;
   lastPurchaseDate?: string | null;
