@@ -8,6 +8,31 @@ function normalized(value:string){
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
 }
 
+function trackingTranslation(value:string){
+  const raw=normalized(value).replace(/[_-]+/g,' ');
+  if(!raw)return null;
+  if(raw.includes('delivered')||raw.includes('shipment collected by customer'))return 'Entregado';
+  if(raw.includes('driver en route')||raw.includes('out for delivery'))return 'En reparto';
+  if(raw.includes('awaiting customer pickup'))return 'En punto de recogida';
+  if(raw.includes('sorting centre')||raw.includes('sorting center')||raw.includes('being sorted'))return 'En centro de distribución';
+  if(raw.includes('parcel en route')||raw.includes('en route to sorting')||raw.includes('picked up by driver')||raw.includes('shipment picked up')||raw.includes('in transit'))return 'En tránsito';
+  if(raw.includes('address invalid')||raw.includes('attempt failed')||raw.includes('announcement failed')||raw.includes('unable to deliver')||raw.includes('exception')||raw.includes('error collecting')||raw.includes('refused')||raw.includes('returned to sender')||raw.includes('delivery delayed'))return 'Incidencia';
+  if(raw.includes('cancel'))return 'Cancelado';
+  if(raw.includes('ready to send')||raw.includes('ready for shipment')||raw.includes('announced')||raw.includes('being announced')||raw.includes('no label'))return 'Preparado';
+  if(raw==='pending'||raw==='pending tracking')return 'Pendiente de seguimiento';
+  return null;
+}
+
+function translateTrackingBadges(){
+  document.querySelectorAll<HTMLElement>('.ordersTracking').forEach(badge=>{
+    const original=(badge.textContent||'').trim();
+    const translated=trackingTranslation(original);
+    if(!translated||translated===original)return;
+    if(!badge.title)badge.title=original;
+    badge.textContent=translated;
+  });
+}
+
 function isBalearicModal(modal:HTMLElement){
   const destination=modal.querySelector<HTMLElement>('.ordersLabelContext > div:nth-child(2) strong')?.textContent||'';
   return /(?:^|\D)07\d{3}(?:\D|$)/.test(destination);
@@ -101,7 +126,10 @@ function enhanceModal(modal:HTMLElement){
 
 export function OrderLabelDefaults(){
   useEffect(()=>{
-    const enhance=()=>document.querySelectorAll<HTMLElement>('.ordersLabelModal').forEach(enhanceModal);
+    const enhance=()=>{
+      document.querySelectorAll<HTMLElement>('.ordersLabelModal').forEach(enhanceModal);
+      translateTrackingBadges();
+    };
     const clickCapture=(event:MouseEvent)=>{
       const target=event.target instanceof Element?event.target:null;
       const button=target?.closest<HTMLButtonElement>('.ordersLabelModal .ordersOptionList button');
@@ -118,7 +146,7 @@ export function OrderLabelDefaults(){
     };
     enhance();
     const observer=new MutationObserver(enhance);
-    observer.observe(document.body,{childList:true,subtree:true});
+    observer.observe(document.body,{childList:true,subtree:true,characterData:true});
     document.addEventListener('click',clickCapture,true);
     return()=>{
       observer.disconnect();
