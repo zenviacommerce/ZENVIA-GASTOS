@@ -39,9 +39,40 @@
   .invoiceFilterPanel.noSupplier .filterGrid>.filterReset{
     grid-column:1/-1!important;
   }
-  .invoiceFilterPanel.noSupplier .filterGrid input[type='date']{
-    width:100%!important;
+
+  /* iOS/Safari gives date controls an intrinsic minimum width. Keep every
+     mobile date field inside its grid/modal instead of overflowing. */
+  .invoiceModal,
+  .salesInvoiceModal,
+  .ordersEditModal,
+  .modal{
+    max-width:calc(100vw - 20px)!important;
+    overflow-x:hidden!important;
+  }
+  .invoiceFormGrid,
+  .invoiceFormGrid>label,
+  .filterGrid,
+  .filterGrid>label,
+  .salesFormGrid,
+  .salesFormGrid>label,
+  .salesInvoiceMeta,
+  .salesInvoiceMeta>label{
     min-width:0!important;
+    max-width:100%!important;
+  }
+  .modal input[type='date'],
+  .page input[type='date'],
+  .invoiceFilterPanel.noSupplier .filterGrid input[type='date']{
+    display:block!important;
+    box-sizing:border-box!important;
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    inline-size:100%!important;
+    max-inline-size:100%!important;
+    min-inline-size:0!important;
+    font-size:16px!important;
+    overflow:hidden;
   }
 
   .page .salesToolbar>select,
