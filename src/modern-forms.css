@@ -1,0 +1,125 @@
+/* Unified modern form controls across the app */
+:where(.modal,.authPanel,.page form) label{
+  color:#536176;
+  font-size:12.5px;
+  font-weight:700;
+  letter-spacing:.005em;
+}
+
+:where(.modal,.authPanel,.page form) :is(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),select,textarea){
+  width:100%;
+  min-height:44px;
+  border:1px solid #d5dde8 !important;
+  border-radius:11px !important;
+  background:#fbfdff !important;
+  color:#172033 !important;
+  padding:0 13px !important;
+  outline:none !important;
+  box-shadow:0 1px 2px rgba(15,23,42,.035),inset 0 1px 0 rgba(255,255,255,.7);
+  font-size:14px;
+  line-height:1.35;
+  transition:border-color .16s ease,box-shadow .16s ease,background .16s ease,transform .16s ease;
+}
+
+:where(.modal,.authPanel,.page form) textarea{
+  min-height:92px;
+  padding:12px 13px !important;
+  resize:vertical;
+}
+
+:where(.modal,.authPanel,.page form) select{
+  cursor:pointer;
+  padding-right:36px !important;
+}
+
+:where(.modal,.authPanel,.page form) :is(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),select,textarea):hover:not(:disabled):not([readonly]){
+  border-color:#b9c6d6 !important;
+  background:#fff !important;
+}
+
+:where(.modal,.authPanel,.page form) :is(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),select,textarea):focus,
+:where(.modal,.authPanel,.page form) :is(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),select,textarea):focus-visible{
+  border-color:#14b8a6 !important;
+  background:#fff !important;
+  box-shadow:0 0 0 3px rgba(20,184,166,.12),0 3px 10px rgba(15,118,110,.07) !important;
+}
+
+:where(.modal,.authPanel,.page form) :is(input,textarea)::placeholder{
+  color:#9aa7b8;
+  opacity:1;
+}
+
+:where(.modal,.authPanel,.page form) :is(input,select,textarea):disabled,
+:where(.modal,.authPanel,.page form) :is(input,select,textarea)[readonly]{
+  background:#f3f6f9 !important;
+  color:#7b8797 !important;
+  border-color:#e0e6ee !important;
+  cursor:not-allowed;
+  box-shadow:none !important;
+}
+
+:where(.modal,.authPanel,.page form) :is(input,select,textarea)[aria-invalid='true']{
+  border-color:#ef6b6b !important;
+  background:#fffafa !important;
+  box-shadow:0 0 0 3px rgba(239,68,68,.08) !important;
+}
+
+:where(.modal,.authPanel,.page form) :is(input,select,textarea)[aria-invalid='true']:focus{
+  box-shadow:0 0 0 3px rgba(239,68,68,.12) !important;
+}
+
+/* Keep compact grids tidy while making controls consistent */
+.invoiceFormGrid,.stackForm{
+  row-gap:14px;
+}
+.invoiceFormGrid label,.stackForm label,.authForm label{
+  gap:6px;
+}
+
+/* Form sections feel lighter and more current */
+.modal :is(.masterFormSection,.salesFormSection,.clientFormSection,.formSection){
+  border-color:#e3e9f0 !important;
+  box-shadow:0 1px 2px rgba(15,23,42,.025);
+}
+
+/* Dark mode */
+html[data-theme='dark'] :where(.modal,.authPanel,.page form) label{
+  color:#a9b5c6;
+}
+html[data-theme='dark'] :where(.modal,.authPanel,.page form) :is(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),select,textarea){
+  background:#0f172a !important;
+  border-color:#344155 !important;
+  color:#e8edf5 !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.02);
+}
+html[data-theme='dark'] :where(.modal,.authPanel,.page form) :is(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),select,textarea):hover:not(:disabled):not([readonly]){
+  background:#111c31 !important;
+  border-color:#46556a !important;
+}
+html[data-theme='dark'] :where(.modal,.authPanel,.page form) :is(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),select,textarea):focus,
+html[data-theme='dark'] :where(.modal,.authPanel,.page form) :is(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),select,textarea):focus-visible{
+  background:#111c31 !important;
+  border-color:#2dd4bf !important;
+  box-shadow:0 0 0 3px rgba(45,212,191,.12),0 3px 12px rgba(0,0,0,.18) !important;
+}
+html[data-theme='dark'] :where(.modal,.authPanel,.page form) :is(input,textarea)::placeholder{
+  color:#67758a;
+}
+html[data-theme='dark'] :where(.modal,.authPanel,.page form) :is(input,select,textarea):disabled,
+html[data-theme='dark'] :where(.modal,.authPanel,.page form) :is(input,select,textarea)[readonly]{
+  background:#111827 !important;
+  color:#6f7d91 !important;
+  border-color:#29364a !important;
+}
+html[data-theme='dark'] :where(.modal,.authPanel,.page form) :is(input,select,textarea)[aria-invalid='true']{
+  background:#241417 !important;
+  border-color:#dc6464 !important;
+}
+
+@media(max-width:760px){
+  :where(.modal,.authPanel,.page form) :is(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),select,textarea){
+    min-height:46px;
+    font-size:16px;
+    border-radius:12px !important;
+  }
+}
