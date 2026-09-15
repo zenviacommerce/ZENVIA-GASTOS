@@ -36,4 +36,5 @@ import './destructive-actions.css';
 import './mobile-ui-normalization.css';
 import './passkey.css';
 import './unified-list-experience.css';
+import './dark-mode-consistency.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/><AutoPagination/><OrderLabelDefaults/><UnifiedListExperience/></React.StrictMode>);
