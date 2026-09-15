@@ -67,7 +67,17 @@ function mapRow(row:any):FulfillmentOrder{
 
 async function invokeFunction<T>(functionName:string,body:Record<string,unknown>):Promise<T>{
   const {data,error}=await supabase.functions.invoke(functionName,{body});
-  if(error)throw new Error(error.message||'No se pudo conectar con Sendcloud.');
+  if(error){
+    let detail='';
+    const context=(error as any)?.context;
+    if(context instanceof Response){
+      try{
+        const payload=await context.clone().json();
+        detail=String(payload?.error||payload?.message||'').trim();
+      }catch{/* respuesta no JSON */}
+    }
+    throw new Error(detail||error.message||'No se pudo conectar con Sendcloud.');
+  }
   if(data?.error)throw new Error(String(data.error));
   return data as T;
 }
@@ -83,8 +93,8 @@ export function getSendcloudStatus(){return invokeSendcloud<SendcloudStatus>({ac
 export function syncSendcloudOrders(history=false){return invokeSendcloud<{ok:true;synced:number;enriched?:number;history?:boolean;integrations:SendcloudIntegration[]}>({action:'sync',history});}
 export function createManualOrder(order:ManualOrderInput){return invokeSendcloud<{ok:true;id:string;sendcloudId:string;orderNumber:string}>({action:'create_manual_order',order});}
 export async function getShippingOptions(orderId:string){
-  const result=await invokeOrderTools<{weightKg:number;options:ShippingOption[]}>({action:'shipping_options',orderId});
-  return {weightKg:result.weightKg,options:result.options||[]};
+  const result=await invokeOrderTools<{weightKg:number;options:ShippingOption[];message?:string|null}>({action:'shipping_options',orderId});
+  return {weightKg:result.weightKg,options:result.options||[],message:result.message||null};
 }
 export function updateFulfillmentOrder(orderId:string,order:OrderUpdateInput){return invokeOrderTools<{ok:true;weightKg:number}>({action:'update_order',orderId,order});}
 export function createOrderLabel(orderId:string,option?:ShippingOption|null){return invokeSendcloud<LabelResult>({action:'create_label',orderId,shippingOption:option?{code:option.code,contractId:option.contractId,carrierName:option.carrierName,name:option.name}:null});}
