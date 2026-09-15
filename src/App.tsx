@@ -50,6 +50,7 @@ export default function App(){
  const [supplierModal,setSupplierModal]=useState(false);
  const [supplierToEdit,setSupplierToEdit]=useState<Supplier|null>(null);
  const [theme,setTheme]=useState<ThemeMode>(initialTheme);
+ const userId=session?.user.id||null;
 
  const allowedPages=useMemo<Page[]>(()=>{
    if(!access?.active) return [];
@@ -79,18 +80,18 @@ export default function App(){
 
  useEffect(()=>{
    let cancelled=false;
-   if(!session){setAccess(null);setAccessReady(false);setData(emptyData);return;}
+   if(!userId){setAccess(null);setAccessReady(false);setData(emptyData);return;}
    setAccessReady(false);setError('');
-   loadAccessProfile(session.user.id)
+   loadAccessProfile(userId)
      .then(profile=>{if(!cancelled){setAccess(profile);setAccessReady(true)}})
      .catch(e=>{if(!cancelled){setAccess(null);setAccessReady(true);setError(e instanceof Error?e.message:'No se pudo comprobar tu acceso.')}});
    return()=>{cancelled=true};
- },[session]);
+ },[userId]);
 
  useEffect(()=>{
-   if(!session||!access?.active){setData(emptyData);return;}
+   if(!userId||!access?.active){setData(emptyData);return;}
    (async()=>{try{await bootstrapUser();await refresh();}catch(e){setError(e instanceof Error?e.message:'Error al inicializar la cuenta.')}})();
- },[session,access,refresh]);
+ },[userId,access?.active,refresh]);
 
  useEffect(()=>{
    if(!accessReady||!access?.active||!allowedPages.length)return;
