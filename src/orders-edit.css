@@ -1,0 +1,13 @@
+.ordersDrawerKpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+.ordersLabelContext{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.ordersLabelContext>div{display:flex;flex-direction:column;gap:4px;padding:11px 12px;border:1px solid var(--border,#e2e8f0);border-radius:11px;background:var(--surface-soft,#f8fafc)}
+.ordersLabelContext span{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--text-secondary,#64748b)}
+.ordersLabelContext strong{font-size:12px}
+.ordersOptionList button>span.noPrice{color:var(--text-secondary,#64748b);font-weight:700}
+.ordersEditModal{width:min(760px,calc(100vw - 28px));max-width:760px;max-height:90vh;overflow-y:auto}
+.ordersEditBody{padding:16px 20px 8px}
+.ordersEditHint{margin-bottom:14px;padding:10px 12px;border:1px solid #fed7aa;border-radius:10px;background:#fff7ed;color:#9a3412;font-size:11px;line-height:1.45}
+html[data-theme='dark'] .ordersLabelContext>div{background:#0f172a;border-color:#263244}
+html[data-theme='dark'] .ordersEditHint{background:#431407;border-color:#7c2d12;color:#fdba74}
+@media(max-width:760px){.ordersDrawerKpis{grid-template-columns:1fr 1fr}.ordersLabelContext{grid-template-columns:1fr}.ordersEditModal{width:calc(100vw - 18px)}.ordersEditBody{padding:12px 12px 6px}}
+@media(max-width:430px){.ordersDrawerKpis{grid-template-columns:1fr}}
