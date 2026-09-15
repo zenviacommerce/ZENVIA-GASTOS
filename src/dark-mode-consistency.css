@@ -1,76 +1,205 @@
 /* Final dark-mode consistency overrides. Keep this imported last. */
+html[data-theme='dark'] .expenseInvoicesHub,
+html[data-theme='dark'] .expenseInvoicesHub>.page,
 html[data-theme='dark'] .expenseHubNavShell{
   background:transparent!important;
+  color:#d7deea!important;
 }
 
-html[data-theme='dark'] .expenseHubNav{
+/* Expense hub tabs: never allow a light island in dark mode. */
+html[data-theme='dark'] .expenseInvoicesHub .expenseHubNavShell{
+  background:transparent!important;
+  border-color:transparent!important;
+  box-shadow:none!important;
+}
+html[data-theme='dark'] .expenseInvoicesHub .expenseHubNav{
   background:#111827!important;
   border:1px solid #263244!important;
   box-shadow:0 1px 2px rgba(0,0,0,.25)!important;
 }
-
-html[data-theme='dark'] .expenseHubNav>button{
-  background:transparent!important;
+html[data-theme='dark'] .expenseInvoicesHub .expenseHubNav>button{
+  background:#111827!important;
   color:#cbd5e1!important;
   border-color:transparent!important;
 }
-
-html[data-theme='dark'] .expenseHubNav>button:hover{
+html[data-theme='dark'] .expenseInvoicesHub .expenseHubNav>button:hover{
   background:#172033!important;
   color:#f8fafc!important;
 }
-
-html[data-theme='dark'] .expenseHubNav>button.active{
+html[data-theme='dark'] .expenseInvoicesHub .expenseHubNav>button.active{
   background:#0b2f2b!important;
   border-color:#0f766e!important;
   color:#5eead4!important;
   box-shadow:inset 0 0 0 1px rgba(45,212,191,.08)!important;
 }
-
-html[data-theme='dark'] .expenseHubTabIcon{
+html[data-theme='dark'] .expenseInvoicesHub .expenseHubTabIcon{
   background:#172033!important;
   color:#94a3b8!important;
 }
-
-html[data-theme='dark'] .expenseHubNav>button.active .expenseHubTabIcon{
+html[data-theme='dark'] .expenseInvoicesHub .expenseHubNav>button.active .expenseHubTabIcon{
   background:#123f39!important;
   color:#5eead4!important;
 }
+html[data-theme='dark'] .expenseInvoicesHub .expenseHubTabText strong{color:#e5e7eb!important}
+html[data-theme='dark'] .expenseInvoicesHub .expenseHubNav>button.active .expenseHubTabText strong{color:#5eead4!important}
+html[data-theme='dark'] .expenseInvoicesHub .expenseHubTabText small{color:#94a3b8!important}
 
-html[data-theme='dark'] .expenseHubTabText strong{
-  color:#e5e7eb!important;
+/* All list/table surfaces must be readable in dark mode. */
+html[data-theme='dark'] .page .tableCard,
+html[data-theme='dark'] .page .masterTableCard,
+html[data-theme='dark'] .page .ordersTableWrap,
+html[data-theme='dark'] .expenseInvoicesHub .tableCard{
+  background:#111827!important;
+  border-color:#263244!important;
+  color:#d7deea!important;
 }
-
-html[data-theme='dark'] .expenseHubNav>button.active .expenseHubTabText strong{
-  color:#5eead4!important;
+html[data-theme='dark'] .page .tableCard table,
+html[data-theme='dark'] .page .masterTable,
+html[data-theme='dark'] .page .ordersTable,
+html[data-theme='dark'] .expenseInvoicesHub table{
+  background:#111827!important;
+  color:#d7deea!important;
 }
-
-html[data-theme='dark'] .expenseHubTabText small{
+html[data-theme='dark'] .page .tableCard thead,
+html[data-theme='dark'] .page .tableCard th,
+html[data-theme='dark'] .page .masterTable th,
+html[data-theme='dark'] .page .ordersTable th,
+html[data-theme='dark'] .expenseInvoicesHub th{
+  background:#0f172a!important;
+  color:#94a3b8!important;
+  border-color:#263244!important;
+}
+html[data-theme='dark'] .page .tableCard tbody,
+html[data-theme='dark'] .page .tableCard tr,
+html[data-theme='dark'] .page .tableCard td,
+html[data-theme='dark'] .page .masterTable tbody,
+html[data-theme='dark'] .page .masterTable tr,
+html[data-theme='dark'] .page .masterTable td,
+html[data-theme='dark'] .page .ordersTable tbody,
+html[data-theme='dark'] .page .ordersTable tr,
+html[data-theme='dark'] .page .ordersTable td,
+html[data-theme='dark'] .expenseInvoicesHub tbody,
+html[data-theme='dark'] .expenseInvoicesHub tr,
+html[data-theme='dark'] .expenseInvoicesHub td{
+  background:#111827!important;
+  color:#d7deea!important;
+  border-color:#263244!important;
+}
+html[data-theme='dark'] .page .tableCard tr.clickableRow:hover,
+html[data-theme='dark'] .page .masterTable tr.clickableRow:hover,
+html[data-theme='dark'] .page .ordersTable tr:hover,
+html[data-theme='dark'] .expenseInvoicesHub tr.clickableRow:hover{
+  background:#162032!important;
+}
+html[data-theme='dark'] .page .tableCard tr.clickableRow:hover>td,
+html[data-theme='dark'] .page .masterTable tr.clickableRow:hover>td,
+html[data-theme='dark'] .expenseInvoicesHub tr.clickableRow:hover>td{
+  background:#162032!important;
+}
+html[data-theme='dark'] .page .tableCard td strong,
+html[data-theme='dark'] .page .masterTable td strong,
+html[data-theme='dark'] .page .ordersTable td strong,
+html[data-theme='dark'] .expenseInvoicesHub td strong{
+  color:#f8fafc!important;
+}
+html[data-theme='dark'] .page .tableCard .muted,
+html[data-theme='dark'] .page .masterTable .muted,
+html[data-theme='dark'] .page .ordersTable .muted,
+html[data-theme='dark'] .expenseInvoicesHub .muted{
   color:#94a3b8!important;
 }
+html[data-theme='dark'] .page .tag,
+html[data-theme='dark'] .expenseInvoicesHub .tag{
+  background:#1e293b!important;
+  color:#dbe4ef!important;
+}
 
-/* Gmail/history surfaces that otherwise keep light-only backgrounds. */
+/* Search/filter/list chrome */
+html[data-theme='dark'] .expenseInvoicesHub .search,
+html[data-theme='dark'] .expenseInvoicesHub .invoiceFilterPanel,
+html[data-theme='dark'] .expenseInvoicesHub .filterGrid input,
+html[data-theme='dark'] .expenseInvoicesHub .filterGrid select{
+  background:#0f172a!important;
+  border-color:#334155!important;
+  color:#e5e7eb!important;
+}
+html[data-theme='dark'] .expenseInvoicesHub .search input{
+  background:transparent!important;
+  color:#e5e7eb!important;
+}
+html[data-theme='dark'] .expenseInvoicesHub .filterResultCount,
+html[data-theme='dark'] .expenseInvoicesHub .filterGrid label{color:#94a3b8!important}
+
+/* Status/action controls */
+html[data-theme='dark'] .expenseInvoicesHub .statusBtn,
+html[data-theme='dark'] .expenseInvoicesHub .iconBtn{
+  background:#172033!important;
+  border-color:#334155!important;
+  color:#cbd5e1!important;
+}
+html[data-theme='dark'] .expenseInvoicesHub .statusBtn:hover,
+html[data-theme='dark'] .expenseInvoicesHub .iconBtn:hover{
+  background:#1e293b!important;
+  color:#5eead4!important;
+}
+html[data-theme='dark'] .expenseInvoicesHub .dangerIcon{
+  background:#211318!important;
+  border-color:#7f1d1d!important;
+  color:#f87171!important;
+}
+html[data-theme='dark'] .expenseInvoicesHub .dangerIcon:hover{
+  background:#3f171b!important;
+  border-color:#b91c1c!important;
+  color:#fca5a5!important;
+}
+html[data-theme='dark'] .expenseInvoicesHub .statusBtn.active.warnBtn{background:#3a2812!important;color:#fbbf24!important;border-color:#92400e!important}
+html[data-theme='dark'] .expenseInvoicesHub .statusBtn.active.okBtn{background:#0b2f2b!important;color:#6ee7b7!important;border-color:#0f766e!important}
+html[data-theme='dark'] .expenseInvoicesHub .statusBtn.active.accountBtn{background:#172554!important;color:#93c5fd!important;border-color:#1d4ed8!important}
+
+/* Generated mobile cards and native master/order cards. */
+html[data-theme='dark'] .zenviaUnifiedMobileRow,
+html[data-theme='dark'] .masterMobileRow,
+html[data-theme='dark'] .ordersMobileRow,
+html[data-theme='dark'] .gmailImportRow{
+  background:#111827!important;
+  border-color:#263244!important;
+  color:#d7deea!important;
+}
+html[data-theme='dark'] .zenviaUnifiedMobileIdentity>strong,
+html[data-theme='dark'] .masterMobileRow strong,
+html[data-theme='dark'] .ordersMobileRow strong,
+html[data-theme='dark'] .gmailImportRow strong{color:#f8fafc!important}
+html[data-theme='dark'] .zenviaUnifiedMobileIdentity>small,
+html[data-theme='dark'] .zenviaUnifiedMobileMetrics small,
+html[data-theme='dark'] .masterMobileRow small,
+html[data-theme='dark'] .ordersMobileRow small,
+html[data-theme='dark'] .gmailImportRow small{color:#94a3b8!important}
+html[data-theme='dark'] .zenviaUnifiedMobileMetrics strong{color:#e5e7eb!important}
+
+/* Pagination */
+html[data-theme='dark'] .listPagination,
 html[data-theme='dark'] .gmailPagination{
   background:#0f172a!important;
   border-color:#263244!important;
   color:#94a3b8!important;
 }
+html[data-theme='dark'] .listPagination strong,
 html[data-theme='dark'] .gmailPagination strong{color:#e5e7eb!important}
+html[data-theme='dark'] .listPagination button,
+html[data-theme='dark'] .gmailPagination button{
+  background:#172033!important;
+  border-color:#334155!important;
+  color:#cbd5e1!important;
+}
+
+/* Gmail/history status chips. */
 html[data-theme='dark'] .gmailStatus.ignored{background:#172033!important;color:#94a3b8!important}
 html[data-theme='dark'] .gmailStatus.imported{background:#0b2f2b!important;color:#6ee7b7!important}
 html[data-theme='dark'] .gmailStatus.found{background:#3a2812!important;color:#fbbf24!important}
 html[data-theme='dark'] .gmailStatus.error{background:#3f171b!important;color:#fca5a5!important}
 
-/* Generic safety net for master/list controls that have explicit white backgrounds. */
-html[data-theme='dark'] .expenseInvoicesHub :is(.search,.card,.tableCard){
-  border-color:#263244;
-}
-
 @media(max-width:760px){
-  html[data-theme='dark'] .expenseHubNav{
-    background:#111827!important;
-  }
-  html[data-theme='dark'] .expenseHubNav>button{
-    min-width:0;
-  }
+  html[data-theme='dark'] .expenseInvoicesHub .expenseHubNav{background:#111827!important}
+  html[data-theme='dark'] .expenseInvoicesHub .expenseHubNav>button{min-width:0}
+  html[data-theme='dark'] .expenseInvoicesHub .tableCard{background:transparent!important;border-color:transparent!important}
 }
