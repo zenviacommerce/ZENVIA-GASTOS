@@ -46,6 +46,8 @@ function canEdit(v:unknown){const s=statusCode(v);return !s.includes('cancel')&&
 function toKg(value:unknown,unit:unknown){const n=Number(value);if(!Number.isFinite(n)||n<=0)return null;const u=clean(unit).toLowerCase();if(u==='g')return n/1000;if(u==='lbs'||u==='lb')return n*0.45359237;return n;}
 function orderWeightKg(order:any){const w=order?.raw_payload?.shipping_details?.measurement?.weight;return toKg(w?.value,w?.unit)||1;}
 function friendlyCarrier(code:unknown){const v=clean(code),l=v.toLowerCase();if(l.includes('correos'))return 'Correos';if(l.includes('mrw'))return 'MRW';return v||'Transportista';}
+function isBalearicAddress(address:any){const country=clean(address?.country_code).toUpperCase(),postal=clean(address?.postal_code).replace(/\s+/g,'');return country==='ES'&&/^07\d{3}$/.test(postal);}
+function isMrwOption(option:any){return `${option?.carrierCode||''} ${option?.carrierName||''} ${option?.name||''} ${option?.code||''}`.toLowerCase().includes('mrw');}
 
 // Sendcloud v3 only accepts state_province_code for these destination countries.
 // Spain is deliberately excluded: for ES the field must be omitted entirely.
@@ -84,7 +86,7 @@ Deno.serve(async(req:Request)=>{
 
     if(action==='shipping_options'){
       if(!canEdit(order.source_status)||order.sendcloud_parcel_id)return fail('Este pedido ya no admite una nueva etiqueta.',409);
-      let address=order.shipping_address||{};const sender=await senderAddress(),weightKg=orderWeightKg(order);
+      let address=order.shipping_address||{};const sender=await senderAddress(),weightKg=orderWeightKg(order),balearic=isBalearicAddress(address);
       const normalizedState=normalizeStateProvince(address.country_code,address.state_province_code);
       if(clean(address.state_province_code)!==clean(normalizedState)){
         const correctedAddress={...address,state_province_code:normalizedState};
@@ -110,7 +112,8 @@ Deno.serve(async(req:Request)=>{
         requestBody.from_address=fromAddress;
       }
       const {data}=await sendcloudJson('/shipping-options',{method:'POST',body:JSON.stringify(requestBody)});
-      return response({weightKg,options:(data?.data||[]).map(normalizeOption).filter((x:any)=>x.code),message:data?.message||null});
+      const options=(data?.data||[]).map(normalizeOption).filter((x:any)=>x.code).filter((x:any)=>!balearic||!isMrwOption(x));
+      return response({weightKg,options,message:balearic?'Destino Baleares: MRW oculto. Utiliza Correos.':data?.message||null});
     }
 
     if(action==='update_order'){
