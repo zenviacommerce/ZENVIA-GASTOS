@@ -1,12 +1,13 @@
 import { supabase } from './supabase';
 import { emailError, nameError, normalizeEmail } from './validation';
 
-export type MenuPermission = 'dashboard' | 'sales' | 'invoices' | 'clients' | 'products' | 'suppliers';
+export type MenuPermission = 'dashboard' | 'sales' | 'orders' | 'invoices' | 'clients' | 'products' | 'suppliers';
 export type AppRole = 'admin' | 'user';
 
 export const permissionOptions: Array<{ id: MenuPermission; label: string; description: string }> = [
   { id: 'dashboard', label: 'Resumen', description: 'Ver el cuadro de mando, métricas, IVA, resultados y filtros por periodo.' },
   { id: 'sales', label: 'Facturación', description: 'Gestionar facturas de venta, borradores, cobros, series, datos fiscales y registros IVA.' },
+  { id: 'orders', label: 'Pedidos', description: 'Gestionar pedidos de Amazon y Shopify, etiquetas, transportistas, impresión y seguimiento.' },
   { id: 'invoices', label: 'Gastos', description: 'Gestionar gastos, facturas recibidas, importación desde Gmail, filtros y exportaciones.' },
   { id: 'clients', label: 'Clientes', description: 'Consultar y mantener clientes, datos fiscales, contacto e histórico de facturación.' },
   { id: 'products', label: 'Productos', description: 'Consultar y mantener productos, precios de venta, costes e histórico.' },
