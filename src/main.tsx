@@ -19,4 +19,5 @@ import './modal-sticky-fix.css';
 import './sales-config.css';
 import './master-data.css';
 import './supplier-period.css';
+import './orders.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
