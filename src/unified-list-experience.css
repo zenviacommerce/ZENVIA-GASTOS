@@ -1,0 +1,97 @@
+/* Shared list/detail pattern: desktop table + side detail, mobile cards */
+.zenviaUnifiedMobileList{display:none}
+
+.zenviaDetailDrawerBackdrop{
+  display:flex!important;
+  align-items:stretch!important;
+  justify-content:flex-end!important;
+  padding:0!important;
+  background:#0f172a52!important;
+}
+.zenviaDetailDrawer{
+  width:min(620px,calc(100vw - 36px))!important;
+  max-width:none!important;
+  height:100%!important;
+  max-height:none!important;
+  margin:0!important;
+  border-radius:0!important;
+  padding:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  overflow-y:auto!important;
+  box-shadow:-18px 0 50px #0f172a26!important;
+  animation:zenviaUnifiedDrawerIn .2s ease;
+}
+.zenviaDetailDrawer>.modalHead{
+  position:sticky;
+  top:0;
+  z-index:5;
+  padding:24px 24px 18px;
+  background:var(--surface,#fff);
+  border-bottom:1px solid var(--border,#e2e8f0);
+}
+.zenviaDetailDrawer>:not(.modalHead):not(.modalActions){margin-left:24px;margin-right:24px}
+.zenviaDetailDrawer>.modalActions{
+  position:sticky;
+  bottom:0;
+  z-index:5;
+  margin-top:auto!important;
+  padding:14px 24px!important;
+  background:var(--surface,#fff);
+  border-top:1px solid var(--border,#e2e8f0);
+}
+@keyframes zenviaUnifiedDrawerIn{from{transform:translateX(24px);opacity:.7}to{transform:translateX(0);opacity:1}}
+
+html[data-theme='dark'] .zenviaDetailDrawer>.modalHead,
+html[data-theme='dark'] .zenviaDetailDrawer>.modalActions{background:#111827;border-color:#263244}
+
+/* Existing card-like lists should share the same density and radius */
+.gmailImportRow,
+.masterMobileRow,
+.ordersMobileRow{
+  border-radius:13px!important;
+}
+
+@media(max-width:760px){
+  .zenviaUnifiedListHost{overflow:visible!important;background:transparent!important;border:0!important;box-shadow:none!important}
+  .zenviaUnifiedDesktopTable{display:none!important}
+  .zenviaUnifiedMobileList{display:flex;flex-direction:column;gap:9px}
+  .zenviaUnifiedMobileRow{
+    width:100%;
+    border:1px solid var(--border,#e2e8f0);
+    padding:12px!important;
+    text-align:left;
+    cursor:pointer;
+    background:var(--surface,#fff);
+    color:var(--text,#0f172a);
+    border-radius:13px;
+    box-shadow:0 1px 2px #0f172a08;
+  }
+  .zenviaUnifiedMobileTop{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+  .zenviaUnifiedMobileIdentity{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .zenviaUnifiedMobileIdentity>strong{font-size:14px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zenviaUnifiedMobileIdentity>small{font-size:11px;color:var(--text-secondary,#64748b);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zenviaUnifiedMobileArrow{flex:0 0 auto;font-size:28px;line-height:1;color:var(--text-secondary,#94a3b8);font-weight:300}
+  .zenviaUnifiedMobileMetrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:11px;padding-top:10px;border-top:1px solid var(--border,#edf1f5)}
+  .zenviaUnifiedMobileMetrics>span{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .zenviaUnifiedMobileMetrics small{font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary,#64748b);font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zenviaUnifiedMobileMetrics strong{font-size:12px;color:var(--text,#0f172a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .zenviaDetailDrawer{width:calc(100vw - 12px)!important}
+  .zenviaDetailDrawer>.modalHead{padding:18px 16px 14px}
+  .zenviaDetailDrawer>:not(.modalHead):not(.modalActions){margin-left:16px;margin-right:16px}
+  .zenviaDetailDrawer>.modalActions{padding:12px 16px!important}
+  .zenviaDetailDrawer .salesDetailActions,
+  .zenviaDetailDrawer .detailActions{display:grid!important;grid-template-columns:1fr 1fr;gap:8px!important}
+  .zenviaDetailDrawer .salesDetailActions>button,
+  .zenviaDetailDrawer .detailActions>button{width:100%;justify-content:center}
+
+  html[data-theme='dark'] .zenviaUnifiedMobileRow{background:#111827;border-color:#263244}
+  html[data-theme='dark'] .zenviaUnifiedMobileMetrics{border-color:#263244}
+}
+
+@media(max-width:430px){
+  .zenviaUnifiedMobileMetrics{grid-template-columns:1fr 1fr}
+  .zenviaDetailDrawer .salesDetailActions,
+  .zenviaDetailDrawer .detailActions{grid-template-columns:1fr}
+}
