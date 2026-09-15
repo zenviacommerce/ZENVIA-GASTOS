@@ -7,11 +7,13 @@ export function InvoiceFilters({
   onChange,
   invoices,
   suppliers,
+  showSupplier = true,
 }: {
   filter: InvoiceFilter;
   onChange: (next: InvoiceFilter) => void;
   invoices: Invoice[];
   suppliers: Supplier[];
+  showSupplier?: boolean;
 }) {
   const quarters = quarterOptions(invoices);
 
@@ -20,11 +22,11 @@ export function InvoiceFilters({
       onChange({ ...filter, preset });
       return;
     }
-    onChange(filterForPreset(preset, filter.supplierId));
+    onChange(filterForPreset(preset, showSupplier ? filter.supplierId : ''));
   };
 
   const setDate = (key: 'from' | 'to', value: string) => {
-    onChange({ ...filter, preset: 'custom', [key]: value });
+    onChange({ ...filter, supplierId: showSupplier ? filter.supplierId : '', preset: 'custom', [key]: value });
   };
 
   const quick = [
@@ -56,12 +58,12 @@ export function InvoiceFilters({
           </optgroup>
         </select>
       </label>
-      <label>Proveedor
+      {showSupplier&&<label>Proveedor
         <select value={filter.supplierId} onChange={event => onChange({ ...filter, supplierId: event.target.value })}>
           <option value="">Todos los proveedores</option>
           {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
         </select>
-      </label>
+      </label>}
       <label>Desde
         <input type="date" value={filter.from} onChange={event => setDate('from', event.target.value)}/>
       </label>
