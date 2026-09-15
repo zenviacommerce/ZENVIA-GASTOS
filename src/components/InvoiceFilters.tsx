@@ -36,7 +36,7 @@ export function InvoiceFilters({
     ['all', 'Histórico'],
   ] as const;
 
-  return <section className="invoiceFilterPanel card">
+  return <section className={`invoiceFilterPanel card${showSupplier?'':' noSupplier'}`}>
     <div className="filterQuick" aria-label="Filtros rápidos de fecha">
       {quick.map(([value, label]) => <button
         key={value}
