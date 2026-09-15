@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Mail, MapPin, Pencil, Phone, Search, Trash2, UserRound, WalletCards, X } from 'lucide-react';
-import { addClient, deleteClient, loadClients, updateClient, type Client, type ClientInput } from '../services/sales';
+import { Building2, ChevronRight, CircleDollarSign, FileText, Mail, MapPin, Pencil, Phone, Search, Trash2, UserRound, WalletCards, X } from 'lucide-react';
+import { addClient, deleteClient, loadClients, loadSalesInvoices, updateClient, type Client, type ClientInput, type SalesInvoice } from '../services/sales';
 import { emailError, nameError, normalizeEmail, normalizePhone, normalizeTaxId, phoneError, taxIdError } from '../services/validation';
 import { errorMessage, showError, showSuccess } from '../services/toast';
 import '../sales.css';
@@ -8,6 +8,12 @@ import '../sales.css';
 const emptyClient = (): ClientInput => ({
   name: '', taxId: '', email: '', phone: '', addressLine1: '', addressLine2: '', postalCode: '', city: '', province: '', countryCode: 'ES', paymentTermsDays: 0, notes: '',
 });
+const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
+const EU_COUNTRIES=new Set(['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE']);
+
+type ClientFilter='all'|'pending'|'settled'|'es'|'eu';
+type ClientMetric={invoiced:number;pending:number;count:number;lastDate:string|null;recent:SalesInvoice[]};
 
 function ClientModal({open,client,onClose,onSaved}:{open:boolean;client:Client|null;onClose:()=>void;onSaved:()=>Promise<void>}) {
   const [form,setForm]=useState<ClientInput>(emptyClient());
@@ -71,41 +77,81 @@ function ClientModal({open,client,onClose,onSaved}:{open:boolean;client:Client|n
   </div></div>;
 }
 
+function ClientDrawer({client,metric,onClose,onEdit,onDelete,busy}:{client:Client;metric:ClientMetric;onClose:()=>void;onEdit:()=>void;onDelete:()=>void;busy:boolean}){
+  const address=[client.addressLine1,client.addressLine2,[client.postalCode,client.city].filter(Boolean).join(' '),client.province,client.countryCode].filter(Boolean).join(', ');
+  return <div className="masterDrawerBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}>
+    <aside className="masterDrawer">
+      <div className="masterDrawerHead"><div><div className="eyebrow">CLIENTE</div><h2>{client.name}</h2><p>{client.taxId||'CIF/NIF pendiente'}</p></div><button className="iconBtn" onClick={onClose}><X size={18}/></button></div>
+      <div className="masterDrawerKpis"><div><span>Facturado</span><strong>{money(metric.invoiced)}</strong></div><div><span>Pendiente</span><strong>{money(metric.pending)}</strong></div><div><span>Facturas</span><strong>{metric.count}</strong></div></div>
+      <section className="masterDrawerSection"><h3>Datos del cliente</h3><div className="masterInfoList">
+        <div><span><Building2 size={15}/> Fiscal</span><strong>{client.taxId||'Sin CIF/NIF'}</strong></div>
+        <div><span><Mail size={15}/> Email</span><strong>{client.email||'Sin email'}</strong></div>
+        <div><span><Phone size={15}/> Teléfono</span><strong>{client.phone||'Sin teléfono'}</strong></div>
+        <div><span><MapPin size={15}/> Dirección</span><strong>{address||'Sin dirección'}</strong></div>
+        <div><span><WalletCards size={15}/> Pago</span><strong>{client.paymentTermsDays?`${client.paymentTermsDays} días`:'Al contado'}</strong></div>
+      </div></section>
+      {client.notes&&<section className="masterDrawerSection"><h3>Notas</h3><p className="masterNotes">{client.notes}</p></section>}
+      <section className="masterDrawerSection"><div className="masterSectionHead"><h3>Últimas facturas</h3><span>{metric.lastDate?`Última ${dateLabel(metric.lastDate)}`:'Sin facturas'}</span></div>
+        {metric.recent.length?<div className="masterRecentList">{metric.recent.map(invoice=><div key={invoice.id}><div><strong>{invoice.invoiceNumber||'Borrador'}</strong><span>{dateLabel(invoice.issueDate)} · {invoice.status==='draft'?'Borrador':'Emitida'}</span></div><b>{money(invoice.totalAmount)}</b></div>)}</div>:<div className="masterEmptyMini">Todavía no tiene facturas.</div>}
+      </section>
+      <div className="masterDrawerActions"><button className="secondary" onClick={onEdit}><Pencil size={16}/> Editar</button><button className="secondary dangerText" disabled={busy} onClick={onDelete}><Trash2 size={16}/> Eliminar</button></div>
+    </aside>
+  </div>;
+}
+
 export function Clients(){
   const [clients,setClients]=useState<Client[]>([]);
+  const [invoices,setInvoices]=useState<SalesInvoice[]>([]);
   const [loading,setLoading]=useState(true);
   const [query,setQuery]=useState('');
+  const [filter,setFilter]=useState<ClientFilter>('all');
   const [editing,setEditing]=useState<Client|null>(null);
+  const [selected,setSelected]=useState<Client|null>(null);
   const [modal,setModal]=useState(false);
   const [error,setError]=useState('');
   const [busyId,setBusyId]=useState<string|null>(null);
 
-  const refresh=async()=>{setLoading(true);try{setClients(await loadClients());setError('')}catch(e){setError(errorMessage(e,'No se pudieron cargar los clientes.'))}finally{setLoading(false)}};
+  const refresh=async()=>{setLoading(true);try{const [nextClients,nextInvoices]=await Promise.all([loadClients(),loadSalesInvoices()]);setClients(nextClients);setInvoices(nextInvoices);setSelected(current=>current?nextClients.find(c=>c.id===current.id)||null:null);setError('')}catch(e){setError(errorMessage(e,'No se pudieron cargar los clientes.'))}finally{setLoading(false)}};
   useEffect(()=>{void refresh()},[]);
-  const filtered=useMemo(()=>{const q=query.trim().toLowerCase();return !q?clients:clients.filter(c=>[c.name,c.taxId||'',c.email||'',c.city||''].some(v=>v.toLowerCase().includes(q)))},[clients,query]);
+
+  const metrics=useMemo(()=>{
+    const map=new Map<string,ClientMetric>();
+    for(const client of clients)map.set(client.id,{invoiced:0,pending:0,count:0,lastDate:null,recent:[]});
+    const ordered=[...invoices].sort((a,b)=>b.issueDate.localeCompare(a.issueDate));
+    for(const invoice of ordered){
+      const metric=map.get(invoice.clientId);if(!metric)continue;
+      if(invoice.status!=='draft'){metric.invoiced+=invoice.totalAmount;metric.count+=1;if(!metric.lastDate||invoice.issueDate>metric.lastDate)metric.lastDate=invoice.issueDate;}
+      if(invoice.invoiceType==='standard'&&!['draft','paid','rectified'].includes(invoice.status))metric.pending+=Math.max(0,invoice.totalAmount-invoice.paidAmount);
+      if(metric.recent.length<5)metric.recent.push(invoice);
+    }
+    return map;
+  },[clients,invoices]);
+
+  const filtered=useMemo(()=>{const q=query.trim().toLowerCase();return clients.filter(c=>{
+    const metric=metrics.get(c.id)!;
+    const matchesQuery=!q||[c.name,c.taxId||'',c.email||'',c.phone||'',c.city||''].some(v=>v.toLowerCase().includes(q));
+    const country=(c.countryCode||'ES').toUpperCase();
+    const matchesFilter=filter==='all'||(filter==='pending'&&metric.pending>0.005)||(filter==='settled'&&metric.pending<=0.005)||(filter==='es'&&country==='ES')||(filter==='eu'&&country!=='ES'&&EU_COUNTRIES.has(country));
+    return matchesQuery&&matchesFilter;
+  })},[clients,metrics,query,filter]);
+
+  const totals=useMemo(()=>({invoiced:clients.reduce((sum,c)=>sum+(metrics.get(c.id)?.invoiced||0),0),pending:clients.reduce((sum,c)=>sum+(metrics.get(c.id)?.pending||0),0)}),[clients,metrics]);
   const openNew=()=>{setEditing(null);setModal(true)};
-  const openEdit=(client:Client)=>{setEditing(client);setModal(true)};
+  const openEdit=(client:Client)=>{setSelected(null);setEditing(client);setModal(true)};
   const remove=async(client:Client)=>{
     if(!window.confirm(`¿Eliminar el cliente “${client.name}”?`))return;
     setBusyId(client.id);setError('');
-    try{await deleteClient(client.id);await refresh();showSuccess('Cliente eliminado correctamente.')}catch(e){const message=errorMessage(e,'No se pudo eliminar el cliente.');setError(message);showError(message)}finally{setBusyId(null)}
+    try{await deleteClient(client.id);setSelected(null);await refresh();showSuccess('Cliente eliminado correctamente.')}catch(e){const message=errorMessage(e,'No se pudo eliminar el cliente.');setError(message);showError(message)}finally{setBusyId(null)}
   };
 
-  return <div className="page">
-    <div className="pageHead"><div><div className="eyebrow">VENTAS</div><h1>Clientes</h1><p>Datos fiscales, contacto y condiciones de pago para la facturación.</p></div><button className="primary" onClick={openNew}>+ Cliente</button></div>
-    <div className="toolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente, CIF, email o ciudad…"/></div><span>{filtered.length} cliente{filtered.length===1?'':'s'}</span></div>
+  return <div className="page masterPage">
+    <div className="pageHead"><div><div className="eyebrow">VENTAS</div><h1>Clientes</h1><p>Directorio comercial, facturación acumulada y situación de cobro.</p></div><button className="primary" onClick={openNew}>+ Cliente</button></div>
+    <div className="stats masterStats"><div className="stat"><div className="statIcon"><UserRound/></div><div><span>Clientes activos</span><strong>{clients.length}</strong><small>Registrados en el maestro</small></div></div><div className="stat"><div className="statIcon"><CircleDollarSign/></div><div><span>Facturado</span><strong>{money(totals.invoiced)}</strong><small>Facturas emitidas</small></div></div><div className="stat"><div className="statIcon"><WalletCards/></div><div><span>Pendiente de cobro</span><strong>{money(totals.pending)}</strong><small>Saldo comercial abierto</small></div></div></div>
+    <div className="masterToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente, CIF, email, teléfono o ciudad…"/></div><div className="masterFilters"><button className={filter==='all'?'active':''} onClick={()=>setFilter('all')}>Todos</button><button className={filter==='pending'?'active':''} onClick={()=>setFilter('pending')}>Con pendiente</button><button className={filter==='settled'?'active':''} onClick={()=>setFilter('settled')}>Sin pendiente</button><button className={filter==='es'?'active':''} onClick={()=>setFilter('es')}>España</button><button className={filter==='eu'?'active':''} onClick={()=>setFilter('eu')}>UE</button></div></div>
     {error&&<div className="errorBox">{error}</div>}
-    <div className="clientGrid">
-      {loading?<div className="card emptyState large">Cargando clientes…</div>:filtered.length?filtered.map(client=><article className="card clientCard" key={client.id}>
-        <div className="clientCardTop"><div className="clientIcon"><Building2/></div><div className="supplierActions"><button className="iconAction" onClick={()=>openEdit(client)} title="Editar cliente"><Pencil size={16}/></button><button className="iconAction danger" disabled={busyId===client.id} onClick={()=>remove(client)} title="Eliminar cliente"><Trash2 size={16}/></button></div></div>
-        <h3>{client.name}</h3>
-        <strong className="clientTax">{client.taxId||'CIF/NIF pendiente'}</strong>
-        {client.email&&<span><Mail size={15}/>{client.email}</span>}
-        {client.phone&&<span><Phone size={15}/>{client.phone}</span>}
-        {(client.city||client.addressLine1)&&<span><MapPin size={15}/>{[client.addressLine1,client.postalCode,client.city].filter(Boolean).join(' · ')}</span>}
-        <small>{client.paymentTermsDays?`Pago a ${client.paymentTermsDays} días`:'Pago al contado'}</small>
-      </article>):<div className="card emptyState large">Todavía no hay clientes. Crea el primero para empezar a facturar.</div>}
-    </div>
+    <section className="card tableCard masterTableCard">{loading?<div className="emptyState large">Cargando clientes…</div>:filtered.length?<table className="masterTable"><thead><tr><th>Cliente</th><th>CIF/NIF</th><th>País</th><th>Contacto</th><th className="right">Facturado</th><th className="right">Pendiente</th><th>Última factura</th><th></th></tr></thead><tbody>{filtered.map(client=>{const metric=metrics.get(client.id)!;return <tr key={client.id} className="clickableRow" onClick={()=>setSelected(client)}><td><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{client.name}</strong><small>{client.city||'Sin ciudad'}</small></div></div></td><td>{client.taxId||<span className="muted">Pendiente</span>}</td><td><span className="masterCountry">{client.countryCode||'ES'}</span></td><td><div className="masterContactCell"><span>{client.email||'—'}</span><small>{client.phone||''}</small></div></td><td className="right"><strong>{money(metric.invoiced)}</strong></td><td className="right"><strong className={metric.pending>0.005?'masterPending':''}>{money(metric.pending)}</strong></td><td>{dateLabel(metric.lastDate)}</td><td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay clientes para los filtros seleccionados.</div>}</section>
+    {!loading&&filtered.length>0&&<div className="masterMobileList">{filtered.map(client=>{const metric=metrics.get(client.id)!;return <button className="card masterMobileRow" key={client.id} onClick={()=>setSelected(client)}><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{client.name}</strong><small>{client.taxId||'CIF/NIF pendiente'} · {client.countryCode||'ES'}</small></div></div><div className="masterMobileAmounts"><span>Facturado <strong>{money(metric.invoiced)}</strong></span><span>Pendiente <strong className={metric.pending>0.005?'masterPending':''}>{money(metric.pending)}</strong></span></div><ChevronRight size={18}/></button>})}</div>}
     <ClientModal open={modal} client={editing} onClose={()=>{setModal(false);setEditing(null)}} onSaved={refresh}/>
+    {selected&&<ClientDrawer client={selected} metric={metrics.get(selected.id)||{invoiced:0,pending:0,count:0,lastDate:null,recent:[]}} onClose={()=>setSelected(null)} onEdit={()=>openEdit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>} 
   </div>;
 }
