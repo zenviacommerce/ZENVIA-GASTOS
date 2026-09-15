@@ -60,7 +60,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
   const activeCount = users.filter(user => user.active).length;
   return <div className="page adminPage">
     <div className="pageHead">
-      <div><div className="eyebrow">ADMINISTRACIÓN</div><h1>Administración</h1><p>Gestiona usuarios, permisos y revisa la actividad realizada dentro de ZENVIA Gastos.</p></div>
+      <div><div className="eyebrow">ADMINISTRACIÓN</div><h1>Administración</h1><p>Gestiona usuarios, permisos y revisa la actividad realizada dentro de ZENVIA Gestión.</p></div>
       {tab==='users'&&<button className="primary" onClick={() => setEditor({ user: null })}><UserRoundPlus size={17}/> Nuevo usuario</button>}
     </div>
 
@@ -78,19 +78,24 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
 
       {error && <div className="errorBox adminError">{error}</div>}
       <section className="card adminUsersCard">
-        <div className="adminUsersHead"><div><h3>Accesos de ZENVIA COMMERCE</h3><p>Los permisos se aplican también en la base de datos, no solo al menú.</p></div>{loading && <span className="adminLoading">Actualizando…</span>}</div>
+        <div className="adminUsersHead"><div><h3>Accesos de ZENVIA COMMERCE</h3><p>Los permisos corresponden a los módulos actuales y se aplican también al acceso a los datos.</p></div>{loading && <span className="adminLoading">Actualizando…</span>}</div>
         <div className="adminUsersList">
-          {users.map(user => <div className="adminUserRow" key={user.userId}>
-            <div className="adminAvatar">{(user.fullName || user.email).slice(0, 2).toUpperCase()}</div>
-            <div className="adminUserIdentity"><strong>{user.fullName || 'Sin nombre'}</strong><span>{user.email}</span><small>Último acceso: {formatDate(user.lastSignInAt)}</small></div>
-            <div className="adminRole"><span className={user.role === 'admin' ? 'adminRolePill admin' : 'adminRolePill'}>{user.role === 'admin' ? 'Administrador' : 'Usuario'}</span><span className={user.active ? 'adminStatus active' : 'adminStatus'}>{user.active ? 'Activo' : 'Sin acceso'}</span></div>
-            <div className="adminPermissionChips">{(user.role === 'admin' ? permissionOptions.map(option => option.id) : user.permissions).map(permission => <span key={permission}>{permissionOptions.find(option => option.id === permission)?.label || permission}</span>)}</div>
-            <div className="adminRowActions">
-              <button className="iconAction" title="Editar usuario" onClick={() => setEditor({ user })} disabled={busyId === user.userId}><Pencil size={16}/></button>
-              {user.role !== 'admin' && <button className={user.active ? 'adminAccessButton dangerText' : 'adminAccessButton'} onClick={() => toggleActive(user)} disabled={busyId === user.userId}>{user.active ? 'Desactivar' : 'Activar'}</button>}
-              {user.role !== 'admin' && <button className="iconAction danger" title="Eliminar usuario" onClick={() => remove(user)} disabled={busyId === user.userId}><Trash2 size={16}/></button>}
-            </div>
-          </div>)}
+          {users.map(user => {
+            const permissionLabels = user.role === 'admin'
+              ? [...permissionOptions.map(option => option.label), 'Administración']
+              : user.permissions.map(permission => permissionOptions.find(option => option.id === permission)?.label || permission);
+            return <div className="adminUserRow" key={user.userId}>
+              <div className="adminAvatar">{(user.fullName || user.email).slice(0, 2).toUpperCase()}</div>
+              <div className="adminUserIdentity"><strong>{user.fullName || 'Sin nombre'}</strong><span>{user.email}</span><small>Último acceso: {formatDate(user.lastSignInAt)}</small></div>
+              <div className="adminRole"><span className={user.role === 'admin' ? 'adminRolePill admin' : 'adminRolePill'}>{user.role === 'admin' ? 'Administrador' : 'Usuario'}</span><span className={user.active ? 'adminStatus active' : 'adminStatus'}>{user.active ? 'Activo' : 'Sin acceso'}</span></div>
+              <div className="adminPermissionChips">{permissionLabels.map(label => <span key={label}>{label}</span>)}</div>
+              <div className="adminRowActions">
+                <button className="iconAction" title="Editar usuario" onClick={() => setEditor({ user })} disabled={busyId === user.userId}><Pencil size={16}/></button>
+                {user.role !== 'admin' && <button className={user.active ? 'adminAccessButton dangerText' : 'adminAccessButton'} onClick={() => toggleActive(user)} disabled={busyId === user.userId}>{user.active ? 'Desactivar' : 'Activar'}</button>}
+                {user.role !== 'admin' && <button className="iconAction danger" title="Eliminar usuario" onClick={() => remove(user)} disabled={busyId === user.userId}><Trash2 size={16}/></button>}
+              </div>
+            </div>;
+          })}
           {!loading && !users.length && <div className="emptyState">No hay usuarios configurados.</div>}
         </div>
       </section>
@@ -100,7 +105,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
   </div>;
 }
 
-const moduleLabels: Record<string,string>={invoices:'Facturas',products:'Productos',suppliers:'Proveedores',gmail:'Gmail',admin:'Administración',dashboard:'Resumen'};
+const moduleLabels: Record<string,string>={dashboard:'Resumen',sales:'Facturación',invoices:'Gastos',clients:'Clientes',products:'Productos',suppliers:'Proveedores',gmail:'Gastos · Gmail',admin:'Administración'};
 const actionLabels: Record<string,string>={create:'Creación',update:'Modificación',delete:'Eliminación',import:'Importación',ignore:'Ignorado',recover:'Recuperado',error:'Error',status_change:'Cambio de estado',price_update:'Cambio de precio',export:'Exportación',create_user:'Alta de usuario',update_user:'Cambio de usuario',activate_user:'Activación',deactivate_user:'Desactivación',delete_user:'Baja de usuario'};
 
 function AuditPanel({users,currentUserId}:{users:ManagedUser[];currentUserId:string}){
@@ -205,7 +210,7 @@ function UserEditor({ user, onClose, onSaved }: { user: ManagedUser | null; onCl
 
   return <div className="modalBackdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <form className="modal adminUserModal" onSubmit={submit}>
-      <div className="modalHead"><div><h3>{editing ? 'Editar acceso' : 'Nuevo usuario'}</h3><p>{isAdmin ? 'Administrador principal de ZENVIA Gastos.' : 'Configura su acceso a los módulos de la aplicación.'}</p></div><button type="button" onClick={onClose}><X size={18}/></button></div>
+      <div className="modalHead"><div><h3>{editing ? 'Editar acceso' : 'Nuevo usuario'}</h3><p>{isAdmin ? 'Administrador principal de ZENVIA Gestión.' : 'Configura su acceso a los módulos actuales de la aplicación.'}</p></div><button type="button" onClick={onClose}><X size={18}/></button></div>
       <div className="stackForm adminUserFields">
         <label>Nombre<input required value={fullName} onChange={event => setFullName(event.target.value)} placeholder="Nombre y apellidos"/></label>
         <label>Email<input required type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="usuario@zenviacommerce.com"/></label>
@@ -213,12 +218,12 @@ function UserEditor({ user, onClose, onSaved }: { user: ManagedUser | null; onCl
       </div>
 
       {!isAdmin && <>
-        <div className="adminPermissionsTitle"><strong>Acceso al menú</strong><span>Selecciona las áreas que podrá utilizar.</span></div>
+        <div className="adminPermissionsTitle"><strong>Acceso a módulos</strong><span>Selecciona las áreas que podrá utilizar. Administración está reservada a administradores.</span></div>
         <div className="adminPermissionGrid">{permissionOptions.map(option => <label className={permissions.includes(option.id) ? 'adminPermissionOption selected' : 'adminPermissionOption'} key={option.id}><input type="checkbox" checked={permissions.includes(option.id)} onChange={() => togglePermission(option.id)}/><span><strong>{option.label}</strong><small>{option.description}</small></span></label>)}</div>
         {editing && <label className="adminActiveToggle"><input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)}/><span><strong>Usuario activo</strong><small>Si lo desactivas, podrá autenticarse pero no acceder a datos ni módulos.</small></span></label>}
       </>}
 
-      {isAdmin && <div className="adminLockedNotice"><ShieldCheck size={18}/><div><strong>Acceso total</strong><span>El administrador principal siempre conserva todos los permisos y no puede desactivarse desde la aplicación.</span></div></div>}
+      {isAdmin && <div className="adminLockedNotice"><ShieldCheck size={18}/><div><strong>Acceso total</strong><span>El administrador principal conserva Resumen, Facturación, Gastos, Clientes, Productos, Proveedores y Administración, y no puede desactivarse desde la aplicación.</span></div></div>}
       {error && <div className="errorBox">{error}</div>}
       <div className="modalActions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear usuario'}</button></div>
     </form>
