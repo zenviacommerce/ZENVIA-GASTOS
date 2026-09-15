@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Banknote, CalendarDays, CheckCircle2, Download, Eye, FileCheck2, FilePenLine,
-  Mail, PackageSearch, Pencil, Plus, Printer, ReceiptText, RotateCcw, Search, Settings2,
+  ImagePlus, Mail, PackageSearch, Pencil, Plus, Printer, ReceiptText, RotateCcw, Search, Settings2,
   Trash2, UserRound, WalletCards, X,
 } from 'lucide-react';
 import {
-  addSalesPayment, createSalesInvoiceDraft, downloadSalesInvoicePdf, ensureSalesSeries,
+  addSalesPayment, createSalesInvoiceDraft, ensureSalesSeries,
   issueSalesInvoice, loadBusinessSettings, loadClients, loadSalesInvoices,
   saveBusinessSettings, updateSalesInvoiceDraft,
   type BusinessSettings, type Client, type SalesInvoice, type SalesInvoiceDraftInput,
@@ -15,7 +15,8 @@ import { loadBillableProducts, type BillableProduct } from '../services/billable
 import { createRectifyingInvoice } from '../services/salesRectifying';
 import { deleteSalesInvoiceDraftSafe } from '../services/salesDraftDelete';
 import { deleteReversibleSalesInvoice, reopenSalesInvoice } from '../services/salesReversible';
-import { printSalesInvoicePdf } from '../services/salesInvoicePdf';
+import { downloadSalesInvoicePdf, printSalesInvoicePdf } from '../services/salesInvoicePdf';
+import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, validateCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 import { errorMessage, showError, showSuccess } from '../services/toast';
 import { ProductCatalogPicker } from '../components/ProductCatalogPicker';
 import { SendInvoiceModal } from '../components/SendInvoiceModal';
@@ -157,21 +158,41 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
   </div></div>;
 }
 
-function BusinessModal({open,settings,onClose,onSaved}:{open:boolean;settings:BusinessSettings;onClose:()=>void;onSaved:(settings:BusinessSettings)=>Promise<void>}){
+function BusinessModal({open,settings,branding,onClose,onSaved}:{open:boolean;settings:BusinessSettings;branding:CompanyBranding;onClose:()=>void;onSaved:(settings:BusinessSettings,branding:CompanyBranding)=>Promise<void>}){
   const [form,setForm]=useState(settings);const [busy,setBusy]=useState(false);const [error,setError]=useState('');
-  useEffect(()=>{if(open){setForm(settings);setError('');}},[open,settings]); if(!open)return null;
+  const [logoFile,setLogoFile]=useState<File|null>(null);const [logoPreview,setLogoPreview]=useState<string|null>(branding.logoDataUrl||null);const [removeLogo,setRemoveLogo]=useState(false);
+  useEffect(()=>{if(open){setForm(settings);setError('');setLogoFile(null);setLogoPreview(branding.logoDataUrl||null);setRemoveLogo(false);}},[open,settings,branding]); if(!open)return null;
   const set=(key:keyof BusinessSettings,value:string)=>setForm(current=>({...current,[key]:value}));
+  const chooseLogo=(file?:File)=>{
+    if(!file)return;
+    try{
+      validateCompanyLogo(file);
+      setLogoFile(file);setRemoveLogo(false);setError('');
+      const reader=new FileReader();reader.onload=()=>setLogoPreview(typeof reader.result==='string'?reader.result:null);reader.readAsDataURL(file);
+    }catch(e){const message=errorMessage(e,'No se pudo seleccionar el logotipo.');setError(message);showError(message);}
+  };
+  const clearLogo=()=>{setLogoFile(null);setLogoPreview(null);setRemoveLogo(true);};
   const save=async()=>{
     if(!form.legalName.trim()||!form.taxId?.trim()||!form.addressLine1?.trim()||!form.postalCode?.trim()||!form.city?.trim()){setError('Completa razón social, CIF/NIF, dirección, código postal y ciudad.');return;}
     setBusy(true);setError('');
-    try{await saveBusinessSettings(form);await onSaved(form);showSuccess('Datos fiscales guardados correctamente.');onClose();}
+    try{
+      await saveBusinessSettings(form);
+      let nextBranding=branding;
+      if(removeLogo)nextBranding=await removeCompanyLogo(branding.logoPath);
+      else if(logoFile)nextBranding=await uploadCompanyLogo(logoFile,branding.logoPath);
+      await onSaved(form,nextBranding);showSuccess('Datos fiscales y branding guardados correctamente.');onClose();
+    }
     catch(e){const message=errorMessage(e,'No se pudieron guardar los datos fiscales.');setError(message);showError(message);}
     finally{setBusy(false);}
   };
   return <div className="modalBackdrop"><div className="modal salesClientModal polishedModal">
-    <div className="modalHead salesModalHead"><div><div className="eyebrow">CONFIGURACIÓN</div><h3>Datos fiscales de ZENVIA</h3><p>Se congelan dentro de cada factura cuando la emites.</p></div><button onClick={onClose}><X/></button></div>
+    <div className="modalHead salesModalHead"><div><div className="eyebrow">CONFIGURACIÓN</div><h3>Datos fiscales de ZENVIA</h3><p>Datos del emisor y logotipo utilizados en los PDF.</p></div><button onClick={onClose}><X/></button></div>
     <section className="salesFormSection"><div className="salesSectionTitle"><ReceiptText size={18}/><div><strong>Identificación fiscal</strong><span>Datos que aparecerán como emisor</span></div></div><div className="salesFormGrid">
       <label className="salesSpan2">Razón social *<input value={form.legalName} onChange={e=>set('legalName',e.target.value)}/></label><label>CIF/NIF *<input value={form.taxId||''} onChange={e=>set('taxId',e.target.value)}/></label><label>Nombre comercial<input value={form.tradeName||''} onChange={e=>set('tradeName',e.target.value)}/></label>
+    </div></section>
+    <section className="salesFormSection"><div className="salesSectionTitle"><ImagePlus size={18}/><div><strong>Logotipo de empresa</strong><span>Se mostrará en borradores, facturas, rectificativas, descargas, impresión y envíos</span></div></div><div className="companyLogoEditor">
+      <div className={`companyLogoPreview ${logoPreview?'hasLogo':''}`}>{logoPreview?<img src={logoPreview} alt="Logotipo de empresa"/>:<div><ImagePlus size={25}/><span>Sin logotipo</span></div>}</div>
+      <div className="companyLogoControls"><label className="secondary companyLogoUpload"><ImagePlus size={16}/>{logoPreview?'Cambiar logotipo':'Subir logotipo'}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>chooseLogo(e.target.files?.[0])}/></label>{logoPreview&&<button className="secondary dangerText" type="button" onClick={clearLogo}><Trash2 size={16}/> Quitar logotipo</button>}<small>PNG, JPG o WebP · máximo 5 MB. Para mejor resultado utiliza fondo transparente y formato horizontal.</small></div>
     </div></section>
     <section className="salesFormSection"><div className="salesSectionTitle"><UserRound size={18}/><div><strong>Dirección y contacto</strong><span>Información de contacto visible en factura</span></div></div><div className="salesFormGrid">
       <label className="salesSpan2">Dirección *<input value={form.addressLine1||''} onChange={e=>set('addressLine1',e.target.value)}/></label><label>Código postal *<input value={form.postalCode||''} onChange={e=>set('postalCode',e.target.value)}/></label><label>Ciudad *<input value={form.city||''} onChange={e=>set('city',e.target.value)}/></label><label>Provincia<input value={form.province||''} onChange={e=>set('province',e.target.value)}/></label><label>País<input maxLength={2} value={form.countryCode} onChange={e=>set('countryCode',e.target.value.toUpperCase())}/></label><label>Email<input type="email" value={form.email||''} onChange={e=>set('email',e.target.value)}/></label><label>Teléfono<input value={form.phone||''} onChange={e=>set('phone',e.target.value)}/></label>
@@ -213,14 +234,15 @@ export function SalesInvoices(){
   const [clients,setClients]=useState<Client[]>([]);
   const [products,setProducts]=useState<BillableProduct[]>([]);
   const [settings,setSettings]=useState<BusinessSettings>({legalName:'ZENVIA COMMERCE SL',countryCode:'ES'});
+  const [branding,setBranding]=useState<CompanyBranding>({ownerId:'',logoPath:null,logoDataUrl:null});
   const [query,setQuery]=useState('');const [status,setStatus]=useState('all');const [loading,setLoading]=useState(true);const [error,setError]=useState('');
   const [modal,setModal]=useState(false);const [editing,setEditing]=useState<SalesInvoice|null>(null);const [detail,setDetail]=useState<SalesInvoice|null>(null);const [businessModal,setBusinessModal]=useState(false);const [paymentInvoice,setPaymentInvoice]=useState<SalesInvoice|null>(null);const [sendInvoice,setSendInvoice]=useState<SalesInvoice|null>(null);const [busyId,setBusyId]=useState<string|null>(null);
   const refresh=async()=>{
     setLoading(true);
     try{
       await ensureSalesSeries(new Date().getFullYear());
-      const [nextInvoices,nextClients,nextSettings,nextProducts]=await Promise.all([loadSalesInvoices(),loadClients(),loadBusinessSettings(),loadBillableProducts()]);
-      setInvoices(nextInvoices);setClients(nextClients);setSettings(nextSettings);setProducts(nextProducts);
+      const [nextInvoices,nextClients,nextSettings,nextProducts,nextBranding]=await Promise.all([loadSalesInvoices(),loadClients(),loadBusinessSettings(),loadBillableProducts(),loadCompanyBranding()]);
+      setInvoices(nextInvoices);setClients(nextClients);setSettings(nextSettings);setProducts(nextProducts);setBranding(nextBranding);
       setDetail(current=>current?nextInvoices.find(item=>item.id===current.id)||null:null);setError('');
     }catch(e){setError(errorMessage(e,'No se pudo cargar la facturación.'));}
     finally{setLoading(false);}
@@ -259,8 +281,8 @@ export function SalesInvoices(){
     }catch(e){const text=errorMessage(e,issued?'No se pudo eliminar la factura.':'No se pudo eliminar el borrador.');setError(text);showError(text);}
     finally{setBusyId(null);}
   };
-  const pdf=(invoice:SalesInvoice)=>{try{downloadSalesInvoicePdf(invoice,settings);showSuccess('PDF generado correctamente.');}catch(e){const message=errorMessage(e,'No se pudo generar el PDF.');setError(message);showError(message);}};
-  const printPdf=(invoice:SalesInvoice)=>{try{printSalesInvoicePdf(invoice,settings);showSuccess('PDF preparado para imprimir.');}catch(e){const message=errorMessage(e,'No se pudo abrir la impresión del PDF.');setError(message);showError(message);}};
+  const pdf=(invoice:SalesInvoice)=>{try{downloadSalesInvoicePdf(invoice,settings,branding);showSuccess('PDF generado correctamente.');}catch(e){const message=errorMessage(e,'No se pudo generar el PDF.');setError(message);showError(message);}};
+  const printPdf=(invoice:SalesInvoice)=>{try{printSalesInvoicePdf(invoice,settings,branding);showSuccess('PDF preparado para imprimir.');}catch(e){const message=errorMessage(e,'No se pudo abrir la impresión del PDF.');setError(message);showError(message);}};
   const rectify=async(invoice:SalesInvoice)=>{if(!window.confirm(`Se creará una rectificativa en borrador que anula ${invoice.invoiceNumber}. ¿Continuar?`))return;setBusyId(invoice.id);setError('');try{const id=await createRectifyingInvoice(invoice.id);const next=await loadSalesInvoices();setInvoices(next);const draft=next.find(item=>item.id===id)||null;setDetail(null);showSuccess('Rectificativa creada en borrador.');if(draft){setEditing(draft);setModal(true);}}catch(e){const message=errorMessage(e,'No se pudo crear la rectificativa.');setError(message);showError(message);}finally{setBusyId(null);}};
 
   return <div className="page">
@@ -275,8 +297,8 @@ export function SalesInvoices(){
     {!products.length&&clients.length>0&&<div className="card alertCard"><div className="trendIcon"><PackageSearch/></div><div><h3>Catálogo comercial</h3><p>Puedes crear facturas con conceptos libres. Cuando tengas productos activos aparecerán en el buscador del editor de factura.</p></div></div>}
     <InvoiceModal open={modal} invoice={editing} clients={clients} products={products} onClose={()=>{setModal(false);setEditing(null);}} onSaved={refresh}/>
     <InvoiceDetail invoice={detail} settings={settings} onClose={()=>setDetail(null)} onPdf={pdf} onPrint={printPdf} onPayment={setPaymentInvoice} onSend={setSendInvoice} onRectify={rectify} onEdit={edit} onReopen={reopenForEdit} onDelete={remove}/>
-    <BusinessModal open={businessModal} settings={settings} onClose={()=>setBusinessModal(false)} onSaved={async next=>{setSettings(next);await refresh();}}/>
+    <BusinessModal open={businessModal} settings={settings} branding={branding} onClose={()=>setBusinessModal(false)} onSaved={async(next,nextBranding)=>{setSettings(next);setBranding(nextBranding);await refresh();}}/>
     <PaymentModal invoice={paymentInvoice} onClose={()=>setPaymentInvoice(null)} onSaved={refresh}/>
-    <SendInvoiceModal invoice={sendInvoice} settings={settings} onClose={()=>setSendInvoice(null)} onSent={async()=>{await refresh();showSuccess('Factura enviada por Gmail correctamente.');}}/>
+    <SendInvoiceModal invoice={sendInvoice} settings={settings} branding={branding} onClose={()=>setSendInvoice(null)} onSent={async()=>{await refresh();showSuccess('Factura enviada por Gmail correctamente.');}}/>
   </div>;
 }
