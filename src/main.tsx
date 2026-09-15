@@ -21,5 +21,6 @@ import './master-data.css';
 import './supplier-period.css';
 import './orders.css';
 import './orders-status.css';
+import './orders-edit.css';
 import './dashboard-summary.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
