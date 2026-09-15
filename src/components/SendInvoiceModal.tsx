@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Mail, Send, X } from 'lucide-react';
 import type { BusinessSettings, SalesInvoice } from '../services/sales';
 import { markSalesInvoiceSent } from '../services/sales';
-import { createSalesInvoicePdfBlob, salesInvoicePdfFilename } from '../services/salesInvoicePdf';
+import { createSalesInvoicePdfBlob, salesInvoicePdfFilename, type InvoicePdfBranding } from '../services/salesInvoicePdf';
 import { sendInvoiceViaGmail } from '../services/gmailSender';
 import { errorMessage, showError } from '../services/toast';
 
-export function SendInvoiceModal({invoice,settings,onClose,onSent}:{invoice:SalesInvoice|null;settings:BusinessSettings;onClose:()=>void;onSent:()=>Promise<void>}){
+export function SendInvoiceModal({invoice,settings,branding,onClose,onSent}:{invoice:SalesInvoice|null;settings:BusinessSettings;branding?:InvoicePdfBranding|null;onClose:()=>void;onSent:()=>Promise<void>}){
   const [to,setTo]=useState('');
   const [subject,setSubject]=useState('');
   const [body,setBody]=useState('');
@@ -28,7 +28,7 @@ export function SendInvoiceModal({invoice,settings,onClose,onSent}:{invoice:Sale
     if(!subject.trim()){setError('Indica un asunto.');return;}
     setBusy(true);setError('');
     try{
-      const pdf=createSalesInvoicePdfBlob(invoice,settings);
+      const pdf=createSalesInvoicePdfBlob(invoice,settings,branding);
       await sendInvoiceViaGmail({to:to.trim(),subject:subject.trim(),body:body.trim(),pdf,filename:salesInvoicePdfFilename(invoice)});
       await markSalesInvoiceSent(invoice.id);
       await onSent();
