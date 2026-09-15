@@ -25,4 +25,5 @@ import './orders-edit.css';
 import './orders-products.css';
 import './orders-tracking.css';
 import './dashboard-summary.css';
+import './interface-normalization.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
