@@ -10,6 +10,7 @@ import { AuthScreen } from './components/AuthScreen';
 import { Dashboard } from './pages/Dashboard';
 import { ExpenseInvoicesHub } from './pages/ExpenseInvoicesHub';
 import { SalesInvoices } from './pages/SalesInvoices';
+import { Orders } from './pages/Orders';
 import { Clients } from './pages/Clients';
 import { Products } from './pages/Products';
 import { Suppliers } from './pages/Suppliers';
@@ -26,7 +27,7 @@ import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './typ
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
 const THEME_KEY = 'zenvia-gestion-theme';
-const regularPages: MenuPermission[] = ['dashboard','sales','invoices','clients','products','suppliers'];
+const regularPages: MenuPermission[] = ['dashboard','sales','orders','invoices','clients','products','suppliers'];
 
 function initialTheme(): ThemeMode {
   const stored=window.localStorage.getItem(THEME_KEY) || window.localStorage.getItem('zenvia-gastos-theme');
@@ -172,6 +173,7 @@ export default function App(){
    {loading&&<div className="syncBadge"><LoaderCircle className="spin" size={14}/> Sincronizando</div>}
    {page==='dashboard'&&can('dashboard')&&<Dashboard invoices={data.invoices} products={data.products} suppliers={data.suppliers} onUpload={can('invoices')?()=>setUpload(true):undefined} onProducts={can('products')?()=>navigate('products'):undefined}/>} 
    {page==='sales'&&can('sales')&&<SalesInvoices/>}
+   {page==='orders'&&can('orders')&&<Orders/>}
    {page==='invoices'&&can('invoices')&&<ExpenseInvoicesHub invoices={data.invoices} suppliers={data.suppliers} categories={data.categories} onUpload={()=>setUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice} onSupplierChange={changeInvoiceSupplier} onCategoryChange={changeInvoiceCategory} onImported={refresh}/>} 
    {page==='clients'&&can('clients')&&<Clients/>}
    {page==='products'&&can('products')&&<Products products={data.products} onAdd={openNewProduct} onEdit={openEditProduct} onDelete={removeProduct}/>} 
