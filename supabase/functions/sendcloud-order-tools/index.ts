@@ -53,12 +53,15 @@ const ES_PROVINCES:Record<string,string>={
 function normalizeStateProvince(country:unknown,value:unknown){
   const cc=clean(country).toUpperCase(),raw=clean(value);if(!raw)return null;
   if(cc==='ES'){
-    const upper=raw.toUpperCase();
-    const prefixed=upper.match(/^ES[-_ ]([A-Z]{1,2})$/);if(prefixed)return prefixed[1];
-    if(/^[A-Z]{1,2}$/.test(upper))return upper;
-    return ES_PROVINCES[normalizeKey(raw)]||null;
+    const upper=raw.toUpperCase().replace('_','-').replace(' ','-');
+    if(/^ES-[A-Z]{1,2}$/.test(upper))return upper;
+    if(/^[A-Z]{1,2}$/.test(upper))return `ES-${upper}`;
+    const suffix=ES_PROVINCES[normalizeKey(raw)];
+    return suffix?`ES-${suffix}`:null;
   }
-  return /^[A-Za-z0-9-]{1,8}$/.test(raw)?raw.toUpperCase():null;
+  const upper=raw.toUpperCase().replace('_','-').replace(' ','-');
+  if(new RegExp(`^${cc}-[A-Z0-9]{1,3}$`).test(upper))return upper;
+  return null;
 }
 function normalizeOption(option:any){
   const code=clean(option?.code||option?.shipping_option_code||option?.shipping_option?.code);
