@@ -8,7 +8,8 @@ export interface FulfillmentOrder {
   sourceStatus:string|null; orderCreatedAt:string|null; orderUpdatedAt:string|null;
   customerName:string|null; customerEmail:string|null; customerPhone:string|null;
   shippingAddress:Record<string,unknown>; billingAddress:Record<string,unknown>; items:Array<Record<string,unknown>>;
-  totalAmount:number|null; currency:string|null; sendcloudParcelId:number|null; sendcloudShipmentId:string|null;
+  totalAmount:number|null; currency:string|null; weightKg:number|null;
+  sendcloudParcelId:number|null; sendcloudShipmentId:string|null;
   trackingNumber:string|null; trackingUrl:string|null; shippingOptionCode:string|null; contractId:number|null;
   carrierCode:string|null; carrierName:string|null; shippingServiceName:string|null;
   labelCreatedAt:string|null; fulfilledAt:string|null; lastSyncedAt:string;
@@ -19,7 +20,8 @@ export interface SendcloudIntegration {
 }
 export interface SendcloudStatus { configured:boolean; integrations:SendcloudIntegration[]; message?:string; }
 export interface ShippingOption {
-  code:string; name:string; carrierCode:string; carrierName:string; contractId:number|null; price:number|null; currency:string|null; raw:Record<string,unknown>;
+  code:string; name:string; carrierCode:string; carrierName:string; contractId:number|null;
+  price:number|null; currency:string|null; billedWeightKg?:number|null; raw:Record<string,unknown>;
 }
 export interface LabelResult {
   parcelId:number; shipmentId:string|null; trackingNumber:string|null; trackingUrl:string|null;
@@ -33,11 +35,20 @@ export interface ManualOrderInput {
   address:string; houseNumber?:string; address2?:string; postalCode:string; city:string; countryCode:string;
   weightKg:number; items:ManualOrderItem[];
 }
+export interface OrderUpdateInput {
+  customerName:string; email?:string; phone?:string; address:string; houseNumber?:string;
+  address2?:string; postalCode:string; city:string; stateProvince?:string; countryCode:string; weightKg:number;
+}
 
 const PRINTER_KEY='zenvia-label-printer';
 const HISTORY_SYNC_KEY='zenvia-orders-history-sync';
 
+function toKg(value:unknown,unit:unknown){
+  const n=Number(value);if(!Number.isFinite(n)||n<=0)return null;
+  const u=String(unit||'kg').toLowerCase();if(u==='g')return n/1000;if(u==='lbs'||u==='lb')return n*0.45359237;return n;
+}
 function mapRow(row:any):FulfillmentOrder{
+  const weight=row?.raw_payload?.shipping_details?.measurement?.weight;
   return {
     id:row.id, sendcloudId:String(row.sendcloud_id), orderId:row.order_id||null, orderNumber:row.order_number||null,
     integrationId:Number(row.integration_id), integrationName:row.integration_name||null, integrationType:row.integration_type||null,
@@ -45,7 +56,7 @@ function mapRow(row:any):FulfillmentOrder{
     orderCreatedAt:row.order_created_at||null, orderUpdatedAt:row.order_updated_at||null,
     customerName:row.customer_name||null, customerEmail:row.customer_email||null, customerPhone:row.customer_phone||null,
     shippingAddress:row.shipping_address||{}, billingAddress:row.billing_address||{}, items:Array.isArray(row.items)?row.items:[],
-    totalAmount:row.total_amount==null?null:Number(row.total_amount), currency:row.currency||null,
+    totalAmount:row.total_amount==null?null:Number(row.total_amount), currency:row.currency||null, weightKg:toKg(weight?.value,weight?.unit),
     sendcloudParcelId:row.sendcloud_parcel_id==null?null:Number(row.sendcloud_parcel_id),
     sendcloudShipmentId:row.sendcloud_shipment_id||null, trackingNumber:row.tracking_number||null, trackingUrl:row.tracking_url||null,
     shippingOptionCode:row.shipping_option_code||null, contractId:row.contract_id==null?null:Number(row.contract_id),
@@ -54,12 +65,14 @@ function mapRow(row:any):FulfillmentOrder{
   };
 }
 
-async function invokeSendcloud<T>(body:Record<string,unknown>):Promise<T>{
-  const {data,error}=await supabase.functions.invoke('sendcloud-orders',{body});
+async function invokeFunction<T>(functionName:string,body:Record<string,unknown>):Promise<T>{
+  const {data,error}=await supabase.functions.invoke(functionName,{body});
   if(error)throw new Error(error.message||'No se pudo conectar con Sendcloud.');
   if(data?.error)throw new Error(String(data.error));
   return data as T;
 }
+function invokeSendcloud<T>(body:Record<string,unknown>){return invokeFunction<T>('sendcloud-orders',body);}
+function invokeOrderTools<T>(body:Record<string,unknown>){return invokeFunction<T>('sendcloud-order-tools',body);}
 
 export async function listFulfillmentOrders():Promise<FulfillmentOrder[]>{
   const {data,error}=await supabase.from('fulfillment_orders').select('*').order('order_created_at',{ascending:false,nullsFirst:false}).limit(10000);
@@ -69,7 +82,11 @@ export async function listFulfillmentOrders():Promise<FulfillmentOrder[]>{
 export function getSendcloudStatus(){return invokeSendcloud<SendcloudStatus>({action:'status'});}
 export function syncSendcloudOrders(history=false){return invokeSendcloud<{ok:true;synced:number;enriched?:number;history?:boolean;integrations:SendcloudIntegration[]}>({action:'sync',history});}
 export function createManualOrder(order:ManualOrderInput){return invokeSendcloud<{ok:true;id:string;sendcloudId:string;orderNumber:string}>({action:'create_manual_order',order});}
-export async function getShippingOptions(orderId:string){const result=await invokeSendcloud<{options:ShippingOption[]}>({action:'shipping_options',orderId});return result.options||[];}
+export async function getShippingOptions(orderId:string){
+  const result=await invokeOrderTools<{weightKg:number;options:ShippingOption[]}>({action:'shipping_options',orderId});
+  return {weightKg:result.weightKg,options:result.options||[]};
+}
+export function updateFulfillmentOrder(orderId:string,order:OrderUpdateInput){return invokeOrderTools<{ok:true;weightKg:number}>({action:'update_order',orderId,order});}
 export function createOrderLabel(orderId:string,option?:ShippingOption|null){return invokeSendcloud<LabelResult>({action:'create_label',orderId,shippingOption:option?{code:option.code,contractId:option.contractId,carrierName:option.carrierName,name:option.name}:null});}
 export function fetchOrderLabel(orderId:string){return invokeSendcloud<LabelResult>({action:'fetch_label',orderId});}
 
