@@ -1,7 +1,7 @@
-import { BarChart3, FileText, Package, Building2, LogOut, Moon, Sun, ShieldCheck, ReceiptText, Users } from 'lucide-react';
+import { BarChart3, FileText, Package, Building2, LogOut, Moon, Sun, ShieldCheck, ReceiptText, ShoppingBag, Users } from 'lucide-react';
 import { ZENVIA_LOGO } from '../branding';
 
-export type Page = 'dashboard' | 'sales' | 'invoices' | 'clients' | 'products' | 'suppliers' | 'admin';
+export type Page = 'dashboard' | 'sales' | 'orders' | 'invoices' | 'clients' | 'products' | 'suppliers' | 'admin';
 export type ThemeMode = 'light' | 'dark';
 
 type SidebarUser = {
@@ -13,6 +13,7 @@ type SidebarUser = {
 const items = [
   ['dashboard','Resumen','Resumen',BarChart3],
   ['sales','Facturación','Ventas',ReceiptText],
+  ['orders','Pedidos','Pedidos',ShoppingBag],
   ['invoices','Gastos','Gastos',FileText],
   ['clients','Clientes','Clientes',Users],
   ['products','Productos','Productos',Package],
