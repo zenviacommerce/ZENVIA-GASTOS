@@ -13,3 +13,4 @@
 .listPagination{font-size:13px}
 .listPagination button{font-size:13px}
 @media(max-width:760px){.page .search input,.page .toolbar select,.page .salesToolbar select,.page .gmailStatusFilter,.page .auditFilters select,.page .masterPeriodDates input{font-size:16px!important}.page .masterFilters button,.page .masterPeriodQuick button,.page .ordersFilterGroup button,.page .adminTabs button{font-size:14px!important}}
+/* deploy trigger 2026-09-15 */
