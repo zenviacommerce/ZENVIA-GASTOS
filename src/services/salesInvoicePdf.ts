@@ -42,3 +42,21 @@ export function createSalesInvoicePdfBlob(invoice:SalesInvoice,settings?:Busines
   doc.setFont('helvetica','normal');doc.setFontSize(9);const footerY=286;if(invoice.paymentMethod)doc.text(`Forma de pago: ${invoice.paymentMethod}`,14,footerY);if(settings?.iban)doc.text(`IBAN: ${settings.iban}`,14,footerY+5);if(settings?.invoiceFooter)doc.text(doc.splitTextToSize(settings.invoiceFooter,180),14,footerY+10);
   return doc.output('blob');
 }
+
+export function printSalesInvoicePdf(invoice:SalesInvoice,settings?:BusinessSettings|null){
+  const blob=createSalesInvoicePdfBlob(invoice,settings);
+  const url=URL.createObjectURL(blob);
+  const printWindow=window.open(url,'_blank','noopener,noreferrer');
+  if(!printWindow){
+    URL.revokeObjectURL(url);
+    throw new Error('El navegador ha bloqueado la ventana de impresión. Permite las ventanas emergentes para ZENVIA Gestión e inténtalo de nuevo.');
+  }
+  const cleanup=()=>window.setTimeout(()=>URL.revokeObjectURL(url),60000);
+  printWindow.addEventListener('load',()=>{
+    window.setTimeout(()=>{
+      try{printWindow.focus();printWindow.print();}catch{/* El visor PDF mantiene disponible el botón de imprimir. */}
+      cleanup();
+    },700);
+  },{once:true});
+  window.setTimeout(cleanup,65000);
+}
