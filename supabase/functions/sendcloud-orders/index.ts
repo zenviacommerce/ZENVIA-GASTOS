@@ -67,7 +67,8 @@ async function authenticate(req:Request,admin:any):Promise<Caller>{
   const {data:caller,error}=await admin.from('app_users').select('user_id,data_owner_id,role,active,permissions').eq('user_id',userData.user.id).maybeSingle();
   if(error)throw error;
   if(!caller?.active)throw new Error('Tu acceso está desactivado.');
-  if(caller.role!=='admin'&&!Array.isArray(caller.permissions)||caller.role!=='admin'&&!caller.permissions.includes('orders'))throw new Error('No tienes permiso para gestionar pedidos.');
+  const permissions=Array.isArray(caller.permissions)?caller.permissions:[];
+  if(caller.role!=='admin'&&!permissions.includes('orders'))throw new Error('No tienes permiso para gestionar pedidos.');
   return caller as Caller;
 }
 
