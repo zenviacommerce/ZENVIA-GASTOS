@@ -36,7 +36,6 @@ export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{inv
     listFulfillmentOrders().then(setOrders).catch(()=>setOrders([]));
   },[]);
 
-  const selectedInvoices=useMemo(()=>filterInvoices(invoices,filter),[invoices,filter]);
   const periodExpenses=useMemo(()=>filterInvoices(invoices,{...filter,supplierId:''}),[invoices,filter]);
   const selectedSales=useMemo(()=>sales.filter(invoice=>{
     if(invoice.status==='draft')return false;
@@ -60,7 +59,7 @@ export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{inv
   const result=salesTotal-expenseTotal;
   const vatBalance=outputVat-inputVat;
   const receivable=selectedSales.reduce((s,i)=>s+Math.max(0,i.totalAmount-i.paidAmount),0);
-  const pending=selectedInvoices.filter(i=>i.status==='pending').length;
+  const pending=periodExpenses.filter(i=>i.status==='pending').length;
 
   const validOrders=selectedOrders.filter(order=>!isCancelledOrder(order));
   const orderCount=validOrders.length;
@@ -71,16 +70,16 @@ export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{inv
   const shopifyOrders=validOrders.filter(order=>order.sourceChannel==='shopify').length;
   const orderValue=validOrders.reduce((sum,order)=>sum+((order.currency==null||order.currency==='EUR')?(order.totalAmount||0):0),0);
 
-  const byCategory=Object.entries(selectedInvoices.reduce<Record<string,number>>((a,i)=>{a[i.category]=(a[i.category]||0)+i.total;return a;},{})).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
+  const byCategory=Object.entries(periodExpenses.reduce<Record<string,number>>((a,i)=>{a[i.category]=(a[i.category]||0)+i.total;return a;},{})).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
   const changed=products.filter(p=>p.lastPrice!=null&&p.previousPrice!=null).sort((a,b)=>Math.abs(((b.lastPrice!-b.previousPrice!)/b.previousPrice!))-Math.abs(((a.lastPrice!-a.previousPrice!)/a.previousPrice!)))[0];
   const delta=changed?.previousPrice?((changed.lastPrice!-changed.previousPrice)/changed.previousPrice)*100:null;
 
   return <div className="page">
     <div className="pageHead"><div><div className="eyebrow">{selectedPeriod}</div><h1>Resumen</h1><p>Visión global de ventas, gastos, pedidos, logística, IVA, cobros y costes de ZENVIA COMMERCE.</p></div>{onUpload&&<button className="primary" onClick={onUpload}>+ Factura de gasto</button>}</div>
-    <InvoiceFilters filter={filter} onChange={setFilter} invoices={invoices} suppliers={suppliers}/>
+    <InvoiceFilters filter={filter} onChange={setFilter} invoices={invoices} suppliers={suppliers} showSupplier={false}/>
 
     <div className="dashboardSectionHead"><div><div className="eyebrow">FINANZAS</div><h2>Facturación y gastos</h2><p>{selectedPeriod}</p></div></div>
-    <div className="stats filteredStats"><StatCard label="Facturación" value={money(salesTotal)} sub={selectedPeriod} icon={<Banknote/>}/><StatCard label="Gastos" value={money(expenseTotal)} sub={selectedPeriod} icon={<Euro/>}/><StatCard label="Resultado" value={money(result)} sub="Ventas − gastos" icon={<Scale/>}/><StatCard label="IVA neto" value={money(vatBalance)} sub={`${money(outputVat)} repercutido · ${money(inputVat)} soportado`} icon={<BadgeEuro/>}/><StatCard label="Pendiente de cobro" value={money(receivable)} sub="Facturas de venta emitidas" icon={<ReceiptText/>}/><StatCard label="Gastos por revisar" value={String(pending)} sub={filter.supplierId?'Proveedor filtrado':selectedPeriod} icon={<AlertCircle/>}/></div>
+    <div className="stats filteredStats"><StatCard label="Facturación" value={money(salesTotal)} sub={selectedPeriod} icon={<Banknote/>}/><StatCard label="Gastos" value={money(expenseTotal)} sub={selectedPeriod} icon={<Euro/>}/><StatCard label="Resultado" value={money(result)} sub="Ventas − gastos" icon={<Scale/>}/><StatCard label="IVA neto" value={money(vatBalance)} sub={`${money(outputVat)} repercutido · ${money(inputVat)} soportado`} icon={<BadgeEuro/>}/><StatCard label="Pendiente de cobro" value={money(receivable)} sub="Facturas de venta emitidas" icon={<ReceiptText/>}/><StatCard label="Gastos por revisar" value={String(pending)} sub={selectedPeriod} icon={<AlertCircle/>}/></div>
 
     <div className="dashboardSectionHead orders"><div><div className="eyebrow">OPERATIVA</div><h2>Pedidos y logística</h2><p>Amazon, Shopify y pedidos manuales · {selectedPeriod}</p></div></div>
     <div className="stats dashboardOrderStats">
