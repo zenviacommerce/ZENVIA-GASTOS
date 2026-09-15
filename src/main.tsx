@@ -16,4 +16,5 @@ import './validation.css';
 import './pagination.css';
 import './readability.css';
 import './modal-sticky-fix.css';
+import './sales-config.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
