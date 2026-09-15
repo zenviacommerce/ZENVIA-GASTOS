@@ -48,21 +48,28 @@ function toKg(value:unknown,unit:unknown){
   const n=Number(value);if(!Number.isFinite(n)||n<=0)return null;
   const u=String(unit||'kg').toLowerCase();if(u==='g')return n/1000;if(u==='lbs'||u==='lb')return n*0.45359237;return n;
 }
+function isBalearicAddress(address:Record<string,unknown>){
+  const country=String(address?.country_code||'').trim().toUpperCase();
+  const postal=String(address?.postal_code||'').replace(/\s+/g,'').trim();
+  return country==='ES'&&/^07\d{3}$/.test(postal);
+}
 function mapRow(row:any):FulfillmentOrder{
   const weight=row?.raw_payload?.shipping_details?.measurement?.weight;
+  const shippingAddress=row.shipping_address||{};
+  const balearicPending=isBalearicAddress(shippingAddress)&&row.sendcloud_parcel_id==null;
   return {
     id:row.id, sendcloudId:String(row.sendcloud_id), orderId:row.order_id||null, orderNumber:row.order_number||null,
     integrationId:Number(row.integration_id), integrationName:row.integration_name||null, integrationType:row.integration_type||null,
     sourceChannel:(row.source_channel||'other') as OrderChannel, sourceStatus:row.source_status||null,
     orderCreatedAt:row.order_created_at||null, orderUpdatedAt:row.order_updated_at||null,
     customerName:row.customer_name||null, customerEmail:row.customer_email||null, customerPhone:row.customer_phone||null,
-    shippingAddress:row.shipping_address||{}, billingAddress:row.billing_address||{}, items:Array.isArray(row.items)?row.items:[],
+    shippingAddress, billingAddress:row.billing_address||{}, items:Array.isArray(row.items)?row.items:[],
     totalAmount:row.total_amount==null?null:Number(row.total_amount), currency:row.currency||null, weightKg:toKg(weight?.value,weight?.unit),
     sendcloudParcelId:row.sendcloud_parcel_id==null?null:Number(row.sendcloud_parcel_id),
     sendcloudShipmentId:row.sendcloud_shipment_id||null, trackingNumber:row.tracking_number||null, trackingUrl:row.tracking_url||null,
     trackingStatusCode:row.tracking_status_code||null, trackingStatusMessage:row.tracking_status_message||null, trackingUpdatedAt:row.tracking_updated_at||null,
     shippingOptionCode:row.shipping_option_code||null, contractId:row.contract_id==null?null:Number(row.contract_id),
-    carrierCode:row.carrier_code||null, carrierName:row.carrier_name||null, shippingServiceName:row.shipping_service_name||null,
+    carrierCode:row.carrier_code||null, carrierName:row.carrier_name||(balearicPending?'🏝 Baleares · usar Correos':null), shippingServiceName:row.shipping_service_name||null,
     labelCreatedAt:row.label_created_at||null, fulfilledAt:row.fulfilled_at||null, lastSyncedAt:row.last_synced_at,
   };
 }
