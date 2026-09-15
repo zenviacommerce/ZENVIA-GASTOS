@@ -6,3 +6,4 @@ html[data-theme='dark'] .dashboardPendingOrders{border-color:#f59e0b88!important
 @media(max-width:1200px){.dashboardOrderStats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.dashboardOrderStats{grid-template-columns:1fr 1fr}.dashboardSectionHead{align-items:flex-start}}
 @media(max-width:430px){.dashboardOrderStats{grid-template-columns:1fr}}
+/* redeploy trigger 2026-09-15 */
