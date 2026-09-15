@@ -13,7 +13,7 @@ type SidebarUser = {
 const items = [
   ['dashboard','Resumen','Resumen',BarChart3],
   ['sales','Facturación','Ventas',ReceiptText],
-  ['invoices','Facturas de gastos','Gastos',FileText],
+  ['invoices','Gastos','Gastos',FileText],
   ['clients','Clientes','Clientes',Users],
   ['products','Productos','Productos',Package],
   ['suppliers','Proveedores','Proveedores',Building2],
