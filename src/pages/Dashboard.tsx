@@ -85,7 +85,7 @@ export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{inv
     <div className="stats dashboardOrderStats">
       <StatCard label="Pedidos" value={String(orderCount)} sub={`Amazon ${amazonOrders} · Shopify ${shopifyOrders}`} icon={<ShoppingBag/>}/>
       <StatCard label="Valor de pedidos" value={money(orderValue)} sub="Pedidos no cancelados · no fiscal" icon={<BadgeEuro/>}/>
-      <StatCard label="Pendientes" value={String(pendingOrders)} sub="Por preparar / etiquetar" icon={<PackageCheck/>}/>
+      <StatCard className={pendingOrders>0?'dashboardPendingOrders':''} label="Pendientes" value={String(pendingOrders)} sub={pendingOrders>0?'Hay pedidos por preparar / etiquetar':'Sin pedidos pendientes'} icon={<PackageCheck/>}/>
       <StatCard label="Enviados" value={String(shippedOrders)} sub={selectedPeriod} icon={<Truck/>}/>
       <StatCard label="Cancelados" value={String(cancelledOrders)} sub={selectedPeriod} icon={<XCircle/>}/>
     </div>
