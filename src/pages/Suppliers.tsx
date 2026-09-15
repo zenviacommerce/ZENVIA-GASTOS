@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Building2, CalendarDays, ChevronRight, FileText, Mail, Package, Pencil, Phone, Search, ShoppingCart, Trash2, X } from 'lucide-react';
 import { loadAppData } from '../services/repository';
 import type { Invoice, Supplier } from '../types';
+import { Pagination } from '../components/Pagination';
 import '../supplier-actions.css';
 
+const PAGE_SIZE=20;
 const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
 const normalize=(value:string)=>value.trim().toLowerCase().replace(/\s+/g,' ');
@@ -71,6 +73,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  const [period,setPeriod]=useState<PeriodPreset>('quarter');
  const [dateFrom,setDateFrom]=useState(initialRange.from);
  const [dateTo,setDateTo]=useState(initialRange.to);
+ const [page,setPage]=useState(1);
 
  useEffect(()=>{let cancelled=false;loadAppData().then(data=>{if(!cancelled)setInvoices(data.invoices)}).catch(()=>{});return()=>{cancelled=true}},[suppliers]);
 
@@ -99,6 +102,10 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
    const matchesFilter=filter==='all'||s.supplierType===filter;
    return matchesQuery&&matchesFilter;
  })},[suppliers,query,filter]);
+ const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
+ const paged=useMemo(()=>filtered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[filtered,page]);
+ useEffect(()=>{setPage(1)},[query,filter,period,dateFrom,dateTo]);
+ useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  const totals=useMemo(()=>({spent:suppliers.reduce((sum,s)=>sum+(metrics.get(s.id)?.total||0),0),invoices:suppliers.reduce((sum,s)=>sum+(metrics.get(s.id)?.count||0),0),active:suppliers.filter(s=>(metrics.get(s.id)?.count||0)>0).length}),[suppliers,metrics]);
 
  const remove=async(supplier:Supplier)=>{
@@ -120,8 +127,9 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
    <div className="stats masterStats"><div className="stat"><div className="statIcon"><Building2/></div><div><span>Proveedores con actividad</span><strong>{totals.active}</strong><small>de {suppliers.length} registrados · {periodLabel.toLowerCase()}</small></div></div><div className="stat"><div className="statIcon"><ShoppingCart/></div><div><span>Gasto del periodo</span><strong>{money(totals.spent)}</strong><small>{periodLabel}</small></div></div><div className="stat"><div className="statIcon"><FileText/></div><div><span>Facturas recibidas</span><strong>{totals.invoices}</strong><small>{periodLabel}</small></div></div></div>
    <div className="masterToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar proveedor, CIF, email o teléfono…"/></div><div className="masterFilters"><button className={filter==='all'?'active':''} onClick={()=>setFilter('all')}>Todos</button><button className={filter==='goods'?'active':''} onClick={()=>setFilter('goods')}>Mercancía</button><button className={filter==='service'?'active':''} onClick={()=>setFilter('service')}>Servicios</button><button className={filter==='both'?'active':''} onClick={()=>setFilter('both')}>Ambos</button><button className={filter==='unclassified'?'active':''} onClick={()=>setFilter('unclassified')}>Sin clasificar</button></div></div>
    {error&&<div className="errorBox supplierPageError">{error}</div>}
-   <section className="card tableCard masterTableCard">{filtered.length?<table className="masterTable"><thead><tr><th>Proveedor</th><th>CIF/VAT</th><th>Tipo</th><th>Contacto</th><th className="right">Facturas</th><th className="right">Gasto periodo</th><th>Última factura</th><th></th></tr></thead><tbody>{filtered.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <tr className="clickableRow" key={s.id} onClick={()=>setSelected(s)}><td><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)}</small></div></div></td><td>{s.taxId||<span className="muted">Pendiente</span>}</td><td><span className={`masterTypeTag ${s.supplierType}`}>{supplierTypeLabel(s.supplierType)}</span></td><td><div className="masterContactCell"><span>{s.email||'—'}</span><small>{s.phone||''}</small></div></td><td className="right"><strong>{metric.count}</strong></td><td className="right"><strong>{money(metric.total)}</strong></td><td>{dateLabel(metric.lastDate)}</td><td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay proveedores para los filtros seleccionados.</div>}</section>
-   {filtered.length>0&&<div className="masterMobileList">{filtered.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <button className="card masterMobileRow" key={s.id} onClick={()=>setSelected(s)}><div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)} · {s.taxId||'CIF pendiente'}</small></div></div><div className="masterMobileAmounts"><span>Facturas <strong>{metric.count}</strong></span><span>Gasto periodo <strong>{money(metric.total)}</strong></span></div><ChevronRight size={18}/></button>})}</div>}
+   <section className="card tableCard masterTableCard">{filtered.length?<table className="masterTable"><thead><tr><th>Proveedor</th><th>CIF/VAT</th><th>Tipo</th><th>Contacto</th><th className="right">Facturas</th><th className="right">Gasto periodo</th><th>Última factura</th><th></th></tr></thead><tbody>{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <tr className="clickableRow" key={s.id} onClick={()=>setSelected(s)}><td><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)}</small></div></div></td><td>{s.taxId||<span className="muted">Pendiente</span>}</td><td><span className={`masterTypeTag ${s.supplierType}`}>{supplierTypeLabel(s.supplierType)}</span></td><td><div className="masterContactCell"><span>{s.email||'—'}</span><small>{s.phone||''}</small></div></td><td className="right"><strong>{metric.count}</strong></td><td className="right"><strong>{money(metric.total)}</strong></td><td>{dateLabel(metric.lastDate)}</td><td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay proveedores para los filtros seleccionados.</div>}</section>
+   {filtered.length>0&&<div className="masterMobileList">{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <button className="card masterMobileRow" key={s.id} onClick={()=>setSelected(s)}><div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)} · {s.taxId||'CIF pendiente'}</small></div></div><div className="masterMobileAmounts"><span>Facturas <strong>{metric.count}</strong></span><span>Gasto periodo <strong>{money(metric.total)}</strong></span></div><ChevronRight size={18}/></button>})}</div>}
+   {filtered.length>0&&<Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
    {!suppliers.length&&<div className="card emptyState large">Los proveedores también se crearán automáticamente al registrar facturas nuevas.</div>}
    {selected&&<SupplierDrawer supplier={selected} metric={metrics.get(selected.id)||{count:0,total:0,lastDate:null,recent:[]}} period={periodLabel} onClose={()=>setSelected(null)} onEdit={()=>edit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>} 
  </div>
