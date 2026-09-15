@@ -25,6 +25,7 @@ import './orders-status.css';
 import './orders-edit.css';
 import './orders-products.css';
 import './orders-tracking.css';
+import './orders-tracking-filter.css';
 import './dashboard-summary.css';
 import './interface-normalization.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/><AutoPagination/></React.StrictMode>);
