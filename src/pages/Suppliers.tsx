@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Building2, ChevronRight, FileText, Mail, Package, Pencil, Phone, Search, ShoppingCart, Trash2, X } from 'lucide-react';
+import { loadAppData } from '../services/repository';
 import type { Invoice, Supplier } from '../types';
 import '../supplier-actions.css';
 
@@ -36,12 +37,15 @@ function SupplierDrawer({supplier,metric,onClose,onEdit,onDelete,busy}:{supplier
   </div>;
 }
 
-export function Suppliers({suppliers,invoices,onAdd,onEdit,onDelete}:{suppliers:Supplier[];invoices:Invoice[];onAdd:()=>void;onEdit:(supplier:Supplier)=>void;onDelete:(supplier:Supplier)=>Promise<void>}){
+export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[];onAdd:()=>void;onEdit:(supplier:Supplier)=>void;onDelete:(supplier:Supplier)=>Promise<void>}){
  const [busyId,setBusyId]=useState<string|null>(null);
  const [error,setError]=useState('');
  const [query,setQuery]=useState('');
  const [filter,setFilter]=useState<SupplierFilter>('all');
  const [selected,setSelected]=useState<Supplier|null>(null);
+ const [invoices,setInvoices]=useState<Invoice[]>([]);
+
+ useEffect(()=>{let cancelled=false;loadAppData().then(data=>{if(!cancelled)setInvoices(data.invoices)}).catch(()=>{});return()=>{cancelled=true}},[suppliers]);
 
  const metrics=useMemo(()=>{
    const map=new Map<string,SupplierMetric>();
