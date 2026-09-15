@@ -31,4 +31,5 @@ import './orders-label-default.css';
 import './dashboard-summary.css';
 import './interface-normalization.css';
 import './modern-forms.css';
+import './destructive-actions.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/><AutoPagination/><OrderLabelDefaults/></React.StrictMode>);
