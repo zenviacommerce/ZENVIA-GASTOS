@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { AutoPagination } from './components/AutoPagination';
 import './styles.css';
 import './enhancements.css';
 import './sidebar-brand.css';
@@ -26,4 +27,4 @@ import './orders-products.css';
 import './orders-tracking.css';
 import './dashboard-summary.css';
 import './interface-normalization.css';
-ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/><AutoPagination/></React.StrictMode>);
