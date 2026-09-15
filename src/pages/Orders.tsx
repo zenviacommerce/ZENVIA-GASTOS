@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle, CheckCircle2, ChevronRight, Download, ExternalLink, LoaderCircle,
-  MapPin, PackageCheck, Printer, RefreshCw, Search, Settings2, ShoppingBag,
-  Store, Truck, X,
+  AlertCircle, Calculator, CalendarDays, CheckCircle2, ChevronRight, Download, Euro,
+  ExternalLink, LoaderCircle, MapPin, PackageCheck, Percent, Printer, RefreshCw,
+  Search, Settings2, ShoppingBag, Store, Truck, X,
 } from 'lucide-react';
 import {
   createOrderLabel, downloadLabel, fetchOrderLabel, getSavedPrinter, getSendcloudStatus,
@@ -14,7 +14,37 @@ import { errorMessage, showError, showSuccess } from '../services/toast';
 
 const money=(value:number|null,currency='EUR')=>value==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:currency||'EUR'}).format(value);
 const dateLabel=(value?:string|null)=>value?new Date(value).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'}):'—';
+const dayLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
 const text=(value:unknown)=>typeof value==='string'?value:'';
+const iso=(value:Date)=>{const y=value.getFullYear();const m=String(value.getMonth()+1).padStart(2,'0');const d=String(value.getDate()).padStart(2,'0');return `${y}-${m}-${d}`;};
+
+type PeriodPreset='month'|'quarter'|'year'|'all'|'custom';
+
+function currentRange(preset:Exclude<PeriodPreset,'custom'>){
+  const now=new Date();
+  if(preset==='all')return {from:'',to:''};
+  if(preset==='month')return {from:iso(new Date(now.getFullYear(),now.getMonth(),1)),to:iso(new Date(now.getFullYear(),now.getMonth()+1,0))};
+  if(preset==='year')return {from:`${now.getFullYear()}-01-01`,to:`${now.getFullYear()}-12-31`};
+  const quarterStart=Math.floor(now.getMonth()/3)*3;
+  return {from:iso(new Date(now.getFullYear(),quarterStart,1)),to:iso(new Date(now.getFullYear(),quarterStart+3,0))};
+}
+
+function periodText(preset:PeriodPreset,from:string,to:string){
+  if(preset==='month')return 'Mes actual';
+  if(preset==='quarter')return 'Trimestre actual';
+  if(preset==='year')return 'Año actual';
+  if(preset==='all')return 'Todo el histórico sincronizado';
+  if(from&&to)return `${dayLabel(from)} – ${dayLabel(to)}`;
+  if(from)return `Desde ${dayLabel(from)}`;
+  if(to)return `Hasta ${dayLabel(to)}`;
+  return 'Periodo personalizado';
+}
+
+function orderDateKey(order:FulfillmentOrder){
+  if(!order.orderCreatedAt)return '';
+  const date=new Date(order.orderCreatedAt);
+  return Number.isNaN(date.getTime())?order.orderCreatedAt.slice(0,10):iso(date);
+}
 
 function channelLabel(channel:FulfillmentOrder['sourceChannel']){
   if(channel==='amazon')return 'Amazon';
@@ -35,14 +65,32 @@ function itemQty(item:Record<string,unknown>){return Number(item.quantity||1)||1
 
 function orderStatusCode(order:FulfillmentOrder){return String(order.sourceStatus||'').trim().toLowerCase();}
 function isCancelledOrder(order:FulfillmentOrder){return orderStatusCode(order).includes('cancel');}
-function isProcessedOrder(order:FulfillmentOrder){const status=orderStatusCode(order);return status==='fulfilled'||status==='shipped';}
+function isProcessedOrder(order:FulfillmentOrder){
+  const status=orderStatusCode(order);
+  return status==='fulfilled'||status==='shipped'||status==='delivered'||status.includes('shipped');
+}
 function isPendingOrder(order:FulfillmentOrder){return !order.sendcloudParcelId&&!isCancelledOrder(order)&&!isProcessedOrder(order);}
 function canPrepareOrder(order:FulfillmentOrder){return isPendingOrder(order);}
 function orderState(order:FulfillmentOrder){
   if(order.sendcloudParcelId)return {label:'Etiquetado',className:'ready'};
   if(isCancelledOrder(order))return {label:'Cancelado',className:'cancelled'};
-  if(isProcessedOrder(order))return {label:'Procesado',className:'closed'};
+  if(isProcessedOrder(order))return {label:'Enviado',className:'closed'};
   return {label:'Pendiente',className:'pending'};
+}
+
+const VAT_RATES:Record<string,number>={
+  ES:21,PT:23,FR:20,DE:19,IT:22,NL:21,BE:21,AT:20,IE:23,PL:23,CZ:21,GR:24,
+  HU:27,RO:21,FI:25.5,SE:25,DK:25,HR:25,SI:22,SK:23,LT:21,LV:21,EE:24,
+  BG:20,CY:19,MT:18,LU:17,GB:20,
+};
+function countryCode(order:FulfillmentOrder){return text(order.shippingAddress.country_code).trim().toUpperCase();}
+function vatRate(order:FulfillmentOrder){return VAT_RATES[countryCode(order)]||0;}
+function taxParts(order:FulfillmentOrder){
+  const gross=order.totalAmount||0;
+  const rate=vatRate(order);
+  if(!rate)return {gross,net:gross,vat:0};
+  const net=gross/(1+rate/100);
+  return {gross,net,vat:gross-net};
 }
 
 function preferredCarrier(option:ShippingOption){
@@ -86,6 +134,7 @@ function LabelModal({order,options,loading,onClose,onCreate}:{order:FulfillmentO
 }
 
 export function Orders(){
+  const initialRange=currentRange('quarter');
   const [orders,setOrders]=useState<FulfillmentOrder[]>([]);
   const [status,setStatus]=useState<SendcloudStatus|null>(null);
   const [loading,setLoading]=useState(true);
@@ -93,7 +142,7 @@ export function Orders(){
   const [error,setError]=useState('');
   const [query,setQuery]=useState('');
   const [channel,setChannel]=useState<'all'|'amazon'|'shopify'>('all');
-  const [state,setState]=useState<'pending'|'labelled'|'cancelled'|'all'>('pending');
+  const [state,setState]=useState<'pending'|'labelled'|'shipped'|'cancelled'|'all'>('pending');
   const [selected,setSelected]=useState<FulfillmentOrder|null>(null);
   const [labelOrder,setLabelOrder]=useState<FulfillmentOrder|null>(null);
   const [options,setOptions]=useState<ShippingOption[]>([]);
@@ -102,6 +151,9 @@ export function Orders(){
   const [printers,setPrinters]=useState<LocalPrinter[]>([]);
   const [printer,setPrinter]=useState(getSavedPrinter());
   const [printerChecking,setPrinterChecking]=useState(false);
+  const [period,setPeriod]=useState<PeriodPreset>('quarter');
+  const [dateFrom,setDateFrom]=useState(initialRange.from);
+  const [dateTo,setDateTo]=useState(initialRange.to);
 
   const refresh=useCallback(async()=>{try{setOrders(await listFulfillmentOrders())}catch(e){setError(errorMessage(e,'No se pudieron cargar los pedidos.'))}},[]);
   const refreshStatus=useCallback(async()=>{try{setStatus(await getSendcloudStatus())}catch(e){setStatus({configured:false,integrations:[],message:errorMessage(e,'No se pudo comprobar Sendcloud.')})}},[]);
@@ -117,12 +169,29 @@ export function Orders(){
 
   useEffect(()=>{if(!status?.configured)return;void sync(true);const timer=window.setInterval(()=>void sync(true),60000);return()=>window.clearInterval(timer)},[status?.configured]);
 
+  const applyPreset=(preset:Exclude<PeriodPreset,'custom'>)=>{const range=currentRange(preset);setPeriod(preset);setDateFrom(range.from);setDateTo(range.to);};
+  const periodLabel=periodText(period,dateFrom,dateTo);
+
+  const periodOrders=useMemo(()=>orders.filter(order=>{
+    const key=orderDateKey(order);
+    if(!key)return false;
+    return (!dateFrom||key>=dateFrom)&&(!dateTo||key<=dateTo);
+  }),[orders,dateFrom,dateTo]);
+
+  const salesKpis=useMemo(()=>{
+    const sales=periodOrders.filter(order=>!isCancelledOrder(order)&&order.totalAmount!=null&&(order.currency==null||order.currency==='EUR'));
+    let gross=0,net=0,vat=0;
+    for(const order of sales){const parts=taxParts(order);gross+=parts.gross;net+=parts.net;vat+=parts.vat;}
+    return {gross,net,vat,count:sales.length,average:sales.length?gross/sales.length:0};
+  },[periodOrders]);
+
   const filtered=useMemo(()=>{
     const q=query.trim().toLowerCase();
     return orders.filter(order=>{
       if(channel!=='all'&&order.sourceChannel!==channel)return false;
       if(state==='pending'&&!isPendingOrder(order))return false;
       if(state==='labelled'&&!order.sendcloudParcelId)return false;
+      if(state==='shipped'&&(!isProcessedOrder(order)||Boolean(order.sendcloudParcelId)))return false;
       if(state==='cancelled'&&!isCancelledOrder(order))return false;
       if(q&&!`${order.orderNumber||''} ${order.orderId||''} ${order.customerName||''} ${order.trackingNumber||''}`.toLowerCase().includes(q))return false;
       return true;
@@ -133,6 +202,7 @@ export function Orders(){
   const amazon=orders.filter(order=>order.sourceChannel==='amazon'&&isPendingOrder(order)).length;
   const shopify=orders.filter(order=>order.sourceChannel==='shopify'&&isPendingOrder(order)).length;
   const labelled=orders.filter(order=>Boolean(order.sendcloudParcelId)).length;
+  const shipped=orders.filter(order=>isProcessedOrder(order)&&!order.sendcloudParcelId).length;
   const cancelled=orders.filter(isCancelledOrder).length;
 
   const prepare=async(order:FulfillmentOrder)=>{
@@ -172,9 +242,17 @@ export function Orders(){
     {status?.configured&&<section className="ordersConnection"><CheckCircle2 size={16}/><span>Sendcloud conectado</span><small>{status.integrations.filter(item=>item.channel==='amazon'||item.channel==='shopify').map(item=>item.shopName||item.type).join(' · ')||'Integraciones disponibles'}</small></section>}
     {error&&<div className="errorBox"><AlertCircle size={17}/>{error}</div>}
 
-    <div className="stats ordersStats"><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Pendientes</span><strong>{pending}</strong><small>Sin etiqueta</small></div></div><div className="stat"><div className="statIcon"><Store/></div><div><span>Amazon</span><strong>{amazon}</strong><small>Pendientes</small></div></div><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Shopify</span><strong>{shopify}</strong><small>Pendientes</small></div></div><div className="stat"><div className="statIcon"><PackageCheck/></div><div><span>Etiquetados</span><strong>{labelled}</strong><small>Preparados desde ZENVIA</small></div></div><div className="stat"><div className="statIcon"><AlertCircle/></div><div><span>Cancelados</span><strong>{cancelled}</strong><small>Últimos 30 días</small></div></div></div>
+    <div className="masterPeriodPanel ordersPeriodPanel">
+      <div className="masterPeriodTop"><div><CalendarDays size={17}/><div><strong>Periodo de ventas</strong><span>{periodLabel}</span></div></div><div className="masterPeriodQuick"><button className={period==='month'?'active':''} onClick={()=>applyPreset('month')}>Mes actual</button><button className={period==='quarter'?'active':''} onClick={()=>applyPreset('quarter')}>Trimestre actual</button><button className={period==='year'?'active':''} onClick={()=>applyPreset('year')}>Año actual</button><button className={period==='all'?'active':''} onClick={()=>applyPreset('all')}>Todo</button></div></div>
+      <div className="masterPeriodDates"><label>Desde<input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPeriod('custom')}}/></label><label>Hasta<input type="date" value={dateTo} min={dateFrom||undefined} onChange={e=>{setDateTo(e.target.value);setPeriod('custom')}}/></label>{period==='custom'&&<button className="secondary" onClick={()=>applyPreset('quarter')}>Restablecer trimestre</button>}</div>
+      <small className="ordersTaxNote">IVA estimado según el tipo general del país de entrega. Sendcloud no proporciona el desglose fiscal del pedido; más adelante podremos sustituir esta estimación por el dato fiscal directo de Amazon/Shopify.</small>
+    </div>
 
-    <div className="ordersToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar pedido, cliente o tracking…"/></div><div className="ordersFilterGroup"><button className={state==='pending'?'active':''} onClick={()=>setState('pending')}>Pendientes</button><button className={state==='labelled'?'active':''} onClick={()=>setState('labelled')}>Etiquetados</button><button className={state==='cancelled'?'active':''} onClick={()=>setState('cancelled')}>Cancelados</button><button className={state==='all'?'active':''} onClick={()=>setState('all')}>Todos</button></div><div className="ordersFilterGroup"><button className={channel==='all'?'active':''} onClick={()=>setChannel('all')}>Todos</button><button className={channel==='amazon'?'active':''} onClick={()=>setChannel('amazon')}>Amazon</button><button className={channel==='shopify'?'active':''} onClick={()=>setChannel('shopify')}>Shopify</button></div></div>
+    <div className="stats ordersSalesStats"><div className="stat"><div className="statIcon"><Euro/></div><div><span>Total vendido</span><strong>{money(salesKpis.gross)}</strong><small>{salesKpis.count} pedido{salesKpis.count===1?'':'s'} · {periodLabel}</small></div></div><div className="stat"><div className="statIcon"><Percent/></div><div><span>IVA estimado</span><strong>{money(salesKpis.vat)}</strong><small>Incluido en las ventas</small></div></div><div className="stat"><div className="statIcon"><Calculator/></div><div><span>Neto sin IVA</span><strong>{money(salesKpis.net)}</strong><small>{periodLabel}</small></div></div><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Ticket medio</span><strong>{money(salesKpis.average)}</strong><small>Por pedido no cancelado</small></div></div></div>
+
+    <div className="stats ordersStats"><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Pendientes</span><strong>{pending}</strong><small>Sin etiqueta</small></div></div><div className="stat"><div className="statIcon"><Store/></div><div><span>Amazon</span><strong>{amazon}</strong><small>Pendientes</small></div></div><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Shopify</span><strong>{shopify}</strong><small>Pendientes</small></div></div><div className="stat"><div className="statIcon"><PackageCheck/></div><div><span>Etiquetados</span><strong>{labelled}</strong><small>Preparados desde ZENVIA</small></div></div><div className="stat"><div className="statIcon"><Truck/></div><div><span>Enviados</span><strong>{shipped}</strong><small>Procesados en Sendcloud</small></div></div><div className="stat"><div className="statIcon"><AlertCircle/></div><div><span>Cancelados</span><strong>{cancelled}</strong><small>Histórico sincronizado</small></div></div></div>
+
+    <div className="ordersToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar pedido, cliente o tracking…"/></div><div className="ordersFilterGroup"><button className={state==='pending'?'active':''} onClick={()=>setState('pending')}>Pendientes</button><button className={state==='labelled'?'active':''} onClick={()=>setState('labelled')}>Etiquetados</button><button className={state==='shipped'?'active':''} onClick={()=>setState('shipped')}>Enviados</button><button className={state==='cancelled'?'active':''} onClick={()=>setState('cancelled')}>Cancelados</button><button className={state==='all'?'active':''} onClick={()=>setState('all')}>Todos</button></div><div className="ordersFilterGroup"><button className={channel==='all'?'active':''} onClick={()=>setChannel('all')}>Todos</button><button className={channel==='amazon'?'active':''} onClick={()=>setChannel('amazon')}>Amazon</button><button className={channel==='shopify'?'active':''} onClick={()=>setChannel('shopify')}>Shopify</button></div></div>
 
     {printer&&<div className="ordersPrinterBar"><Printer size={15}/><span>Impresora directa:</span>{printers.length?<select value={printer} onChange={e=>{setPrinter(e.target.value);savePrinter(e.target.value)}}>{printers.map(item=><option key={item.id} value={item.id}>{item.name}{item.default?' · predeterminada':''}</option>)}</select>:<strong>{printer}</strong>}<button className="link" onClick={()=>{setPrinter('');savePrinter('')}}>Usar PDF</button></div>}
 
