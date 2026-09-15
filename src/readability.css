@@ -42,6 +42,14 @@ th {
   font-size: 12px;
 }
 
+/* Monetary values should never split the amount from the currency symbol. */
+.right strong,
+.invoiceAmount strong,
+.stat strong,
+.ordersOptionList button > span {
+  white-space: nowrap;
+}
+
 .invoiceMetadataEditors {
   display: grid;
   gap: 10px;
