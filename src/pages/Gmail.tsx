@@ -40,6 +40,15 @@ function matchesStatusFilter(item: GmailCandidate, filter: GmailViewFilter) {
   }
 }
 
+function gmailConnectionError(error: unknown) {
+  const raw=error instanceof Error?error.message:String(error||'');
+  const normalized=raw.toLowerCase();
+  if(normalized.includes('popup window closed')||normalized.includes('popup_closed')||normalized.includes('origin_mismatch')){
+    return `Google ha bloqueado la autorización OAuth para este dominio. En Google Cloud → Credenciales → cliente OAuth web, añade ${window.location.origin} en «Orígenes de JavaScript autorizados» y vuelve a conectar Gmail.`;
+  }
+  return raw||'No se pudo conectar Gmail.';
+}
+
 export function GmailPage({ categories, onImported }:{ categories:ExpenseCategory[]; onImported:()=>Promise<void> | void }) {
   const [connection,setConnection]=useState<GmailConnection|null>(()=>getCachedGmailConnection());
   const [imports,setImports]=useState<GmailCandidate[]>([]);
@@ -86,7 +95,7 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
       const next=await connectGmail(forceConsent);
       setConnection(next);
       setMessage(`Gmail conectado: ${next.email}`);
-    }catch(e){setError(e instanceof Error?e.message:'No se pudo conectar Gmail.');setMessage('');}
+    }catch(e){setError(gmailConnectionError(e));setMessage('');}
     finally{setConnecting(false);}
   };
 
@@ -132,7 +141,7 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
         setMessage(`Gmail actualizado. Se localizaron ${totalLabel} correos con adjuntos compatibles; se revisaron ${result.newMessages} nuevos y no contenían nuevas facturas.`);
       }
     }catch(e){
-      setError(e instanceof Error?e.message:'No se pudo buscar en Gmail.');
+      setError(gmailConnectionError(e));
       setConnection(getCachedGmailConnection());
     }finally{setScanning(false);}
   };
@@ -146,7 +155,7 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
       await refreshImports();
       await onImported();
       setMessage(`${candidate.attachmentName} importada como factura pendiente.`);
-    }catch(e){setError(e instanceof Error?e.message:'No se pudo importar la factura.');await refreshImports();}
+    }catch(e){setError(gmailConnectionError(e));await refreshImports();}
     finally{setImportingId(null);}
   };
 
@@ -168,7 +177,7 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
       const file=await downloadGmailAttachment(active.accessToken,candidate);
       setPreviewUrl(URL.createObjectURL(file));
     }catch(e){
-      setPreviewError(e instanceof Error?e.message:'No se pudo abrir el adjunto de Gmail.');
+      setPreviewError(gmailConnectionError(e));
       setConnection(getCachedGmailConnection());
     }finally{setPreviewLoading(false);}
   };
@@ -180,7 +189,7 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
 
   return <div className="page">
     <div className="pageHead">
-      <div><div className="eyebrow">AUTOMATIZACIÓN</div><h1>Facturas desde Gmail</h1><p>Busca adjuntos de facturas, revísalos e impórtalos directamente en ZENVIA Gastos.</p></div>
+      <div><div className="eyebrow">AUTOMATIZACIÓN</div><h1>Facturas desde Gmail</h1><p>Busca adjuntos de facturas, revísalos e impórtalos directamente en ZENVIA Gestión.</p></div>
       <div className="actions">{connection?<><button className="secondary" onClick={disconnect}><Link2Off size={16}/> Desconectar</button><button className="primary" disabled={scanning} onClick={scan}>{scanning?<LoaderCircle className="spin" size={16}/>:<RefreshCw size={16}/>} Buscar facturas</button></>:<button className="primary" disabled={connecting||!gmailOAuthConfigured()} onClick={()=>connect(true)}>{connecting?<LoaderCircle className="spin" size={16}/>:<Link2 size={16}/>} Conectar Gmail</button>}</div>
     </div>
 
