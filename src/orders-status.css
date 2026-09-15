@@ -1,0 +1,9 @@
+.ordersStats{grid-template-columns:repeat(5,minmax(0,1fr))}
+.ordersState.cancelled{background:#fef2f2;color:#b91c1c}
+.ordersState.closed{background:#f1f5f9;color:#475569}
+.ordersNoAction{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 12px;border-radius:10px;font-size:11px;font-weight:700;text-align:center;background:var(--surface-soft,#f8fafc);color:var(--text-secondary,#64748b)}
+.ordersNoAction.cancelled{background:#fef2f2;color:#b91c1c}
+html[data-theme='dark'] .ordersState.cancelled,html[data-theme='dark'] .ordersNoAction.cancelled{background:#450a0a;color:#fca5a5}
+html[data-theme='dark'] .ordersState.closed{background:#172033;color:#cbd5e1}
+@media(max-width:1050px){.ordersStats{grid-template-columns:1fr 1fr}}
+@media(max-width:430px){.ordersStats{grid-template-columns:1fr}}
