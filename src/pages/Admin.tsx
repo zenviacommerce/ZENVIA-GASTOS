@@ -3,8 +3,10 @@ import { Check, Clock3, History, KeyRound, Pencil, RefreshCw, Search, ShieldChec
 import { createManagedUser, deleteManagedUser, listManagedUsers, permissionOptions, updateManagedUser, type ManagedUser, type MenuPermission } from '../services/access';
 import { listAuditLogs, type AuditEntry } from '../services/audit';
 import { errorMessage, showError, showSuccess } from '../services/toast';
+import { Pagination } from '../components/Pagination';
 import '../admin.css';
 
+const PAGE_SIZE=20;
 type EditorState = { user: ManagedUser | null } | null;
 type AdminTab = 'users' | 'audit';
 
@@ -21,6 +23,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
   const [editor, setEditor] = useState<EditorState>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [tab, setTab] = useState<AdminTab>('users');
+  const [page,setPage]=useState(1);
 
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
@@ -30,6 +33,10 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  const userPages=Math.max(1,Math.ceil(users.length/PAGE_SIZE));
+  const pagedUsers=useMemo(()=>users.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[users,page]);
+  useEffect(()=>{setPage(current=>Math.min(current,userPages))},[userPages]);
+  useEffect(()=>{if(tab==='users')setPage(1)},[tab]);
 
   const toggleActive = async (user: ManagedUser) => {
     if (user.role === 'admin') return;
@@ -80,7 +87,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
       <section className="card adminUsersCard">
         <div className="adminUsersHead"><div><h3>Accesos de ZENVIA COMMERCE</h3><p>Los permisos corresponden a los módulos actuales y se aplican también al acceso a los datos.</p></div>{loading && <span className="adminLoading">Actualizando…</span>}</div>
         <div className="adminUsersList">
-          {users.map(user => {
+          {pagedUsers.map(user => {
             const permissionLabels = user.role === 'admin'
               ? [...permissionOptions.map(option => option.label), 'Administración']
               : user.permissions.map(permission => permissionOptions.find(option => option.id === permission)?.label || permission);
@@ -98,6 +105,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
           })}
           {!loading && !users.length && <div className="emptyState">No hay usuarios configurados.</div>}
         </div>
+        {users.length>0&&<Pagination page={page} totalItems={users.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
       </section>
     </>:<AuditPanel users={users} currentUserId={currentUserId}/>}
 
@@ -117,6 +125,7 @@ function AuditPanel({users,currentUserId}:{users:ManagedUser[];currentUserId:str
   const [module,setModule]=useState('');
   const [action,setAction]=useState('');
   const [days,setDays]=useState('30');
+  const [page,setPage]=useState(1);
 
   const refresh=useCallback(async()=>{
     setLoading(true);setError('');
@@ -151,6 +160,10 @@ function AuditPanel({users,currentUserId}:{users:ManagedUser[];currentUserId:str
       return true;
     });
   },[entries,query,actor,module,action,days]);
+  const totalPages=Math.max(1,Math.ceil(shown.length/PAGE_SIZE));
+  const paged=useMemo(()=>shown.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[shown,page]);
+  useEffect(()=>{setPage(1)},[query,actor,module,action,days]);
+  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
 
   return <>
     <div className="adminAuditStats">
@@ -169,7 +182,7 @@ function AuditPanel({users,currentUserId}:{users:ManagedUser[];currentUserId:str
       </div>
       {error&&<div className="errorBox adminError">{error}</div>}
       <div className="auditList">
-        {shown.map(entry=><article className="auditRow" key={entry.id}>
+        {paged.map(entry=><article className="auditRow" key={entry.id}>
           <div className={`auditIcon ${entry.action}`}><History size={16}/></div>
           <div className="auditMain"><strong>{entry.summary}</strong><span>{actorName(entry)} · {formatDate(entry.createdAt)}</span>{Object.keys(entry.details||{}).length>0&&<details><summary>Ver detalles</summary><pre>{JSON.stringify(entry.details,null,2)}</pre></details>}</div>
           <div className="auditMeta"><span>{moduleLabels[entry.module]||entry.module}</span><small>{actionLabels[entry.action]||entry.action}</small></div>
@@ -177,6 +190,7 @@ function AuditPanel({users,currentUserId}:{users:ManagedUser[];currentUserId:str
         {!loading&&!shown.length&&<div className="emptyState large">No hay movimientos para los filtros seleccionados.</div>}
         {loading&&!entries.length&&<div className="emptyState large">Cargando auditoría…</div>}
       </div>
+      {shown.length>0&&<Pagination page={page} totalItems={shown.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
     </section>
   </>;
 }
