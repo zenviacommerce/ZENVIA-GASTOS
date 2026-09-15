@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 
 const ENHANCED='zenviaLabelDefaultsReady';
 const SELECTED='zenvia-default-selected';
+const MRW_URGENT_LABEL='MRW Urgent 19:00 Expedition 0-80kg';
 let allowedButton:HTMLButtonElement|null=null;
 
 function normalized(value:string){
@@ -47,10 +48,24 @@ function carrierCard(modal:HTMLElement,carrier:'mrw'|'correos'){
 
 function mrwUrgent1900(button:HTMLButtonElement){
   const value=normalized(button.textContent||'');
-  return value.includes('urgent')&&value.includes('19:00')&&value.includes('expedition')&&/0\s*[-–]\s*80\s*kg/.test(value);
+  const friendly=value.includes('urgent')&&value.includes('19:00')&&value.includes('expedition')&&/0\s*[-–]\s*80\s*kg/.test(value);
+  const technical=value.includes('mrw:0100')&&value.includes('timeslot=12')&&value.includes('guaranteed24service');
+  return friendly||technical;
+}
+
+function normalizeMrwServiceLabel(button:HTMLButtonElement){
+  if(!mrwUrgent1900(button))return;
+  const strong=button.querySelector<HTMLElement>('strong');
+  if(!strong)return;
+  const current=normalized(strong.textContent||'');
+  if(current.includes('mrw:0100')||current.includes('timeslot=12')||current.includes('guaranteed24service')){
+    strong.textContent=MRW_URGENT_LABEL;
+  }
+  button.title=`${MRW_URGENT_LABEL} · ${button.querySelector<HTMLElement>('small')?.textContent?.trim()||'MRW'}`;
 }
 
 function serviceName(button:HTMLButtonElement){
+  if(mrwUrgent1900(button))return MRW_URGENT_LABEL;
   return button.querySelector<HTMLElement>('strong')?.textContent?.trim()||'servicio seleccionado';
 }
 
@@ -72,6 +87,8 @@ function enhanceModal(modal:HTMLElement){
   const correosCard=carrierCard(modal,'correos');
   const mrwButtons=mrwCard?Array.from(mrwCard.querySelectorAll<HTMLButtonElement>('.ordersOptionList button')):[];
   const correosButtons=correosCard?Array.from(correosCard.querySelectorAll<HTMLButtonElement>('.ordersOptionList button')):[];
+
+  mrwButtons.forEach(normalizeMrwServiceLabel);
 
   if(balearic){
     mrwButtons.forEach(button=>{
@@ -95,7 +112,7 @@ function enhanceModal(modal:HTMLElement){
   notice.className='zenviaLabelDefaultNotice';
   notice.innerHTML=balearic
     ? '<strong>🏝 Baleares · Correos</strong><span>MRW está bloqueado para este envío por su tarifa.</span>'
-    : '<strong>Servicio habitual</strong><span>MRW Urgent 19:00 Expedition 0-80kg</span>';
+    : `<strong>Servicio habitual</strong><span>${MRW_URGENT_LABEL}</span>`;
   const caption=document.createElement('small');
   caption.textContent='Selecciona un servicio para crear la etiqueta.';
   const confirm=document.createElement('button');
@@ -118,7 +135,7 @@ function enhanceModal(modal:HTMLElement){
   if(defaultButton){
     setSelected(modal,defaultButton,confirm,caption);
   }else if(!balearic){
-    caption.textContent='No se encontró MRW Urgent 19:00 Expedition 0-80kg. Escoge manualmente otro servicio.';
+    caption.textContent=`No se encontró ${MRW_URGENT_LABEL}. Escoge manualmente otro servicio.`;
   }
 
   modal.dataset[ENHANCED]='true';
