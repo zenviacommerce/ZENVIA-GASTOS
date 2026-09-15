@@ -36,11 +36,11 @@ async function sendcloudJson(path:string,init:RequestInit={}){
   headers.set('Accept','application/json');
   if(init.body&&!headers.has('Content-Type'))headers.set('Content-Type','application/json');
   const res=await fetch(url,{...init,headers});
-  const text=await res.text();
+  const body=await res.text();
   let data:any=null;
-  try{data=text?JSON.parse(text):null}catch{data=text}
+  try{data=body?JSON.parse(body):null}catch{data=body}
   if(!res.ok){
-    const detail=Array.isArray(data?.errors)?data.errors.map((item:any)=>item?.detail||item?.title).filter(Boolean).join(' · '):data?.message||data?.error||text;
+    const detail=Array.isArray(data?.errors)?data.errors.map((item:any)=>item?.detail||item?.title).filter(Boolean).join(' · '):data?.message||data?.error||body;
     throw new Error(`Sendcloud (${res.status}): ${String(detail||'Error desconocido').slice(0,500)}`);
   }
   return {data,headers:res.headers};
@@ -50,7 +50,7 @@ async function sendcloudBinary(path:string,accept='application/pdf'){
   const {publicKey,secretKey,configured}=sendcloudCredentials();
   if(!configured)throw new Error('Faltan las claves de la API de Sendcloud.');
   const res=await fetch(`${SENDCLOUD_BASE}${path}`,{headers:{Authorization:basicAuth(publicKey,secretKey),Accept:accept}});
-  if(!res.ok){const text=await res.text();throw new Error(`Sendcloud (${res.status}): ${text.slice(0,400)}`)}
+  if(!res.ok){const body=await res.text();throw new Error(`Sendcloud (${res.status}): ${body.slice(0,400)}`)}
   const bytes=new Uint8Array(await res.arrayBuffer());
   let binary='';
   const chunk=0x8000;
@@ -79,15 +79,11 @@ function channelFor(integration:any){
   return 'other';
 }
 
-function orderEmail(order:any){
-  return order?.customer_details?.email||order?.shipping_address?.email||order?.billing_address?.email||null;
-}
-function orderPhone(order:any){
-  return order?.customer_details?.phone_number||order?.customer_details?.telephone||order?.shipping_address?.phone_number||order?.shipping_address?.telephone||null;
-}
-function orderName(order:any){
-  return order?.customer_details?.name||order?.shipping_address?.name||order?.billing_address?.name||null;
-}
+function orderEmail(order:any){return order?.customer_details?.email||order?.shipping_address?.email||order?.billing_address?.email||null;}
+function orderPhone(order:any){return order?.customer_details?.phone_number||order?.customer_details?.telephone||order?.shipping_address?.phone_number||order?.shipping_address?.telephone||null;}
+function orderName(order:any){return order?.customer_details?.name||order?.shipping_address?.name||order?.billing_address?.name||null;}
+function statusCode(value:unknown){return String(value||'').trim().toLowerCase();}
+function isNonActionableStatus(value:unknown){const status=statusCode(value);return status.includes('cancel')||status==='fulfilled'||status==='shipped';}
 
 function normalizeShippingOption(option:any){
   const code=String(option?.code||option?.shipping_option_code||option?.shipping_option?.code||'');
@@ -110,10 +106,17 @@ async function integrations(){
   }));
 }
 
-async function fetchUnshippedOrders(){
+function dateDaysAgo(days:number){
+  const date=new Date();
+  date.setUTCDate(date.getUTCDate()-days);
+  return date.toISOString().slice(0,10);
+}
+
+async function fetchRecentOrders(){
   const rows:any[]=[];
-  let url=`${SENDCLOUD_BASE}/orders?status=unshipped&page_size=200&sort=-order_created_at`;
-  for(let page=0;page<3&&url;page+=1){
+  const minDate=dateDaysAgo(30);
+  let url=`${SENDCLOUD_BASE}/orders?page_size=200&sort=-order_created_at&order_created_at_min=${encodeURIComponent(minDate)}`;
+  for(let page=0;page<5&&url;page+=1){
     const result=await sendcloudJson(url);
     rows.push(...(result.data?.data||[]));
     const link=result.headers.get('link')||'';
@@ -148,7 +151,7 @@ Deno.serve(async(req:Request)=>{
     if(action==='sync'){
       const linked=await integrations();
       const integrationMap=new Map(linked.map((item:any)=>[Number(item.id),item]));
-      const orders=await fetchUnshippedOrders();
+      const orders=await fetchRecentOrders();
       const now=new Date().toISOString();
       const rows=orders.map((order:any)=>{
         const integrationId=Number(order?.order_details?.integration?.id||0);
@@ -192,6 +195,7 @@ Deno.serve(async(req:Request)=>{
     if(!order)return fail('Pedido no encontrado.',404);
 
     if(action==='shipping_options'){
+      if(isNonActionableStatus(order.source_status))return fail('Este pedido ya no admite preparación de etiqueta por su estado actual.',409);
       const address=order.shipping_address||{};
       const requestBody:any={calculate_quotes:false};
       if(address.country_code||address.postal_code||address.city){
@@ -210,6 +214,7 @@ Deno.serve(async(req:Request)=>{
 
     if(action==='create_label'){
       if(order.sendcloud_parcel_id)return fail('Este pedido ya tiene una etiqueta creada.',409);
+      if(isNonActionableStatus(order.source_status))return fail('No se puede crear una etiqueta para un pedido cancelado o ya procesado.',409);
       const selected=body?.shippingOption||null;
       const payload:any={
         integration_id:Number(order.integration_id),
