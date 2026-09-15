@@ -1,14 +1,13 @@
 .ordersStats{grid-template-columns:repeat(6,minmax(0,1fr))}
 .ordersSalesStats{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:16px}
-.ordersPeriodPanel{margin-bottom:14px}
-.ordersTaxNote{display:block;margin-top:-2px;color:var(--text-secondary,#64748b);font-size:10px;line-height:1.45}
-.ordersState.cancelled{background:#fef2f2;color:#b91c1c}
-.ordersState.closed{background:#f1f5f9;color:#475569}
-.ordersNoAction{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 12px;border-radius:10px;font-size:11px;font-weight:700;text-align:center;background:var(--surface-soft,#f8fafc);color:var(--text-secondary,#64748b)}
-.ordersNoAction.cancelled{background:#fef2f2;color:#b91c1c}
-html[data-theme='dark'] .ordersState.cancelled,html[data-theme='dark'] .ordersNoAction.cancelled{background:#450a0a;color:#fca5a5}
-html[data-theme='dark'] .ordersState.closed{background:#172033;color:#cbd5e1}
+.ordersPeriodPanel{margin-bottom:14px}.ordersTaxNote{display:block;margin-top:-2px;color:var(--text-secondary,#64748b);font-size:10px;line-height:1.45}
+.ordersState.cancelled{background:#fef2f2;color:#b91c1c}.ordersState.closed{background:#f1f5f9;color:#475569}
+.ordersNoAction{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 12px;border-radius:10px;font-size:11px;font-weight:700;text-align:center;background:var(--surface-soft,#f8fafc);color:var(--text-secondary,#64748b)}.ordersNoAction.cancelled{background:#fef2f2;color:#b91c1c}
+.ordersCarrierText{font-size:11px;white-space:nowrap}.ordersTable{min-width:1220px}
+.ordersManualModal{width:min(900px,calc(100vw - 28px));max-width:900px;max-height:92vh;overflow-y:auto}.ordersManualBody{padding:16px 20px}.ordersManualGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.ordersManualGrid label{display:flex;flex-direction:column;gap:6px}.ordersManualGrid label.wide{grid-column:1/-1}.ordersManualGrid label>span{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary,#64748b)}.ordersManualGrid input,.ordersManualGrid select{width:100%;min-height:40px;border:1px solid var(--border,#dbe2ea);border-radius:9px;background:var(--surface,#fff);color:var(--text,#0f172a);padding:8px 10px}.ordersManualItems{margin-top:18px}.ordersManualItems h3{margin:0;font-size:13px}.ordersManualItems .link{display:inline-flex;align-items:center;gap:5px}.ordersManualItem{display:grid;grid-template-columns:minmax(180px,1.8fr) minmax(110px,1fr) 80px 100px 38px;gap:8px;margin-top:8px}.ordersManualItem input{min-width:0;height:38px;border:1px solid var(--border,#dbe2ea);border-radius:8px;background:var(--surface,#fff);color:var(--text,#0f172a);padding:7px 9px}.ordersManualItem .iconBtn{width:38px;height:38px}.ordersChannel.other{background:#eff6ff;color:#1d4ed8}
+html[data-theme='dark'] .ordersState.cancelled,html[data-theme='dark'] .ordersNoAction.cancelled{background:#450a0a;color:#fca5a5}html[data-theme='dark'] .ordersState.closed{background:#172033;color:#cbd5e1}html[data-theme='dark'] .ordersManualGrid input,html[data-theme='dark'] .ordersManualGrid select,html[data-theme='dark'] .ordersManualItem input{background:#0f172a;border-color:#334155;color:#e5e7eb}html[data-theme='dark'] .ordersChannel.other{background:#172554;color:#93c5fd}
 @media(max-width:1250px){.ordersStats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:1050px){.ordersSalesStats{grid-template-columns:1fr 1fr}.ordersStats{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.ordersManualGrid{grid-template-columns:1fr}.ordersManualGrid label.wide{grid-column:auto}.ordersManualItem{grid-template-columns:1fr 1fr}.ordersManualItem input:first-child{grid-column:1/-1}.ordersManualItem .iconBtn{justify-self:end}.ordersManualBody{padding:12px}.ordersManualModal{width:calc(100vw - 18px)}}
 @media(max-width:560px){.ordersSalesStats{grid-template-columns:1fr 1fr}}
-@media(max-width:430px){.ordersSalesStats,.ordersStats{grid-template-columns:1fr}}
+@media(max-width:430px){.ordersSalesStats,.ordersStats{grid-template-columns:1fr}.ordersManualItem{grid-template-columns:1fr}.ordersManualItem input:first-child{grid-column:auto}.ordersManualItem .iconBtn{justify-self:stretch;width:100%}}
