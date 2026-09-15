@@ -74,10 +74,21 @@ Deno.serve(async(req:Request)=>{
     if(action==='shipping_options'){
       if(!canEdit(order.source_status)||order.sendcloud_parcel_id)return fail('Este pedido ya no admite una nueva etiqueta.',409);
       const address=order.shipping_address||{},sender=await senderAddress(),weightKg=orderWeightKg(order);
-      const requestBody:any={calculate_quotes:true,weight:{value:Number(weightKg.toFixed(3)),unit:'kg'},to_address:{country_code:address.country_code||undefined,postal_code:address.postal_code||undefined,city:address.city||undefined,address_line_1:address.address_line_1||undefined,house_number:address.house_number||undefined,state_province_code:address.state_province_code||undefined}};
+      const requestBody:any={
+        calculate_quotes:true,
+        parcels:[{weight:{value:Number(weightKg.toFixed(3)),unit:'kg'}}],
+        to_address:{
+          country_code:address.country_code||undefined,
+          postal_code:address.postal_code||undefined,
+          city:address.city||undefined,
+          address_line_1:address.address_line_1||undefined,
+          house_number:address.house_number||undefined,
+          state_province_code:address.state_province_code||undefined,
+        },
+      };
       if(sender)requestBody.from_address={country_code:sender.country_code||undefined,postal_code:sender.postal_code||undefined,city:sender.city||undefined,address_line_1:sender.address_line_1||undefined,house_number:sender.house_number||undefined,state_province_code:sender.state_province_code||undefined};
       const {data}=await sendcloudJson('/shipping-options',{method:'POST',body:JSON.stringify(requestBody)});
-      return response({weightKg,options:(data?.data||[]).map(normalizeOption).filter((x:any)=>x.code)});
+      return response({weightKg,options:(data?.data||[]).map(normalizeOption).filter((x:any)=>x.code),message:data?.message||null});
     }
 
     if(action==='update_order'){
