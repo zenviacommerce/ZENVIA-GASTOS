@@ -69,6 +69,7 @@ function friendlyCarrier(code:unknown){const v=String(code||'').trim(),l=v.toLow
 function carrierCode(option:unknown,tracking?:unknown){const o=String(option||'').trim();if(o)return o.split(':')[0].toLowerCase();try{return new URL(String(tracking||'')).searchParams.get('carrier')?.toLowerCase()||null}catch{return null}}
 function clean(v:unknown){return String(v??'').trim();}
 function positive(v:unknown,fallback=0){const n=Number(v);return Number.isFinite(n)&&n>=0?n:fallback;}
+function isBalearicAddress(address:any){const country=clean(address?.country_code).toUpperCase(),postal=clean(address?.postal_code).replace(/\s+/g,'');return country==='ES'&&/^07\d{3}$/.test(postal);}
 
 function normalizeShippingOption(option:any){
   const code=String(option?.code||option?.shipping_option_code||option?.shipping_option?.code||'');
@@ -147,7 +148,10 @@ Deno.serve(async(req:Request)=>{
 
     if(action==='create_label'){
       if(order.sendcloud_parcel_id)return fail('Este pedido ya tiene una etiqueta creada.',409);if(nonActionable(order.source_status))return fail('No se puede crear una etiqueta para un pedido cancelado o ya procesado.',409);
-      const selected=body?.shippingOption||null,payload:any={integration_id:Number(order.integration_id),label_details:{mime_type:'application/pdf',dpi:72},order:{apply_shipping_rules:!selected}};
+      const selected=body?.shippingOption||null,balearic=isBalearicAddress(order.shipping_address||{});
+      if(balearic&&!selected)return fail('Destino Baleares: selecciona un servicio de Correos. Las reglas automáticas están desactivadas para evitar MRW.',409);
+      if(balearic&&`${selected?.code||''} ${selected?.carrierName||''} ${selected?.name||''}`.toLowerCase().includes('mrw'))return fail('Destino Baleares: MRW está bloqueado por tarifa alta. Utiliza Correos.',409);
+      const payload:any={integration_id:Number(order.integration_id),label_details:{mime_type:'application/pdf',dpi:72},order:{apply_shipping_rules:!selected}};
       if(order.order_id)payload.order.order_id=order.order_id;else if(order.order_number)payload.order.order_number=order.order_number;else return fail('El pedido no tiene identificador de origen.');
       if(selected?.code){payload.ship_with={type:'shipping_option_code',properties:{shipping_option_code:String(selected.code)}};if(selected.contractId!=null)payload.ship_with.properties.contract_id=Number(selected.contractId)}
       const {data}=await sendcloudJson('/orders/create-label-sync',{method:'POST',body:JSON.stringify(payload)}),created=Array.isArray(data?.data)?data.data[0]:null;if(!created?.parcel_id||!created?.label?.file)throw new Error('Sendcloud no devolvió la etiqueta creada.');
@@ -161,5 +165,5 @@ Deno.serve(async(req:Request)=>{
       return response({parcelId:Number(order.sendcloud_parcel_id),shipmentId:order.sendcloud_shipment_id||null,trackingNumber:order.tracking_number||null,trackingUrl:order.tracking_url||null,shippingOptionCode:order.shipping_option_code||null,contractId:order.contract_id==null?null:Number(order.contract_id),carrierCode:order.carrier_code||null,carrierName:order.carrier_name||null,shippingServiceName:order.shipping_service_name||null,mimeType:file.mimeType,base64:file.base64});
     }
     return fail('Acción no válida.');
-  }catch(error){const message=error instanceof Error?error.message:String(error||'Error interno.');const status=/Sesión no válida/.test(message)?401:/permiso/.test(message)?403:/no admite|No se puede/.test(message)?409:500;return fail(message,status);}
+  }catch(error){const message=error instanceof Error?error.message:String(error||'Error interno.');const status=/Sesión no válida/.test(message)?401:/permiso/.test(message)?403:/no admite|No se puede|Baleares/.test(message)?409:500;return fail(message,status);}
 });
