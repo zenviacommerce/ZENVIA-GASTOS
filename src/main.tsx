@@ -32,4 +32,5 @@ import './dashboard-summary.css';
 import './interface-normalization.css';
 import './modern-forms.css';
 import './destructive-actions.css';
+import './mobile-ui-normalization.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/><AutoPagination/><OrderLabelDefaults/></React.StrictMode>);
