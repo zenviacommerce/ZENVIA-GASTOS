@@ -10,7 +10,8 @@ export interface FulfillmentOrder {
   shippingAddress:Record<string,unknown>; billingAddress:Record<string,unknown>; items:Array<Record<string,unknown>>;
   totalAmount:number|null; currency:string|null; weightKg:number|null;
   sendcloudParcelId:number|null; sendcloudShipmentId:string|null;
-  trackingNumber:string|null; trackingUrl:string|null; shippingOptionCode:string|null; contractId:number|null;
+  trackingNumber:string|null; trackingUrl:string|null; trackingStatusCode:string|null; trackingStatusMessage:string|null; trackingUpdatedAt:string|null;
+  shippingOptionCode:string|null; contractId:number|null;
   carrierCode:string|null; carrierName:string|null; shippingServiceName:string|null;
   labelCreatedAt:string|null; fulfilledAt:string|null; lastSyncedAt:string;
 }
@@ -59,6 +60,7 @@ function mapRow(row:any):FulfillmentOrder{
     totalAmount:row.total_amount==null?null:Number(row.total_amount), currency:row.currency||null, weightKg:toKg(weight?.value,weight?.unit),
     sendcloudParcelId:row.sendcloud_parcel_id==null?null:Number(row.sendcloud_parcel_id),
     sendcloudShipmentId:row.sendcloud_shipment_id||null, trackingNumber:row.tracking_number||null, trackingUrl:row.tracking_url||null,
+    trackingStatusCode:row.tracking_status_code||null, trackingStatusMessage:row.tracking_status_message||null, trackingUpdatedAt:row.tracking_updated_at||null,
     shippingOptionCode:row.shipping_option_code||null, contractId:row.contract_id==null?null:Number(row.contract_id),
     carrierCode:row.carrier_code||null, carrierName:row.carrier_name||null, shippingServiceName:row.shipping_service_name||null,
     labelCreatedAt:row.label_created_at||null, fulfilledAt:row.fulfilled_at||null, lastSyncedAt:row.last_synced_at,
