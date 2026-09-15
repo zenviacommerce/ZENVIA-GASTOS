@@ -1,0 +1,62 @@
+/* Unified destructive actions: same red trash treatment across the whole app */
+:where(.iconBtn.dangerIcon,.iconAction.danger,button[title^="Eliminar"],button[aria-label^="Eliminar"]){
+  color:#dc2626!important;
+  border-color:#fecaca!important;
+  background:#fff!important;
+}
+
+:where(.iconBtn.dangerIcon,.iconAction.danger){
+  width:31px!important;
+  height:31px!important;
+  min-width:31px!important;
+  padding:0!important;
+  border-radius:8px!important;
+  display:grid!important;
+  place-items:center!important;
+}
+
+:where(.iconBtn.dangerIcon,.iconAction.danger,button[title^="Eliminar"],button[aria-label^="Eliminar"]) svg{
+  width:16px!important;
+  height:16px!important;
+  margin:0!important;
+  color:currentColor!important;
+  stroke-width:2.2;
+}
+
+:where(.iconBtn.dangerIcon,.iconAction.danger,button[title^="Eliminar"],button[aria-label^="Eliminar"]):hover{
+  color:#b91c1c!important;
+  border-color:#fca5a5!important;
+  background:#fef2f2!important;
+}
+
+:where(.danger,.dangerText){
+  color:#b91c1c!important;
+  border-color:#fecaca!important;
+  background:#fff!important;
+}
+
+:where(.danger,.dangerText) svg{
+  color:#dc2626!important;
+}
+
+:where(.danger,.dangerText):hover{
+  color:#991b1b!important;
+  border-color:#fca5a5!important;
+  background:#fef2f2!important;
+}
+
+html[data-theme='dark'] :where(.iconBtn.dangerIcon,.iconAction.danger,button[title^="Eliminar"],button[aria-label^="Eliminar"],.danger,.dangerText){
+  color:#f87171!important;
+  border-color:#7f1d1d!important;
+  background:#241315!important;
+}
+
+html[data-theme='dark'] :where(.iconBtn.dangerIcon,.iconAction.danger,button[title^="Eliminar"],button[aria-label^="Eliminar"],.danger,.dangerText):hover{
+  color:#fca5a5!important;
+  border-color:#b91c1c!important;
+  background:#3b171b!important;
+}
+
+html[data-theme='dark'] :where(.danger,.dangerText) svg{
+  color:#f87171!important;
+}
