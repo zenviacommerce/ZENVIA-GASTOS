@@ -5,12 +5,12 @@ export type MenuPermission = 'dashboard' | 'sales' | 'invoices' | 'clients' | 'p
 export type AppRole = 'admin' | 'user';
 
 export const permissionOptions: Array<{ id: MenuPermission; label: string; description: string }> = [
-  { id: 'dashboard', label: 'Resumen', description: 'Ver el resumen, métricas y filtros.' },
-  { id: 'sales', label: 'Facturación', description: 'Crear, emitir, enviar y controlar cobros de facturas de venta.' },
-  { id: 'invoices', label: 'Facturas de gastos', description: 'Consultar, crear, editar, importar desde Gmail y exportar facturas de gastos.' },
-  { id: 'clients', label: 'Clientes', description: 'Consultar y mantener clientes y sus datos fiscales.' },
-  { id: 'products', label: 'Productos', description: 'Consultar y mantener productos y costes.' },
-  { id: 'suppliers', label: 'Proveedores', description: 'Consultar y mantener proveedores.' },
+  { id: 'dashboard', label: 'Resumen', description: 'Ver el cuadro de mando, métricas, IVA, resultados y filtros por periodo.' },
+  { id: 'sales', label: 'Facturación', description: 'Gestionar facturas de venta, borradores, cobros, series, datos fiscales y registros IVA.' },
+  { id: 'invoices', label: 'Gastos', description: 'Gestionar gastos, facturas recibidas, importación desde Gmail, filtros y exportaciones.' },
+  { id: 'clients', label: 'Clientes', description: 'Consultar y mantener clientes, datos fiscales, contacto e histórico de facturación.' },
+  { id: 'products', label: 'Productos', description: 'Consultar y mantener productos, precios de venta, costes e histórico.' },
+  { id: 'suppliers', label: 'Proveedores', description: 'Consultar y mantener proveedores, clasificación, gasto e histórico de compras.' },
 ];
 
 export interface AccessProfile {
