@@ -36,6 +36,9 @@ function renderTarget({anchor,containers,key}:PaginationTarget){
   if(!total){controls?.remove();return;}
   if(!controls){controls=document.createElement('div');controls.className=`listPagination ${CONTROL_CLASS}`;controls.dataset.paginationKey=key;anchor.insertAdjacentElement('afterend',controls);}
   const from=(page-1)*PAGE_SIZE+1,to=Math.min(page*PAGE_SIZE,total);
+  const renderKey=`${page}|${pages}|${total}|${from}|${to}`;
+  if(controls.dataset.renderKey===renderKey)return;
+  controls.dataset.renderKey=renderKey;
   controls.innerHTML=`<span>Mostrando <strong>${from}-${to}</strong> de <strong>${total}</strong></span><div><button class="secondary" data-dir="prev" ${page<=1?'disabled':''}>‹ Anterior</button><span>Página ${page} de ${pages}</span><button class="secondary" data-dir="next" ${page>=pages?'disabled':''}>Siguiente ›</button></div>`;
   controls.querySelectorAll<HTMLButtonElement>('button[data-dir]').forEach(button=>{button.onclick=()=>{const dir=button.dataset.dir;const nextPage=dir==='prev'?page-1:page+1;anchor.dataset.autoPaginationPage=String(Math.min(Math.max(1,nextPage),pages));renderTarget({anchor,containers,key});anchor.scrollIntoView({behavior:'smooth',block:'nearest'});};});
 }
