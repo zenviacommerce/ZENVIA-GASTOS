@@ -46,6 +46,20 @@ function canEdit(v:unknown){const s=statusCode(v);return !s.includes('cancel')&&
 function toKg(value:unknown,unit:unknown){const n=Number(value);if(!Number.isFinite(n)||n<=0)return null;const u=clean(unit).toLowerCase();if(u==='g')return n/1000;if(u==='lbs'||u==='lb')return n*0.45359237;return n;}
 function orderWeightKg(order:any){const w=order?.raw_payload?.shipping_details?.measurement?.weight;return toKg(w?.value,w?.unit)||1;}
 function friendlyCarrier(code:unknown){const v=clean(code),l=v.toLowerCase();if(l.includes('correos'))return 'Correos';if(l.includes('mrw'))return 'MRW';return v||'Transportista';}
+function normalizeKey(value:unknown){return clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
+const ES_PROVINCES:Record<string,string>={
+  'a coruna':'C','alava':'VI','araba':'VI','albacete':'AB','alicante':'A','alacant':'A','almeria':'AL','asturias':'O','avila':'AV','badajoz':'BA','barcelona':'B','bizkaia':'BI','vizcaya':'BI','burgos':'BU','caceres':'CC','cadiz':'CA','cantabria':'S','castellon':'CS','castello':'CS','ceuta':'CE','ciudad real':'CR','cordoba':'CO','cuenca':'CU','girona':'GI','granada':'GR','guadalajara':'GU','gipuzkoa':'SS','guipuzcoa':'SS','huelva':'H','huesca':'HU','illes balears':'PM','islas baleares':'PM','jaen':'J','la rioja':'LO','las palmas':'GC','leon':'LE','lleida':'L','lugo':'LU','madrid':'M','malaga':'MA','melilla':'ML','murcia':'MU','navarra':'NA','ourense':'OR','palencia':'P','pontevedra':'PO','salamanca':'SA','santa cruz de tenerife':'TF','segovia':'SG','sevilla':'SE','soria':'SO','tarragona':'T','teruel':'TE','toledo':'TO','valencia':'V','valladolid':'VA','zamora':'ZA','zaragoza':'Z'
+};
+function normalizeStateProvince(country:unknown,value:unknown){
+  const cc=clean(country).toUpperCase(),raw=clean(value);if(!raw)return null;
+  if(cc==='ES'){
+    const upper=raw.toUpperCase();
+    const prefixed=upper.match(/^ES[-_ ]([A-Z]{1,2})$/);if(prefixed)return prefixed[1];
+    if(/^[A-Z]{1,2}$/.test(upper))return upper;
+    return ES_PROVINCES[normalizeKey(raw)]||null;
+  }
+  return /^[A-Za-z0-9-]{1,8}$/.test(raw)?raw.toUpperCase():null;
+}
 function normalizeOption(option:any){
   const code=clean(option?.code||option?.shipping_option_code||option?.shipping_option?.code);
   const carrierCode=clean(option?.carrier?.code||option?.carrier_code||code.split(':')[0]);
@@ -73,7 +87,17 @@ Deno.serve(async(req:Request)=>{
 
     if(action==='shipping_options'){
       if(!canEdit(order.source_status)||order.sendcloud_parcel_id)return fail('Este pedido ya no admite una nueva etiqueta.',409);
-      const address=order.shipping_address||{},sender=await senderAddress(),weightKg=orderWeightKg(order);
+      let address=order.shipping_address||{};const sender=await senderAddress(),weightKg=orderWeightKg(order);
+      const normalizedState=normalizeStateProvince(address.country_code,address.state_province_code);
+      if(clean(address.state_province_code)!==clean(normalizedState)){
+        const correctedAddress={...address,state_province_code:normalizedState};
+        try{
+          const {data:patched}=await sendcloudJson(`/orders/${encodeURIComponent(String(order.sendcloud_id))}`,{method:'PATCH',body:JSON.stringify({shipping_address:correctedAddress})});
+          address=patched?.data?.shipping_address||correctedAddress;
+          const raw=order.raw_payload||{},newRaw={...raw,...(patched?.data||{}),shipping_address:address};
+          await admin.from('fulfillment_orders').update({shipping_address:address,raw_payload:newRaw,last_synced_at:new Date().toISOString()}).eq('id',order.id).eq('owner_id',caller.data_owner_id);
+        }catch{/* La cotización seguirá con la dirección normalizada */}
+      }
       const requestBody:any={
         calculate_quotes:true,
         parcels:[{weight:{value:Number(weightKg.toFixed(3)),unit:'kg'}}],
@@ -83,10 +107,10 @@ Deno.serve(async(req:Request)=>{
           city:address.city||undefined,
           address_line_1:address.address_line_1||undefined,
           house_number:address.house_number||undefined,
-          state_province_code:address.state_province_code||undefined,
+          state_province_code:normalizeStateProvince(address.country_code,address.state_province_code)||undefined,
         },
       };
-      if(sender)requestBody.from_address={country_code:sender.country_code||undefined,postal_code:sender.postal_code||undefined,city:sender.city||undefined,address_line_1:sender.address_line_1||undefined,house_number:sender.house_number||undefined,state_province_code:sender.state_province_code||undefined};
+      if(sender)requestBody.from_address={country_code:sender.country_code||undefined,postal_code:sender.postal_code||undefined,city:sender.city||undefined,address_line_1:sender.address_line_1||undefined,house_number:sender.house_number||undefined,state_province_code:normalizeStateProvince(sender.country_code,sender.state_province_code)||undefined};
       const {data}=await sendcloudJson('/shipping-options',{method:'POST',body:JSON.stringify(requestBody)});
       return response({weightKg,options:(data?.data||[]).map(normalizeOption).filter((x:any)=>x.code),message:data?.message||null});
     }
@@ -95,16 +119,17 @@ Deno.serve(async(req:Request)=>{
       if(!canEdit(order.source_status)||order.sendcloud_parcel_id)return fail('Solo puedes editar pedidos pendientes antes de crear la etiqueta.',409);
       const input=body?.order||{},current=order.shipping_address||{};
       const name=clean(input.customerName||current.name||order.customer_name),email=clean(input.email??current.email??order.customer_email),phone=clean(input.phone??current.phone_number??order.customer_phone);
-      const address1=clean(input.address??current.address_line_1),houseNumber=clean(input.houseNumber??current.house_number),address2=clean(input.address2??current.address_line_2),postalCode=clean(input.postalCode??current.postal_code),city=clean(input.city??current.city),stateProvince=clean(input.stateProvince??current.state_province_code),countryCode=clean(input.countryCode??current.country_code).toUpperCase();
+      const address1=clean(input.address??current.address_line_1),houseNumber=clean(input.houseNumber??current.house_number),address2=clean(input.address2??current.address_line_2),postalCode=clean(input.postalCode??current.postal_code),city=clean(input.city??current.city),countryCode=clean(input.countryCode??current.country_code).toUpperCase();
+      const stateInput=clean(input.stateProvince??current.state_province_code),stateProvince=normalizeStateProvince(countryCode,stateInput);
       const weightKg=Number(input.weightKg);if(!name||!address1||!postalCode||!city||countryCode.length!==2)return fail('Completa nombre, dirección, código postal, ciudad y país.');if(!Number.isFinite(weightKg)||weightKg<=0)return fail('El peso debe ser mayor que 0.');
-      const shippingAddress={...current,name,address_line_1:address1,house_number:houseNumber||null,address_line_2:address2||null,postal_code:postalCode,city,state_province_code:stateProvince||null,country_code:countryCode,email:email||null,phone_number:phone||null};
+      const shippingAddress={...current,name,address_line_1:address1,house_number:houseNumber||null,address_line_2:address2||null,postal_code:postalCode,city,state_province_code:stateProvince,country_code:countryCode,email:email||null,phone_number:phone||null};
       const raw=order.raw_payload||{},shippingDetails={...(raw.shipping_details||{}),measurement:{...(raw.shipping_details?.measurement||{}),weight:{value:Number(weightKg.toFixed(3)),unit:'kg'}}};
       const customerDetails={...(raw.customer_details||{}),name,email:email||null,phone_number:phone||null};
       const patch={shipping_address:shippingAddress,shipping_details:shippingDetails,customer_details:customerDetails};
       const {data}=await sendcloudJson(`/orders/${encodeURIComponent(String(order.sendcloud_id))}`,{method:'PATCH',body:JSON.stringify(patch)});
       const remote=data?.data||{},now=new Date().toISOString(),newRaw={...raw,...remote,shipping_address:remote.shipping_address||shippingAddress,shipping_details:remote.shipping_details||shippingDetails,customer_details:remote.customer_details||customerDetails};
       const {error:updateError}=await admin.from('fulfillment_orders').update({customer_name:name,customer_email:email||null,customer_phone:phone||null,shipping_address:remote.shipping_address||shippingAddress,raw_payload:newRaw,order_updated_at:remote?.order_details?.order_updated_at||remote?.modified_at||now,last_synced_at:now}).eq('id',order.id).eq('owner_id',caller.data_owner_id);if(updateError)throw updateError;
-      return response({ok:true,weightKg});
+      return response({ok:true,weightKg,stateProvince});
     }
     return fail('Acción no válida.');
   }catch(error){const message=error instanceof Error?error.message:String(error||'Error interno.');const status=/Sesión no válida/.test(message)?401:/permiso/.test(message)?403:/Solo puedes|no admite/.test(message)?409:500;return fail(message,status)}
