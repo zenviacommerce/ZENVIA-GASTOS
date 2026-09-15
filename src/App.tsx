@@ -7,6 +7,7 @@ import { ProductModal } from './components/ProductModal';
 import { SupplierModal } from './components/SupplierModal';
 import { ToastHost } from './components/ToastHost';
 import { AuthScreen } from './components/AuthScreen';
+import { PasskeySetup } from './components/PasskeySetup';
 import { Dashboard } from './pages/Dashboard';
 import { ExpenseInvoicesHub } from './pages/ExpenseInvoicesHub';
 import { SalesInvoices } from './pages/SalesInvoices';
@@ -170,6 +171,7 @@ export default function App(){
  return <div className="app"><ToastHost/><Sidebar page={page} onChange={navigate} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme} allowedPages={allowedPages} isAdmin={access.role==='admin'} user={{fullName:access.fullName,email:access.email||session.user.email||'',role:access.role}}/><main>
    <button className="mobileLogoutButton" onClick={()=>supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut size={19}/></button>
    <button className="mobileThemeToggle" onClick={toggleTheme} title={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'} aria-label={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'}>{theme==='dark'?<Sun size={19}/>:<Moon size={19}/>}</button>
+   <PasskeySetup userId={session.user.id}/>
    {error&&<div className="globalError">{error}<button onClick={refresh}>Reintentar</button></div>}
    {loading&&<div className="syncBadge"><LoaderCircle className="spin" size={14}/> Sincronizando</div>}
    {page==='dashboard'&&can('dashboard')&&<Dashboard invoices={data.invoices} products={data.products} suppliers={data.suppliers} onUpload={can('invoices')?()=>setUpload(true):undefined} onProducts={can('products')?()=>navigate('products'):undefined}/>} 
