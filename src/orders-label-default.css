@@ -1,6 +1,6 @@
 /* Label service selection defaults */
 .ordersOptionList button.zenvia-default-selected{position:relative;background:#ecfdf5;box-shadow:inset 0 0 0 2px #14b8a6}
-.ordersOptionList button.zenvia-default-selected::after{content:'Predeterminado';position:absolute;right:10px;top:7px;padding:2px 6px;border-radius:999px;background:#0f766e;color:#fff;font-size:9px;font-weight:800;letter-spacing:.02em}
+.ordersOptionList button.zenvia-default-selected::after{content:'Seleccionado';position:absolute;right:10px;top:7px;padding:2px 6px;border-radius:999px;background:#0f766e;color:#fff;font-size:9px;font-weight:800;letter-spacing:.02em}
 .ordersOptionList button.zenvia-default-selected>span{margin-top:18px}
 .ordersOptionList button.zenvia-island-disabled,.ordersRulesButton.zenvia-island-disabled{opacity:.42;cursor:not-allowed!important;filter:saturate(.45)}
 .zenviaLabelConfirm{margin:10px 20px 0;padding:13px 14px;border:1px solid #99f6e4;border-radius:13px;background:#f0fdfa;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;align-items:center}
