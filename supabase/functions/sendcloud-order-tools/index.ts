@@ -46,22 +46,16 @@ function canEdit(v:unknown){const s=statusCode(v);return !s.includes('cancel')&&
 function toKg(value:unknown,unit:unknown){const n=Number(value);if(!Number.isFinite(n)||n<=0)return null;const u=clean(unit).toLowerCase();if(u==='g')return n/1000;if(u==='lbs'||u==='lb')return n*0.45359237;return n;}
 function orderWeightKg(order:any){const w=order?.raw_payload?.shipping_details?.measurement?.weight;return toKg(w?.value,w?.unit)||1;}
 function friendlyCarrier(code:unknown){const v=clean(code),l=v.toLowerCase();if(l.includes('correos'))return 'Correos';if(l.includes('mrw'))return 'MRW';return v||'Transportista';}
-function normalizeKey(value:unknown){return clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
-const ES_PROVINCES:Record<string,string>={
-  'a coruna':'C','alava':'VI','araba':'VI','albacete':'AB','alicante':'A','alacant':'A','almeria':'AL','asturias':'O','avila':'AV','badajoz':'BA','barcelona':'B','bizkaia':'BI','vizcaya':'BI','burgos':'BU','caceres':'CC','cadiz':'CA','cantabria':'S','castellon':'CS','castello':'CS','ceuta':'CE','ciudad real':'CR','cordoba':'CO','cuenca':'CU','girona':'GI','granada':'GR','guadalajara':'GU','gipuzkoa':'SS','guipuzcoa':'SS','huelva':'H','huesca':'HU','illes balears':'PM','islas baleares':'PM','jaen':'J','la rioja':'LO','las palmas':'GC','leon':'LE','lleida':'L','lugo':'LU','madrid':'M','malaga':'MA','melilla':'ML','murcia':'MU','navarra':'NA','ourense':'OR','palencia':'P','pontevedra':'PO','salamanca':'SA','santa cruz de tenerife':'TF','segovia':'SG','sevilla':'SE','soria':'SO','tarragona':'T','teruel':'TE','toledo':'TO','valencia':'V','valladolid':'VA','zamora':'ZA','zaragoza':'Z'
-};
+
+// Sendcloud v3 only accepts state_province_code for these destination countries.
+// Spain is deliberately excluded: for ES the field must be omitted entirely.
+const STATE_COUNTRIES=new Set(['AT','AU','BR','CA','DE','ET','FM','IN','IT','KN','MM','MX','MY','NG','PW','US','VE','VN']);
 function normalizeStateProvince(country:unknown,value:unknown){
-  const cc=clean(country).toUpperCase(),raw=clean(value);if(!raw)return null;
-  if(cc==='ES'){
-    const upper=raw.toUpperCase().replace('_','-').replace(' ','-');
-    if(/^ES-[A-Z]{1,2}$/.test(upper))return upper;
-    if(/^[A-Z]{1,2}$/.test(upper))return `ES-${upper}`;
-    const suffix=ES_PROVINCES[normalizeKey(raw)];
-    return suffix?`ES-${suffix}`:null;
-  }
-  const upper=raw.toUpperCase().replace('_','-').replace(' ','-');
-  if(new RegExp(`^${cc}-[A-Z0-9]{1,3}$`).test(upper))return upper;
-  return null;
+  const cc=clean(country).toUpperCase(),raw=clean(value);if(!raw||!STATE_COUNTRIES.has(cc))return null;
+  const upper=raw.toUpperCase();
+  const prefixed=upper.match(new RegExp(`^${cc}[-_ ](.+)$`));
+  const candidate=(prefixed?.[1]||upper).trim();
+  return /^[A-Z0-9-]{1,8}$/.test(candidate)?candidate:null;
 }
 function normalizeOption(option:any){
   const code=clean(option?.code||option?.shipping_option_code||option?.shipping_option?.code);
@@ -99,21 +93,22 @@ Deno.serve(async(req:Request)=>{
           address=patched?.data?.shipping_address||correctedAddress;
           const raw=order.raw_payload||{},newRaw={...raw,...(patched?.data||{}),shipping_address:address};
           await admin.from('fulfillment_orders').update({shipping_address:address,raw_payload:newRaw,last_synced_at:new Date().toISOString()}).eq('id',order.id).eq('owner_id',caller.data_owner_id);
-        }catch{/* La cotización seguirá con la dirección normalizada */}
+        }catch{/* La cotización seguirá con la dirección saneada */}
       }
-      const requestBody:any={
-        calculate_quotes:true,
-        parcels:[{weight:{value:Number(weightKg.toFixed(3)),unit:'kg'}}],
-        to_address:{
-          country_code:address.country_code||undefined,
-          postal_code:address.postal_code||undefined,
-          city:address.city||undefined,
-          address_line_1:address.address_line_1||undefined,
-          house_number:address.house_number||undefined,
-          state_province_code:normalizeStateProvince(address.country_code,address.state_province_code)||undefined,
-        },
+      const toAddress:any={
+        country_code:address.country_code||undefined,
+        postal_code:address.postal_code||undefined,
+        city:address.city||undefined,
+        address_line_1:address.address_line_1||undefined,
+        house_number:address.house_number||undefined,
       };
-      if(sender)requestBody.from_address={country_code:sender.country_code||undefined,postal_code:sender.postal_code||undefined,city:sender.city||undefined,address_line_1:sender.address_line_1||undefined,house_number:sender.house_number||undefined,state_province_code:normalizeStateProvince(sender.country_code,sender.state_province_code)||undefined};
+      const toState=normalizeStateProvince(address.country_code,address.state_province_code);if(toState)toAddress.state_province_code=toState;
+      const requestBody:any={calculate_quotes:true,parcels:[{weight:{value:Number(weightKg.toFixed(3)),unit:'kg'}}],to_address:toAddress};
+      if(sender){
+        const fromAddress:any={country_code:sender.country_code||undefined,postal_code:sender.postal_code||undefined,city:sender.city||undefined,address_line_1:sender.address_line_1||undefined,house_number:sender.house_number||undefined};
+        const fromState=normalizeStateProvince(sender.country_code,sender.state_province_code);if(fromState)fromAddress.state_province_code=fromState;
+        requestBody.from_address=fromAddress;
+      }
       const {data}=await sendcloudJson('/shipping-options',{method:'POST',body:JSON.stringify(requestBody)});
       return response({weightKg,options:(data?.data||[]).map(normalizeOption).filter((x:any)=>x.code),message:data?.message||null});
     }
