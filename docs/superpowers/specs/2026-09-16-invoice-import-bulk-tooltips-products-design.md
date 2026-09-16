@@ -4,7 +4,7 @@ Fecha: 2026-09-16
 
 ## Objetivo
 
-Unificar y endurecer el flujo de importación de facturas de gasto para que una factura individual y una tanda de PDFs usen exactamente el mismo lector, validaciones y guardado; corregir el caso CABAPLAST; admitir temporalmente facturas emitidas a Cristian Jesús Pérez Garrido hasta el 30/06/2026 inclusive; representar correctamente el recargo de equivalencia; permitir corregir manualmente el proveedor de un producto sin crear compras ficticias; mostrar el margen como porcentaje sobre coste; y sustituir los `title` nativos de textos recortados por un tooltip visual propio de ZENVIA.
+Unificar y endurecer el flujo de importación de facturas de gasto para que una factura individual y una tanda de PDFs usen exactamente el mismo lector, validaciones y guardado; corregir el caso CABAPLAST; admitir temporalmente facturas emitidas a Cristian Jesús Pérez Garrido hasta el 30/06/2026 inclusive; representar correctamente el recargo de equivalencia; permitir corregir manualmente el proveedor de un producto sin crear compras ficticias; mostrar el margen como porcentaje sobre coste; sustituir los `title` nativos de textos recortados por un tooltip visual propio de ZENVIA; y establecer un sistema común de formularios, selectores buscables y direcciones internacionales reutilizable en toda la aplicación.
 
 ## Alcance funcional
 
@@ -197,6 +197,130 @@ Se retirarán los `title` nativos usados solo para mostrar nombres completos, em
 
 Cobertura esperada: Productos, Proveedores, Clientes, Facturas, Ventas, Pedidos, Gmail y futuras tablas/listas que entren en `UnifiedListExperience`.
 
+### 10. Selector común buscable (`SearchableSelect`)
+
+Se creará un componente común para selecciones cuyo catálogo pueda ser largo o crecer con datos del usuario.
+
+Características:
+
+- buscador integrado siempre que se use este componente;
+- búsqueda por etiqueta visible, términos alternativos y código cuando exista;
+- navegación por teclado, foco visible y atributos ARIA apropiados;
+- selección con ratón/touch y teclado;
+- cierre con Escape y clic fuera;
+- estados de vacío y deshabilitado;
+- comportamiento consistente en modo claro/oscuro y móvil/escritorio.
+
+Se usará de forma general para catálogos largos o potencialmente largos, entre ellos:
+
+- países;
+- proveedores;
+- clientes;
+- productos;
+- registros/configuraciones que puedan crecer y donde buscar aporte valor.
+
+No sustituirá selects pequeños y cerrados donde el buscador empeore la interacción, por ejemplo IVA `21/10/4/0`, tipo de factura, estado o plazos de pago con pocas opciones.
+
+Los formularios nuevos deberán preferir `SearchableSelect` para catálogos de entidades en vez de implementar un selector propio.
+
+### 11. Países y direcciones internacionales reutilizables
+
+Se crearán dos piezas comunes: `CountryPicker` y `PostalAddressFields`.
+
+#### `CountryPicker`
+
+- mostrará el nombre legible del país en pantalla, no el código ISO desnudo;
+- guardará internamente ISO 3166-1 alpha-2 (`ES`, `FR`, `DE`, `IT`, etc.) para mantener compatibilidad con IVA, OSS y lógica existente;
+- usará `SearchableSelect`;
+- permitirá buscar por nombre español, nombre inglés y código ISO cuando estén disponibles;
+- incluirá el catálogo completo de países soportados por ISO, no una lista limitada a mercados actuales.
+
+Los códigos ISO seguirán siendo el valor persistido; no habrá migración de datos por este cambio visual.
+
+#### `PostalAddressFields`
+
+Agrupará país, código postal, ciudad/población y provincia/región en una unidad reutilizable.
+
+Flujo:
+
+1. el usuario elige país;
+2. introduce código postal;
+3. tras un debounce corto se consulta un servicio de código postal con `countryCode + postalCode`;
+4. si existe una sola población, se rellenan ciudad y provincia/región;
+5. si existen varias poblaciones, se muestra un selector buscable para elegir;
+6. si no hay resultados, la API no cubre el país o hay un error de red, ciudad y provincia permanecen editables manualmente y el formulario sigue funcionando.
+
+El servicio inicial será Zippopotam.us encapsulado detrás de `postalLookup.ts` (o nombre equivalente) para que el proveedor externo pueda cambiarse sin reescribir los formularios.
+
+Reglas de robustez:
+
+- debounce aproximado de 400–500 ms;
+- cancelación/ignorancia de respuestas obsoletas cuando cambien país o CP;
+- caché en memoria de consultas repetidas durante la sesión;
+- la consulta externa enviará únicamente país y código postal, nunca nombre, CIF, email, dirección completa ni otros datos del cliente;
+- un fallo externo nunca bloqueará `Guardar`;
+- ciudad y provincia/región serán siempre editables manualmente;
+- si el usuario modifica manualmente ciudad/provincia, la misma consulta no vuelve a pisarlos;
+- cambiar país o código postal habilita un nuevo autocompletado y puede reemplazar los valores automáticos anteriores;
+- los datos manuales tendrán prioridad cuando exista conflicto.
+
+Cobertura inicial del bloque común:
+
+- Nuevo/Editar Cliente;
+- Datos fiscales principales de ZENVIA;
+- futuros formularios que capturen una dirección estructurada.
+
+Los proveedores actuales almacenan `address` como texto libre, por lo que no se forzará su migración a dirección estructurada en esta iteración.
+
+`Registros IVA` usará `CountryPicker`, pero seguirá conservando su campo de dirección fiscal alternativa como texto libre porque su modelo actual no separa CP/ciudad/provincia.
+
+### 12. Sistema visual común para formularios y modales
+
+Se establecerá un patrón reutilizable tomando como referencia el modal actual de Clientes.
+
+Primitivas previstas (nombres orientativos):
+
+- `FormModal` — contenedor, cabecera, ancho, scroll y acciones;
+- `FormSection` — icono, título, subtítulo y contenido;
+- `FormGrid` — rejilla responsive;
+- utilidades de campo para ocupar una o dos columnas;
+- `SearchableSelect`, `CountryPicker` y `PostalAddressFields` como controles comunes.
+
+Reglas visuales generales:
+
+- escritorio: normalmente dos columnas para formularios medianos; tres solo cuando el contexto lo justifique;
+- móvil: una columna sin overflow horizontal;
+- campos de texto largo (nombre principal, dirección, descripción, notas) pueden ocupar ancho completo;
+- acciones principales pegadas al pie cuando el modal tenga scroll;
+- ayudas y mensajes compactos junto al campo o sección correspondiente;
+- mismo espaciado, jerarquía tipográfica, radios, estados de foco/error y comportamiento responsive en todos los formularios que usen estas primitivas.
+
+Los cambios visuales/interactivos comunes deben implementarse en estas primitivas por defecto. Una pantalla solo tendrá estilos/comportamiento propios cuando exista una razón funcional específica.
+
+#### Rediseño de `ProductModal`
+
+Dejará de usar un `stackForm` de una fila por campo y pasará al patrón común:
+
+- sección `Identificación`: nombre a ancho completo, SKU + EAN, categoría + unidad;
+- sección `Compra y proveedor`: proveedor buscable + coste actual;
+- sección `Venta`: precio de venta + IVA, con indicador del porcentaje sobre coste cuando sea calculable;
+- sección `Facturación`: descripción comercial para factura a ancho completo;
+- histórico/margen como bloques informativos compactos.
+
+La corrección manual de proveedor descrita en la sección 7 se integrará en este rediseño.
+
+#### Migración de formularios existentes en esta iteración
+
+Se migrarán al patrón común al menos:
+
+- Cliente;
+- Producto;
+- Datos fiscales de ZENVIA;
+- editor de Registros IVA en las partes que correspondan;
+- selectores largos tocados por este trabajo (por ejemplo cliente/proveedor) pasarán a `SearchableSelect` en vez de añadir una implementación paralela.
+
+No se reescribirán de forma indiscriminada todos los modales de la aplicación que no necesiten cambios funcionales en esta iteración. Sin embargo, las nuevas pantallas y los formularios que se modifiquen posteriormente deberán reutilizar las primitivas comunes salvo excepción justificada.
+
 ## Componentes y servicios previstos
 
 - `src/services/invoiceImportPipeline.ts` — preparación, validación y estado de candidatos.
@@ -210,6 +334,12 @@ Cobertura esperada: Productos, Proveedores, Clientes, Facturas, Ventas, Pedidos,
 - `src/components/ProductModal.tsx` / `src/services/productEditor.ts` — selector y guardado manual de proveedor sin histórico de coste.
 - `src/pages/Products.tsx` — margen porcentual sobre coste.
 - `src/components/UnifiedListExperience.tsx` + CSS dedicado — tooltip global.
+- `src/components/forms/SearchableSelect.tsx` o ubicación equivalente — selector buscable común.
+- `src/components/forms/CountryPicker.tsx` — selector de país por nombre con persistencia ISO.
+- `src/components/forms/PostalAddressFields.tsx` — bloque internacional de dirección.
+- `src/components/forms/FormModal.tsx`, `FormSection.tsx`, `FormGrid.tsx` o primitivas equivalentes — patrón visual común.
+- `src/services/postalLookup.ts` — adaptador de consulta postal externa con debounce/caché gestionados por el consumidor o helper común.
+- catálogo ISO local (`countryCatalog.ts` o equivalente) para nombres/códigos de países sin depender de la red para pintar el selector.
 - migración Supabase para el importe de recargo de equivalencia si la columna no existe.
 
 Los nombres exactos pueden ajustarse durante la implementación si el código existente ofrece una separación más limpia, manteniendo estas responsabilidades.
@@ -221,6 +351,10 @@ Los nombres exactos pueden ajustarse durante la implementación si el código ex
 - La factura CABAPLAST que no llegó a guardarse se podrá reimportar con el nuevo pipeline; no se inventará un registro sin disponer del PDF en el flujo de importación.
 - La corrección manual de proveedor de un producto no modifica el histórico de precios.
 - El cambio de fórmula de margen es de presentación/cálculo; no cambia precios almacenados.
+- Los países continúan persistidos como códigos ISO alpha-2; solo cambia el control visual.
+- Un fallo de Zippopotam.us no impide crear/editar un cliente o guardar datos fiscales.
+- No se envían datos personales completos al servicio postal externo: únicamente país y código postal.
+- Los clientes existentes con ciudad/provincia escritos manualmente conservan sus datos hasta que el usuario modifique país/CP y acepte o provoque un nuevo autocompletado.
 
 ## Pruebas obligatorias
 
@@ -241,7 +375,8 @@ Los nombres exactos pueden ajustarse durante la implementación si el código ex
 - coste 100 / venta 125 -> 25 %;
 - coste 0 -> porcentaje nulo/`—`;
 - cambiar proveedor no inserta `product_price_history` ni cambia `last_cost`/`previous_cost`;
-- compra posterior real puede actualizar de nuevo el proveedor actual.
+- compra posterior real puede actualizar de nuevo el proveedor actual;
+- `ProductModal` usa la rejilla común y no vuelve a un campo por fila en escritorio.
 
 ### Tooltip
 
@@ -250,6 +385,30 @@ Los nombres exactos pueden ajustarse durante la implementación si el código ex
 - no depende de `title` nativo;
 - se oculta al salir/perder foco/scroll;
 - contrato fuente que garantice integración en `UnifiedListExperience`.
+
+### Países, selectores y direcciones
+
+- `CountryPicker` muestra nombres pero emite/persiste códigos ISO;
+- búsqueda de país por `España`, `Spain` y `ES` encuentra España;
+- búsqueda equivalente para al menos un país no español;
+- selector navegable con teclado y cierre con Escape;
+- CP con una población rellena ciudad/provincia;
+- CP con varias poblaciones ofrece selección buscable;
+- respuesta 404/error/red no bloquea el formulario y mantiene edición manual;
+- una respuesta obsoleta no pisa una búsqueda más reciente;
+- el mismo país+CP puede servirse desde caché durante la sesión;
+- edición manual de ciudad/provincia no es sobrescrita por la misma respuesta automática;
+- cambiar país/CP permite un nuevo autocompletado;
+- no se envía al servicio postal ningún dato distinto de país y CP.
+
+### Formularios comunes
+
+- Cliente, Producto y Datos fiscales reutilizan las primitivas comunes acordadas;
+- Registros IVA reutiliza `CountryPicker`;
+- selects pequeños cerrados continúan sin buscador;
+- rejilla pasa a una columna en móvil y no genera overflow horizontal;
+- acciones del modal siguen accesibles con contenido largo;
+- modo claro y oscuro conservan contraste y estados de foco/error.
 
 ### Verificación final
 
@@ -262,6 +421,21 @@ Los nombres exactos pueden ajustarse durante la implementación si el código ex
 - CI de `main` verde;
 - Vercel `success`.
 
+## Orden de implementación
+
+Para mantener checkpoints pequeños y evitar mezclar regresiones:
+
+1. terminar pipeline individual y masivo de facturas;
+2. completar Productos: proveedor manual, margen sobre coste y modal común;
+3. tooltip global;
+4. introducir primitivas comunes de formularios y `SearchableSelect`;
+5. introducir `CountryPicker` + `PostalAddressFields` + `postalLookup`;
+6. migrar Cliente, Datos fiscales de ZENVIA, Registros IVA y selectores largos incluidos en este trabajo;
+7. aplicar/verificar migraciones de Supabase y reparaciones explícitas de datos;
+8. revisión completa, PR, CI, merge a `main` y verificación Vercel.
+
+No se desplegarán checkpoints parciales a `main`.
+
 ## Fuera de alcance
 
 - importación desde ZIP;
@@ -269,4 +443,7 @@ Los nombres exactos pueden ajustarse durante la implementación si el código ex
 - modelo fiscal detallado con múltiples tramos de IVA/recargo por línea;
 - proveedor habitual separado del último proveedor real;
 - tooltips en controles que no tengan texto truncado;
-- modificación retroactiva masiva de facturas antiguas no revisadas expresamente.
+- modificación retroactiva masiva de facturas antiguas no revisadas expresamente;
+- convertir proveedores a un modelo estructurado de dirección en esta iteración;
+- hacer obligatorio un servicio postal externo para guardar direcciones;
+- reescribir todos los modales existentes que no participen en cambios funcionales de esta iteración.
