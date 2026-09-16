@@ -74,9 +74,33 @@ export async function markJobSuccess(admin:any,job:any,rowsProcessed:number){
   const finished=new Date().toISOString();
   const {error}=await admin.from('amazon_sync_jobs').update({status:'success',rows_processed:rowsProcessed,finished_at:finished,locked_at:null,last_error:null,updated_at:finished}).eq('id',job.id);
   if(error)throw error;
-  const highWater=job.window_to||finished;
-  const {error:stateError}=await admin.from('amazon_sync_state').upsert({owner_id:job.owner_id,amazon_account_id:job.amazon_account_id,source:job.source,scope_key:job.scope_key||job.marketplace_id||'global',marketplace_id:job.marketplace_id||null,high_water_mark:highWater,last_successful_at:finished,checkpoint:{last_job_id:job.id,rows_processed:rowsProcessed},updated_at:finished},{onConflict:'owner_id,amazon_account_id,source,scope_key'});
+
+  const scopeKey=job.scope_key||job.marketplace_id||'global';
+  const candidateHighWater=new Date(job.window_to||finished);
+  const {data:existingState,error:existingStateError}=await admin.from('amazon_sync_state')
+    .select('high_water_mark')
+    .eq('owner_id',job.owner_id)
+    .eq('amazon_account_id',job.amazon_account_id)
+    .eq('source',job.source)
+    .eq('scope_key',scopeKey)
+    .maybeSingle();
+  if(existingStateError)throw existingStateError;
+
+  let highWater=candidateHighWater.toISOString();
+  if(existingState?.high_water_mark){
+    const currentHighWater=new Date(existingState.high_water_mark);
+    if(!Number.isNaN(currentHighWater.getTime())&&currentHighWater>candidateHighWater){
+      highWater=currentHighWater.toISOString();
+    }
+  }
+
+  const {error:stateError}=await admin.from('amazon_sync_state').upsert({owner_id:job.owner_id,amazon_account_id:job.amazon_account_id,source:job.source,scope_key:scopeKey,marketplace_id:job.marketplace_id||null,high_water_mark:highWater,last_successful_at:finished,checkpoint:{last_job_id:job.id,rows_processed:rowsProcessed},updated_at:finished},{onConflict:'owner_id,amazon_account_id,source,scope_key'});
   if(stateError)throw stateError;
+
+  const {error:accountError}=await admin.from('amazon_accounts').update({last_successful_sync_at:finished,updated_at:finished})
+    .eq('id',job.amazon_account_id)
+    .eq('owner_id',job.owner_id);
+  if(accountError)throw accountError;
 }
 
 export async function markJobFailed(admin:any,job:any,errorValue:unknown){
