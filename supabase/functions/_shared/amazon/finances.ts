@@ -47,7 +47,6 @@ function sanitizeBreakdowns(value:any):any[]{
 
 export function safeTransactionMetadata(transaction:any){
   return {
-    description:typeof transaction?.description==='string'?transaction.description.slice(0,500):null,
     marketplaceId:transaction?.marketplaceDetails?.marketplaceId?String(transaction.marketplaceDetails.marketplaceId):null,
     breakdowns:sanitizeBreakdowns(transaction?.breakdowns),
   };
