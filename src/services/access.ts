@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { emailError, nameError, normalizeEmail } from './validation';
 
-export type MenuPermission = 'dashboard' | 'sales' | 'orders' | 'invoices' | 'clients' | 'products' | 'suppliers';
+export type MenuPermission = 'dashboard' | 'sales' | 'orders' | 'invoices' | 'clients' | 'products' | 'suppliers' | 'amazon';
 export type AppRole = 'admin' | 'user';
 
 export const permissionOptions: Array<{ id: MenuPermission; label: string; description: string }> = [
@@ -12,6 +12,7 @@ export const permissionOptions: Array<{ id: MenuPermission; label: string; descr
   { id: 'clients', label: 'Clientes', description: 'Consultar y mantener clientes, datos fiscales, contacto e histórico de facturación.' },
   { id: 'products', label: 'Productos', description: 'Consultar y mantener productos, precios de venta, costes e histórico.' },
   { id: 'suppliers', label: 'Proveedores', description: 'Consultar y mantener proveedores, clasificación, gasto e histórico de compras.' },
+  { id: 'amazon', label: 'Amazon', description: 'Consultar Amazon Analytics, rentabilidad, marketplaces y estado de sincronización.' },
 ];
 
 export interface AccessProfile {
