@@ -115,7 +115,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
   </div>;
 }
 
-const moduleLabels: Record<string,string>={dashboard:'Resumen',sales:'Facturación',invoices:'Gastos',clients:'Clientes',products:'Productos',suppliers:'Proveedores',gmail:'Gastos · Gmail',admin:'Administración'};
+const moduleLabels: Record<string,string>={dashboard:'Resumen',sales:'Facturación',invoices:'Gastos',clients:'Clientes',products:'Productos',suppliers:'Proveedores',gmail:'Gastos · Gmail',amazon:'Amazon',admin:'Administración'};
 const actionLabels: Record<string,string>={create:'Creación',update:'Modificación',delete:'Eliminación',import:'Importación',ignore:'Ignorado',recover:'Recuperado',error:'Error',status_change:'Cambio de estado',price_update:'Cambio de precio',export:'Exportación',create_user:'Alta de usuario',update_user:'Cambio de usuario',activate_user:'Activación',deactivate_user:'Desactivación',delete_user:'Baja de usuario'};
 
 function AuditPanel({users,currentUserId}:{users:ManagedUser[];currentUserId:string}){
