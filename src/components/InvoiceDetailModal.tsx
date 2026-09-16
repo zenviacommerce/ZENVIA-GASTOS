@@ -84,6 +84,7 @@ export function InvoiceDetailModal({invoice,suppliers,categories,onClose,onOpenF
       <div><span>Categoría</span><strong>{invoice.category}</strong></div>
       <div><span>Base imponible</span><strong>{money(invoice.subtotal)} €</strong></div>
       <div><span>IVA</span><strong>{money(invoice.vat)} €</strong></div>
+      {invoice.equivalenceSurcharge!==0&&<div><span>Recargo de equivalencia</span><strong>{money(invoice.equivalenceSurcharge)} €</strong></div>}
       <div><span>Retención</span><strong>{money(invoice.withholding)} €</strong></div>
       <div className="detailTotal"><span>Total</span><strong>{money(invoice.total)} €</strong></div>
     </div>
