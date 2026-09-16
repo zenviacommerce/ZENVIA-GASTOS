@@ -31,6 +31,22 @@ test('bulk modal shows candidate fiscal data and reuses shared candidate form fo
   assert.match(source,/lines\.length/);
 });
 
+test('bulk invoice list uses polished card hierarchy, status badges and responsive dark styling',async()=>{
+  const [css,main]=await Promise.all([
+    read('../src/bulk-invoice-import.css'),
+    read('../src/main.tsx'),
+  ]);
+  assert.match(main,/import ['"]\.\/bulk-invoice-import\.css['"]/);
+  assert.match(css,/\.bulkInvoiceModal\{/);
+  assert.match(css,/\.bulkInvoiceRow\{/);
+  assert.match(css,/\.bulkInvoiceFile\s+span\{/);
+  assert.match(css,/\.bulkInvoiceMeta\{/);
+  assert.match(css,/\.bulkInvoiceActions\{/);
+  assert.match(css,/\.bulkInvoiceRow\.duplicate/);
+  assert.match(css,/html\[data-theme=['"]dark['"]\]/);
+  assert.match(css,/@media\(max-width:700px\)/);
+});
+
 test('invoice page exposes bulk import action and App renders the bulk modal',async()=>{
   const [invoices,hub,app]=await Promise.all([
     read('../src/pages/Invoices.tsx'),
