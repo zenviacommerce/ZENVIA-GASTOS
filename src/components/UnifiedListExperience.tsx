@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
+import { isTextOverflowing, isTooltipEligible, tooltipTextFor } from '../services/truncatedTextTooltip';
 
 const HOST_CLASS='zenviaUnifiedListHost';
 const LIST_CLASS='zenviaUnifiedMobileList';
 const TABLE_CLASS='zenviaUnifiedDesktopTable';
 const MASTER_ACTIONS='zenviaMasterRowActions';
 const MASTER_MOBILE_ACTIONS='zenviaMasterMobileActions';
+const TOOLTIP_SCOPE='.tableCard,.masterMobileList,.zenviaUnifiedMobileList,.ordersPage,[class*="gmail"]';
 
 function clean(value:string){return value.replace(/\s+/g,' ').trim();}
 
@@ -213,11 +215,87 @@ function buildMobileCards(table:HTMLTableElement){
   });
 }
 
+function tooltipTargetFrom(origin:EventTarget|null){
+  if(!(origin instanceof Element))return null;
+  const scope=origin.closest<HTMLElement>(TOOLTIP_SCOPE);
+  if(!scope)return null;
+  let current:HTMLElement|null=origin instanceof HTMLElement?origin:origin.parentElement;
+  while(current&&scope.contains(current)){
+    if(isTooltipEligible(current)&&isTextOverflowing(current))return current;
+    if(current===scope)break;
+    current=current.parentElement;
+  }
+  return null;
+}
+
 export function UnifiedListExperience(){
   useEffect(()=>{
     let scheduled=false;
+    let showTimer:number|null=null;
+    let activeTarget:HTMLElement|null=null;
+    const tooltip=document.createElement('div');
+    tooltip.className='zenviaTruncatedTooltip';
+    tooltip.setAttribute('role','tooltip');
+    document.body.appendChild(tooltip);
+
+    const cancelTimer=()=>{
+      if(showTimer!=null){window.clearTimeout(showTimer);showTimer=null;}
+    };
+    const hideTooltip=()=>{
+      cancelTimer();
+      activeTarget=null;
+      tooltip.classList.remove('visible');
+      tooltip.removeAttribute('data-placement');
+    };
+    const positionTooltip=(target:HTMLElement)=>{
+      const targetRect=target.getBoundingClientRect();
+      const tooltipRect=tooltip.getBoundingClientRect();
+      let placement:'top'|'bottom'='top';
+      let top=targetRect.top-tooltipRect.height-8;
+      if(top<8){placement='bottom';top=targetRect.bottom+8;}
+      if(top+tooltipRect.height>window.innerHeight-8)top=Math.max(8,window.innerHeight-tooltipRect.height-8);
+      const preferredLeft=targetRect.left+(targetRect.width-tooltipRect.width)/2;
+      const left=Math.min(Math.max(8,preferredLeft),Math.max(8,window.innerWidth-tooltipRect.width-8));
+      tooltip.dataset.placement=placement;
+      tooltip.style.left=`${left}px`;
+      tooltip.style.top=`${top}px`;
+    };
+    const displayTooltip=(target:HTMLElement)=>{
+      if(!target.isConnected||!isTooltipEligible(target)||!isTextOverflowing(target)){hideTooltip();return;}
+      const text=tooltipTextFor(target);
+      if(!text){hideTooltip();return;}
+      activeTarget=target;
+      tooltip.textContent=text;
+      tooltip.style.left='0px';
+      tooltip.style.top='0px';
+      tooltip.classList.add('visible');
+      positionTooltip(target);
+    };
+    const queueTooltip=(target:HTMLElement,delay:number)=>{
+      cancelTimer();
+      if(activeTarget===target&&tooltip.classList.contains('visible'))return;
+      showTimer=window.setTimeout(()=>{showTimer=null;displayTooltip(target);},delay);
+    };
+    const onPointerOver=(event:PointerEvent)=>{
+      const target=tooltipTargetFrom(event.target);
+      if(target)queueTooltip(target,180);else hideTooltip();
+    };
+    const onPointerOut=(event:PointerEvent)=>{
+      if(!activeTarget){cancelTimer();return;}
+      const related=event.relatedTarget;
+      if(related instanceof Node&&activeTarget.contains(related))return;
+      hideTooltip();
+    };
+    const onFocusIn=(event:FocusEvent)=>{
+      const target=tooltipTargetFrom(event.target);
+      if(target)queueTooltip(target,0);else hideTooltip();
+    };
+    const onFocusOut=()=>hideTooltip();
+    const onScroll=()=>hideTooltip();
+
     const sync=()=>{
       scheduled=false;
+      hideTooltip();
       enhanceExpenseDesktopEdit();
       enhanceMasterDesktopActions();
       enhanceMasterMobileActions();
@@ -229,13 +307,27 @@ export function UnifiedListExperience(){
       scheduled=true;
       requestAnimationFrame(sync);
     };
+    const onResize=()=>{hideTooltip();schedule();};
+
     sync();
     const observer=new MutationObserver(schedule);
     observer.observe(document.body,{childList:true,subtree:true,characterData:true});
-    window.addEventListener('resize',schedule);
+    document.addEventListener('pointerover',onPointerOver);
+    document.addEventListener('pointerout',onPointerOut);
+    document.addEventListener('focusin',onFocusIn);
+    document.addEventListener('focusout',onFocusOut);
+    document.addEventListener('scroll',onScroll,true);
+    window.addEventListener('resize',onResize);
     return()=>{
       observer.disconnect();
-      window.removeEventListener('resize',schedule);
+      hideTooltip();
+      tooltip.remove();
+      document.removeEventListener('pointerover',onPointerOver);
+      document.removeEventListener('pointerout',onPointerOut);
+      document.removeEventListener('focusin',onFocusIn);
+      document.removeEventListener('focusout',onFocusOut);
+      document.removeEventListener('scroll',onScroll,true);
+      window.removeEventListener('resize',onResize);
     };
   },[]);
   return null;
