@@ -104,7 +104,8 @@ test('repository persists normalized net cost instead of gross printed price', a
   assert.match(source,/repairInvoiceAmounts/);
 });
 
-test('product list exposes the complete product name on hover', async () => {
+test('product list leaves complete-name hover handling to the global truncated-text tooltip', async () => {
   const source = await readFile(new URL('../src/pages/Products.tsx', import.meta.url), 'utf8');
-  assert.match(source, /<strong\s+title=\{p\.name\}>\{p\.name\}<\/strong>/);
+  assert.match(source, /<strong>\{p\.name\}<\/strong>/);
+  assert.doesNotMatch(source, /title=\{p\.name\}/);
 });
