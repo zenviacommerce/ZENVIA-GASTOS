@@ -37,13 +37,16 @@ test('hourly sync uses checkpoints with overlap and queue failures back off',asy
 });
 
 test('orchestrator and worker are internal-only and worker claims bounded jobs atomically',async()=>{
-  const migration=await source('supabase/migrations/20260916190000_amazon_analytics_phase_b.sql');
+  const core=await source('supabase/migrations/20260916190000_amazon_analytics_phase_b.sql');
+  const wrapper=await source('supabase/migrations/20260916191000_amazon_sync_queue_rpc.sql');
   const orchestrator=await source('supabase/functions/amazon-sync-orchestrator/index.ts');
   const worker=await source('supabase/functions/amazon-sync-worker/index.ts');
-  assert.match(migration,/function public\.amazon_claim_sync_jobs/i);
-  assert.match(migration,/for update skip locked/i);
-  assert.match(migration,/revoke all on function public\.amazon_claim_sync_jobs[\s\S]*from public/i);
-  assert.match(migration,/grant execute on function public\.amazon_claim_sync_jobs[\s\S]*to service_role/i);
+  assert.match(core,/function private\.amazon_claim_sync_jobs/i);
+  assert.match(core,/for update skip locked/i);
+  assert.match(wrapper,/function public\.amazon_claim_sync_jobs/i);
+  assert.match(wrapper,/private\.amazon_claim_sync_jobs/);
+  assert.match(wrapper,/revoke all on function public\.amazon_claim_sync_jobs[\s\S]*from public/i);
+  assert.match(wrapper,/grant execute on function public\.amazon_claim_sync_jobs[\s\S]*to service_role/i);
   assert.match(orchestrator,/requireInternalSecret/);
   assert.match(worker,/requireInternalSecret/);
   assert.match(worker,/rpc\('amazon_claim_sync_jobs'/);
@@ -53,9 +56,12 @@ test('orchestrator and worker are internal-only and worker claims bounded jobs a
 
 test('manual sync authenticates a real user and requires admin role',async()=>{
   const manual=await source('supabase/functions/amazon-sync-manual/index.ts');
-  assert.match(manual,/auth\.getUser/);
-  assert.match(manual,/app_users/);
+  const backend=await source('supabase/functions/_shared/amazon/supabase.ts');
+  assert.match(backend,/auth\.getUser/);
+  assert.match(backend,/app_users/);
+  assert.match(backend,/role\s*!==\s*'admin'/);
+  assert.match(manual,/authenticateAdminUser/);
   assert.match(manual,/role\s*!==\s*'admin'/);
   assert.match(manual,/enqueueHourlySync/);
-  assert.doesNotMatch(manual,/user_metadata/);
+  assert.doesNotMatch(`${manual}\n${backend}`,/user_metadata/);
 });
