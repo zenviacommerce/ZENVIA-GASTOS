@@ -12,12 +12,13 @@ const normalize=(value:string)=>value.trim().toLowerCase().replace(/\s+/g,' ');
 const iso=(value:Date)=>{const year=value.getFullYear();const month=String(value.getMonth()+1).padStart(2,'0');const day=String(value.getDate()).padStart(2,'0');return `${year}-${month}-${day}`;};
 
 type SupplierFilter='all'|'goods'|'service'|'both'|'unclassified';
-type PeriodPreset='month'|'quarter'|'year'|'all'|'custom';
+type PeriodPreset='today'|'month'|'quarter'|'year'|'all'|'custom';
 type SupplierMetric={count:number;total:number;lastDate:string|null;recent:Invoice[]};
 
 function currentRange(preset:Exclude<PeriodPreset,'custom'>){
   const now=new Date();
   if(preset==='all')return {from:'',to:''};
+  if(preset==='today'){const today=iso(now);return {from:today,to:today};}
   if(preset==='month')return {from:iso(new Date(now.getFullYear(),now.getMonth(),1)),to:iso(new Date(now.getFullYear(),now.getMonth()+1,0))};
   if(preset==='year')return {from:`${now.getFullYear()}-01-01`,to:`${now.getFullYear()}-12-31`};
   const quarterStart=Math.floor(now.getMonth()/3)*3;
@@ -25,6 +26,7 @@ function currentRange(preset:Exclude<PeriodPreset,'custom'>){
 }
 
 function periodText(preset:PeriodPreset,from:string,to:string){
+  if(preset==='today')return 'Hoy';
   if(preset==='month')return 'Mes actual';
   if(preset==='quarter')return 'Trimestre actual';
   if(preset==='year')return 'Año actual';
@@ -120,7 +122,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
    <div className="pageHead"><div><div className="eyebrow">MAESTRO</div><h1>Proveedores</h1><p>Directorio de proveedores, gasto y actividad de compra por periodo.</p></div><button className="primary" onClick={onAdd}>+ Proveedor</button></div>
 
    <div className="masterPeriodPanel">
-     <div className="masterPeriodTop"><div><CalendarDays size={17}/><div><strong>Periodo de análisis</strong><span>{periodLabel}</span></div></div><div className="masterPeriodQuick"><button className={period==='month'?'active':''} onClick={()=>applyPreset('month')}>Mes actual</button><button className={period==='quarter'?'active':''} onClick={()=>applyPreset('quarter')}>Trimestre actual</button><button className={period==='year'?'active':''} onClick={()=>applyPreset('year')}>Año actual</button><button className={period==='all'?'active':''} onClick={()=>applyPreset('all')}>Todo</button></div></div>
+     <div className="masterPeriodTop"><div><CalendarDays size={17}/><div><strong>Periodo de análisis</strong><span>{periodLabel}</span></div></div><div className="masterPeriodQuick"><button className={period==='today'?'active':''} onClick={()=>applyPreset('today')}>Hoy</button><button className={period==='month'?'active':''} onClick={()=>applyPreset('month')}>Mes actual</button><button className={period==='quarter'?'active':''} onClick={()=>applyPreset('quarter')}>Trimestre actual</button><button className={period==='year'?'active':''} onClick={()=>applyPreset('year')}>Año actual</button><button className={period==='all'?'active':''} onClick={()=>applyPreset('all')}>Todo</button></div></div>
      <div className="masterPeriodDates"><label>Desde<input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPeriod('custom')}}/></label><label>Hasta<input type="date" value={dateTo} min={dateFrom||undefined} onChange={e=>{setDateTo(e.target.value);setPeriod('custom')}}/></label>{period==='custom'&&<button className="secondary" onClick={()=>applyPreset('quarter')}>Restablecer trimestre</button>}</div>
    </div>
 

@@ -1,6 +1,6 @@
 import type { Invoice } from '../types';
 
-export type PeriodPreset = 'current_month' | 'current_quarter' | 'current_year' | 'all' | 'custom' | `quarter:${number}:${number}`;
+export type PeriodPreset = 'today' | 'current_month' | 'current_quarter' | 'current_year' | 'all' | 'custom' | `quarter:${number}:${number}`;
 
 export interface InvoiceFilter {
   preset: PeriodPreset;
@@ -22,6 +22,10 @@ function quarterRange(year: number, quarter: number) {
 export function rangeForPreset(preset: PeriodPreset, now = new Date()) {
   if (preset === 'all') return { from: '', to: '' };
   if (preset === 'custom') return null;
+  if (preset === 'today') {
+    const today = ymd(now);
+    return { from: today, to: today };
+  }
   if (preset === 'current_month') {
     return {
       from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)),
@@ -82,6 +86,7 @@ function formatDate(date: string) {
 }
 
 export function periodLabel(filter: InvoiceFilter, now = new Date()) {
+  if (filter.preset === 'today') return 'Hoy';
   if (filter.preset === 'current_month') {
     const label = now.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
     return label.charAt(0).toUpperCase() + label.slice(1);
