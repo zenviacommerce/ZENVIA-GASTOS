@@ -1,0 +1,36 @@
+name: Fix Orders select syntax
+
+on:
+  push:
+    branches: [feature/select-system-normalization]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/select-system-normalization
+      - name: Repair generated JSX quoting
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/pages/Orders.tsx')
+          s = p.read_text()
+          s = s.replace("item.type||'API''", "item.type||'API'")
+          s = s.replace("item.type||'''", "item.type||''")
+          s = s.replace("item.default?' · predeterminada':'''", "item.default?' · predeterminada':''")
+          p.write_text(s)
+          PY
+      - name: Remove one-off workflow
+        run: rm .github/workflows/fix-orders-select-syntax.yml
+      - name: Commit repair
+        run: |
+          git config user.name "zenviacommerce"
+          git config user.email "info@zenviacommerce.com"
+          git add -A
+          git commit -m "fix: repair normalized order select JSX"
+          git push origin HEAD:feature/select-system-normalization
