@@ -55,6 +55,16 @@ test('repairs CABAPLAST into exactly three real product lines',async()=>{
   assert.deepEqual(lines.map(line=>line.quantity),[702,100,36]);
 });
 
+test('detects CABAPLAST equivalence surcharge and repairs fiscal totals',async()=>{
+  const {repairInvoiceAmounts}=await loadModule();
+  assert.deepEqual(repairInvoiceAmounts(cabaplastText,{subtotal:0,vat:0,total:2441.08}),{
+    subtotal:1934.30,
+    vat:406.20,
+    equivalenceSurcharge:100.58,
+    total:2441.08,
+  });
+});
+
 test('detects VAT-inclusive invoice summary', async()=>{
   const { extractInclusiveTaxSummary } = await loadModule();
   assert.deepEqual(extractInclusiveTaxSummary(vigatroText),{
