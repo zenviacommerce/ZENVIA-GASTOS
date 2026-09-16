@@ -39,3 +39,8 @@ test('supplier model and editor persist address and website', async () => {
   assert.match(editor, /address:\s*input\.address/);
   assert.match(editor, /website:\s*input\.website/);
 });
+
+test('new non-merchandise suppliers stay unclassified instead of being forced to service', async () => {
+  const repository = await readFile(new URL('../src/services/repository.ts', import.meta.url), 'utf8');
+  assert.match(repository, /supplier_type:\s*supplierTypeHint\s*===\s*'goods'\s*\?\s*'goods'\s*:\s*'unclassified'/);
+});
