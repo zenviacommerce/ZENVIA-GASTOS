@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "node scripts/generate-brand-icon.mjs && vite",
+    "build": "node scripts/generate-brand-icon.mjs && tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
