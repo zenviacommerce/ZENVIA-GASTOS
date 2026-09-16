@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, FileText, Trash2, X } from 'lucide-react';
 import type { ExpenseCategory, Invoice, Supplier } from '../types';
+import { SearchableSelect } from './forms/SearchableSelect';
 
 const money = (value: number) => value.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -11,6 +12,12 @@ export function InvoiceDetailModal({invoice,suppliers,categories,onClose,onOpenF
   const [savingCategory,setSavingCategory]=useState(false);
   const [supplierError,setSupplierError]=useState('');
   const [categoryError,setCategoryError]=useState('');
+  const supplierOptions=useMemo(()=>suppliers.map(s=>({
+    value:s.id,
+    label:s.name,
+    description:s.taxId||s.email||undefined,
+    searchText:[s.name,s.taxId,s.email,s.phone,s.address].filter(Boolean).join(' '),
+  })),[suppliers]);
 
   useEffect(()=>{
     setSupplierId(invoice?.supplierId || '');
@@ -53,12 +60,9 @@ export function InvoiceDetailModal({invoice,suppliers,categories,onClose,onOpenF
 
     <div className="invoiceMetadataEditors">
       <div className="invoiceSupplierEditor">
-        <label htmlFor="invoiceSupplier">Proveedor asignado</label>
+        <label>Proveedor asignado</label>
         <div className="invoiceSupplierEditorRow">
-          <select id="invoiceSupplier" value={supplierId} onChange={e=>setSupplierId(e.target.value)}>
-            <option value="">Selecciona un proveedor…</option>
-            {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <SearchableSelect value={supplierId} options={supplierOptions} onChange={setSupplierId} placeholder="Selecciona un proveedor…" searchPlaceholder="Buscar proveedor, CIF, email…" ariaLabel="Proveedor asignado"/>
           <button className="secondary" disabled={!supplierChanged||!supplierId||savingSupplier} onClick={saveSupplier}>{savingSupplier?'Guardando…':'Guardar proveedor'}</button>
         </div>
         <span className={`invoiceSupplierHint ${!invoice.supplierId?'warn':''}`}>{!invoice.supplierId?'Esta factura no tiene proveedor asignado. Selecciona uno y guarda el cambio.':'Puedes reasignar esta factura a cualquier proveedor existente.'}</span>
