@@ -3,7 +3,7 @@ import type { AppData, ExpenseCategory, Invoice, NewInvoiceInput, Product, Suppl
 import { canonicalizeSupplierName, isLikelySameSupplier, supplierIdentityKey } from './supplierIdentity';
 import { extractSupplierContactData, type SupplierContactData } from './supplierContactExtractor';
 import { extractSupplierInvoiceDetails } from './supplierInvoiceDetails';
-import { repairInvoiceProductLines } from './invoiceProductLine';
+import { repairInvoiceAmounts, repairInvoiceProductLines } from './invoiceProductLine';
 import { emailError, normalizeEmail, normalizePhone, normalizeTaxId, phoneError, taxIdError } from './validation';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
@@ -269,7 +269,7 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
         }
       }
 
-      const normalizedPrice = productId && line.unitPrice != null ? line.unitPrice : null;
+      const normalizedPrice = productId && line.unitPrice != null ? (line.normalizedUnitPrice ?? line.unitPrice) : null;
       lineRows.push({
         invoice_id: invoiceId,
         product_id: productId,
@@ -280,7 +280,9 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
         unit,
         unit_price: line.unitPrice ?? null,
         normalized_unit_price: normalizedPrice,
-        line_net: line.lineTotal ?? null,
+        line_net: line.lineNet ?? line.lineTotal ?? null,
+        tax_rate: line.taxRate ?? null,
+        tax_amount: line.taxAmount ?? null,
         line_total: line.lineTotal ?? null,
         price_update_status: normalizedPrice != null ? 'confirmed' : 'pending',
       });
@@ -306,8 +308,10 @@ export async function createInvoice(input: NewInvoiceInput) {
   if (duplicateError) throw duplicateError;
   if (duplicates?.length) throw new Error(`Esta factura parece estar subida ya (${duplicates[0].invoice_number || 'sin número'}).`);
 
+  const repairedAmounts = repairInvoiceAmounts(input.ocrText || '', { subtotal: input.subtotal, vat: input.vat, total: input.total });
   const preparedInput: NewInvoiceInput = {
     ...input,
+    ...repairedAmounts,
     lines: repairInvoiceProductLines(input.ocrText || '', input.lines || []),
   };
   const extractedContact = input.ocrText ? extractSupplierContactData(input.ocrText, input.supplierName) : {};
@@ -334,10 +338,10 @@ export async function createInvoice(input: NewInvoiceInput) {
     invoice_number: input.invoiceNumber.trim() || null,
     issue_date: input.invoiceDate || null,
     expense_category_id: input.categoryId || null,
-    net_amount: input.subtotal,
-    tax_amount: input.vat,
+    net_amount: preparedInput.subtotal,
+    tax_amount: preparedInput.vat,
     withholding_amount: input.withholding,
-    total_amount: input.total,
+    total_amount: preparedInput.total,
     source: input.source,
     status: 'pending',
     file_path: storagePath,
