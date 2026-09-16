@@ -177,7 +177,7 @@ async function ensureSupplier(name: string, contactInput: SupplierProfileData = 
     phone: contact.phone || null,
     address: contact.address || null,
     website: contact.website || null,
-    supplier_type: supplierTypeHint === 'goods' ? 'goods' : 'service',
+    supplier_type: supplierTypeHint === 'goods' ? 'goods' : 'unclassified',
   }).select('id').single();
   if (error) throw error;
   return data.id;
