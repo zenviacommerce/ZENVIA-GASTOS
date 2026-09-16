@@ -6,6 +6,7 @@ const LIST_CLASS='zenviaUnifiedMobileList';
 const TABLE_CLASS='zenviaUnifiedDesktopTable';
 const MASTER_ACTIONS='zenviaMasterRowActions';
 const MASTER_MOBILE_ACTIONS='zenviaMasterMobileActions';
+const EXPENSE_INVOICE_MOBILE_METRICS=['fecha','estado','total'] as const;
 
 function clean(value:string){return value.replace(/\s+/g,' ').trim();}
 
@@ -126,6 +127,7 @@ function buildMobileCards(table:HTMLTableElement){
   if(!host)return;
 
   const headers=Array.from(table.querySelectorAll<HTMLTableCellElement>('thead th')).map(th=>clean(th.textContent||''));
+  const expenseInvoiceTable=Boolean(table.closest('.expenseInvoicesHub'));
   const signature=rows.map(row=>`${clean(row.textContent||'')}|e:${Boolean(matchingRowAction(row,'edit'))}|d:${Boolean(matchingRowAction(row,'delete'))}`).join('||');
   let list=host.querySelector<HTMLElement>(`:scope > .${LIST_CLASS}`);
   if(list?.dataset.signature===signature)return;
@@ -177,7 +179,10 @@ function buildMobileCards(table:HTMLTableElement){
       .map((value,index)=>({value,index,label:headers[index]||''}))
       .filter(item=>item.value&&item.index!==primaryIndex&&!/acciones?/i.test(item.label))
       .filter(item=>/(total|pendiente|estado|iva|fecha|facturas|gasto|importe|transportista|margen|coste|venta)/i.test(item.label));
-    const chosen=(preferred.length?preferred:values.map((value,index)=>({value,index,label:headers[index]||''})).filter(item=>item.value&&item.index!==primaryIndex&&!/acciones?/i.test(item.label))).slice(0,3);
+    const orderedPreferred=expenseInvoiceTable
+      ? EXPENSE_INVOICE_MOBILE_METRICS.flatMap(label=>preferred.filter(item=>item.label.trim().toLowerCase()===label))
+      : preferred;
+    const chosen=(orderedPreferred.length?orderedPreferred:values.map((value,index)=>({value,index,label:headers[index]||''})).filter(item=>item.value&&item.index!==primaryIndex&&!/acciones?/i.test(item.label))).slice(0,3);
     chosen.forEach(item=>{
       const metric=document.createElement('span');
       const label=document.createElement('small');
