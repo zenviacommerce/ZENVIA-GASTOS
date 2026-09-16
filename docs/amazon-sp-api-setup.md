@@ -43,11 +43,43 @@ No guardar estos valores en GitHub, tablas accesibles al navegador, archivos `.e
 - Cada llamada SP-API utiliza el token temporal en `x-amz-access-token`.
 - El backend añade `x-amz-date` y `user-agent`.
 
-## 5. Verificación previa a producción
+## 5. Autenticación de las Edge Functions
 
-1. Configurar `AMAZON_SPAPI_CREDENTIALS` en Supabase Secrets.
-2. Desplegar primero las Edge Functions de Fase B.
+Las funciones internas reciben llamadas de Cron/worker y validan el header `apikey` con `requireInternalSecret`. Deben desplegarse sin la comprobación JWT de la plataforma para permitir esta autenticación servidor-a-servidor:
+
+- `amazon-sync-orchestrator`: `verify_jwt = false`
+- `amazon-sync-worker`: `verify_jwt = false`
+- `amazon-sync-orders`: `verify_jwt = false`
+- `amazon-sync-finances`: `verify_jwt = false`
+- `amazon-sync-inventory`: `verify_jwt = false`
+
+Que `verify_jwt` sea `false` no hace públicas estas funciones: el propio código rechaza cualquier petición que no aporte la clave interna correcta en `apikey`.
+
+Las funciones invocadas desde la aplicación web siguen autenticando al usuario con Supabase Auth:
+
+- `amazon-status`: `verify_jwt = true`
+- `amazon-sync-manual`: `verify_jwt = true`
+
+`amazon-status` exige permiso `amazon` o rol admin, y `amazon-sync-manual` exige rol admin.
+
+## 6. Programación automática con Cron y Vault
+
+La migración de scheduler usa `pg_cron` y `pg_net`. No contiene ninguna clave real. Antes de activarla en producción deben existir estos secretos en **Supabase Vault**:
+
+- `project_url`: URL base del proyecto, por ejemplo `https://<project-ref>.supabase.co`.
+- `amazon_cron_secret_key`: la misma clave secreta de proyecto que el backend reconoce para las llamadas internas.
+
+El scheduler llama al orquestador una vez por hora y al worker cada cinco minutos. El primer ciclo horario que encuentre una cuenta Amazon sin estado de sincronización encola automáticamente el backfill histórico desde `2026-01-01` en ventanas de siete días y, además, la ventana incremental actual. Los `job_key` únicos hacen que repetir el proceso sea idempotente.
+
+El worker reclama como máximo tres trabajos por ejecución con `FOR UPDATE SKIP LOCKED`; ejecutarlo cada cinco minutos permite vaciar progresivamente el histórico sin una Edge Function gigante ni ejecuciones solapadas del mismo job.
+
+## 7. Verificación previa a producción
+
+1. Configurar `AMAZON_SPAPI_CREDENTIALS` en Supabase Edge Function Secrets.
+2. Desplegar las Edge Functions de Fase B con el `verify_jwt` indicado arriba.
 3. Ejecutar `amazon-status` y confirmar que el secreto se detecta sin devolver ningún valor sensible.
-4. Hacer una sincronización manual pequeña de un marketplace/ventana reciente.
-5. Comprobar idempotencia repitiendo la misma ventana.
-6. Iniciar el backfill desde 2026-01-01 solo después de validar pedidos, finanzas e inventario.
+4. Hacer una sincronización manual pequeña y comprobar pedidos, finanzas e inventario.
+5. Repetir la misma ventana para comprobar idempotencia.
+6. Crear en Vault `project_url` y `amazon_cron_secret_key`.
+7. Aplicar la migración del scheduler y confirmar que el orquestador y el worker responden correctamente.
+8. Permitir que el primer ciclo horario inicie el backfill desde `2026-01-01` y supervisar la cola hasta completarlo.

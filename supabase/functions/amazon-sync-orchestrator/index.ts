@@ -27,9 +27,25 @@ Deno.serve(async(req:Request)=>{
       const {data:run,error:runError}=await admin.from('amazon_sync_runs').insert({owner_id:account.owner_id,amazon_account_id:account.id,source:'orchestrator',mode,status:'running',started_at:started}).select('id').single();
       if(runError)throw runError;
       try{
-        const created=mode==='initial'
-          ?await enqueueInitialBackfill(admin,account,marketplaces)
-          :await enqueueHourlySync(admin,account,marketplaces,mode as 'hourly'|'reconcile');
+        let created:any[]=[];
+        if(mode==='initial'){
+          created=await enqueueInitialBackfill(admin,account,marketplaces);
+        }else if(mode==='hourly'){
+          const {data:stateRows,error:stateError}=await admin.from('amazon_sync_state')
+            .select('id')
+            .eq('owner_id',account.owner_id)
+            .eq('amazon_account_id',account.id)
+            .limit(1);
+          if(stateError)throw stateError;
+          if(!(stateRows||[]).length){
+            const historical=await enqueueInitialBackfill(admin,account,marketplaces);
+            created.push(...historical);
+          }
+          const incremental=await enqueueHourlySync(admin,account,marketplaces,'hourly');
+          created.push(...incremental);
+        }else{
+          created=await enqueueHourlySync(admin,account,marketplaces,'reconcile');
+        }
         jobs+=created.length;
         await admin.from('amazon_sync_runs').update({status:'success',finished_at:new Date().toISOString(),rows_processed:created.length,checkpoint:{queued_jobs:created.length},updated_at:new Date().toISOString()}).eq('id',run.id);
       }catch(error){
