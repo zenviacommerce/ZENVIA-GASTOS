@@ -23,6 +23,16 @@ test('rejects payment and fiscal summary rows as product lines', async () => {
   assert.equal(isNonProductInvoiceLine('450,000 D FILM 45x0,83 kgs 3,63 € 1.633,50 €'), false);
 });
 
+test('parses a quantity-description-price row without deleting decimal dimensions', async () => {
+  const { parseSimpleInvoiceProductRow } = await loadModule();
+  assert.deepEqual(parseSimpleInvoiceProductRow('450,000 D FILM 45x0,83 kgs 3,63 € 1.633,50 €'), {
+    description: 'D FILM 45x0,83 kgs',
+    quantity: 450,
+    unitPrice: 3.63,
+    lineTotal: 1633.5,
+  });
+});
+
 test('product list exposes the complete product name on hover', async () => {
   const source = await readFile(new URL('../src/pages/Products.tsx', import.meta.url), 'utf8');
   assert.match(source, /<strong\s+title=\{p\.name\}>\{p\.name\}<\/strong>/);
