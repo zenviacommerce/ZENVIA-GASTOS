@@ -10,6 +10,7 @@ export type ProductInput = {
   salePrice?: number | null;
   salesTaxRate?: number | null;
   invoiceDescription?: string;
+  supplierId?: string | null;
 };
 
 function localDate() {
@@ -81,6 +82,7 @@ export async function addProduct(input: ProductInput) {
     last_cost: price,
     previous_cost: null,
     cost_unit: price == null ? null : unit,
+    last_supplier_id: input.supplierId || null,
     sale_price:salePrice,
     sales_tax_rate:salesTaxRate,
     invoice_description:input.invoiceDescription?.trim()||null,
@@ -99,7 +101,7 @@ export async function addProduct(input: ProductInput) {
 
 export async function updateProduct(productId: string, input: ProductInput) {
   const { data: existing, error: readError } = await supabase.from('products')
-    .select('name,sku,ean,category,base_unit,last_cost,previous_cost,cost_unit,sale_price,sales_tax_rate,invoice_description')
+    .select('name,sku,ean,category,base_unit,last_cost,previous_cost,cost_unit,last_supplier_id,sale_price,sales_tax_rate,invoice_description')
     .eq('id', productId)
     .single();
   if (readError) throw readError;
@@ -118,6 +120,7 @@ export async function updateProduct(productId: string, input: ProductInput) {
     category: input.category?.trim() || null,
     base_unit: unit,
     cost_unit: newPrice == null ? existing.cost_unit : unit,
+    last_supplier_id: input.supplierId || null,
     sale_price:salePrice,
     sales_tax_rate:salesTaxRate,
     invoice_description:input.invoiceDescription?.trim()||null,
@@ -140,6 +143,7 @@ export async function updateProduct(productId: string, input: ProductInput) {
         last_cost: existing.last_cost,
         previous_cost: existing.previous_cost,
         cost_unit: existing.cost_unit,
+        last_supplier_id: existing.last_supplier_id,
         sale_price:existing.sale_price,
         sales_tax_rate:existing.sales_tax_rate,
         invoice_description:existing.invoice_description,
