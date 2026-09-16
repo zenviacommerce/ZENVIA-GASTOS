@@ -1,0 +1,21 @@
+{
+  "name": "ZENVIA Gestión",
+  "short_name": "ZENVIA",
+  "start_url": "/",
+  "scope": "/",
+  "theme_color": "#0f172a",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/zenvia-app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/zenvia-app-icon.webp",
+      "type": "image/webp",
+      "purpose": "any"
+    }
+  ]
+}
