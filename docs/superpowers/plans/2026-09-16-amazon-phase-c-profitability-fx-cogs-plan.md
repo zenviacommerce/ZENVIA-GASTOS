@@ -18,6 +18,8 @@
 - Historical COGS uses the most recent confirmed `product_price_history.normalized_unit_price` with `price_date <= sale reference date`.
 - A later purchase cost must never be back-applied to an earlier sale.
 - Missing historical cost remains NULL / `COGS pendiente`; do not substitute current `products.last_cost`.
+- Respect `product_price_history.currency`. A non-EUR historical cost must be converted to EUR with the FX rate applicable on the **purchase-cost date (`price_date`)** before it enters consolidated COGS. Never treat a USD/GBP/etc numeric cost as if it were EUR.
+- If the historical cost exists but the required FX rate is missing, that COGS remains unresolved and contributes to data-quality warnings until FX reconciliation succeeds.
 - Original currency and amount remain stored; EUR conversion is auditable by date/rate.
 - Define `fx_rates_daily.eur_rate` as **EUR per 1 unit of source currency**. Therefore `amount_eur = amount_original * eur_rate` and EUR has rate `1`.
 - ECB source data commonly expresses foreign currency per EUR; invert that published rate before persisting `eur_rate`.
@@ -128,7 +130,7 @@ Run: `node --test scripts/amazon-fx.test.mjs`
 
 - [ ] **Step 3: Implement pure parser**
 
-Use the ECB historical CSV endpoint `https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.csv`. Parse only currencies needed by active Amazon marketplaces plus any currency present in finance/order rows. Reject non-finite or non-positive rates.
+Use the ECB historical CSV endpoint `https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.csv`. Parse only currencies needed by active Amazon marketplaces plus any currency present in finance/order rows and historical `product_price_history` used by mapped products. Reject non-finite or non-positive rates.
 
 - [ ] **Step 4: Implement FX job**
 
@@ -172,7 +174,7 @@ Manual mappings always win: never overwrite `mapping_source in ('manual','asin_m
 
 - [ ] **Step 3: Implement admin set/clear**
 
-Authenticate admin. Ensure selected product belongs to caller workspace. Upsert `mapping_source='manual'`; `clear` sets `product_id=null` or deletes mapping row only if no required audit semantics are lost. Prefer retaining row with null product and source manual only if UI needs explicit suppression; otherwise delete and allow future exact resolver.
+Authenticate admin. Ensure selected product belongs to caller workspace. Upsert `mapping_source='manual'`; `clear` deletes the mapping row and sets matching order-item `product_id` values to null, allowing a future exact resolver to act again. If an explicit long-term suppression behavior is later required, design a distinct `ignored` state rather than overloading a null manual mapping.
 
 - [ ] **Step 4: Backfill `amazon_order_items.product_id`**
 
@@ -194,47 +196,64 @@ Commit message: `feat: link amazon skus to zenvia products`
 
 ---
 
-### Task 4: Implement historical COGS resolution
+### Task 4: Resolve the historical source cost
 
 **Files:**
 - Create: `supabase/migrations/20260916172100_amazon_cogs_helpers.sql`
 - Create: `scripts/amazon-cogs.test.mjs`
 
 **Interfaces:**
-- Produces private SQL function `private.amazon_product_cost_at(p_owner_id uuid,p_product_id uuid,p_date date)` returning `numeric` or NULL.
-- Function is used by aggregate SQL; not exposed directly to anon/authenticated.
+- Produces private SQL function `private.amazon_product_cost_at(p_owner_id uuid,p_product_id uuid,p_date date)` returning one row with `{source_unit_cost, source_currency, source_price_date}` or no row when no prior historical cost exists.
+- Function is used only by later server-side profitability helpers; it is not exposed directly to anon/authenticated.
 
 - [ ] **Step 1: Write failing SQL contract test**
 
-Assert helper queries `product_price_history`, filters `price_date <= p_date`, orders `price_date desc, created_at desc`, `limit 1`, and does not reference `products.last_cost` as fallback.
+Assert helper queries `product_price_history`, filters `price_date <= p_date`, orders `price_date desc, created_at desc`, `limit 1`, returns the stored `currency`, and does not reference `products.last_cost` as fallback.
 
-- [ ] **Step 2: Implement helper**
+- [ ] **Step 2: Implement source-cost helper**
 
-Use SQL STABLE function with explicit owner check:
+Use a SQL STABLE function with explicit owner check:
 
 ```sql
-select pph.normalized_unit_price
-from public.product_price_history pph
-where pph.owner_id=p_owner_id
-  and pph.product_id=p_product_id
-  and pph.price_date<=p_date
-order by pph.price_date desc, pph.created_at desc
-limit 1
+create or replace function private.amazon_product_cost_at(
+  p_owner_id uuid,
+  p_product_id uuid,
+  p_date date
+)
+returns table(source_unit_cost numeric, source_currency text, source_price_date date)
+language sql
+stable
+security definer
+set search_path=''
+as $$
+  select
+    pph.normalized_unit_price,
+    upper(pph.currency),
+    pph.price_date
+  from public.product_price_history pph
+  where pph.owner_id=p_owner_id
+    and pph.product_id=p_product_id
+    and pph.price_date<=p_date
+  order by pph.price_date desc, pph.created_at desc
+  limit 1
+$$;
 ```
 
-Return NULL when none exists.
+Revoke execution from public/anon/authenticated; only internal/server-side functions need it.
 
 - [ ] **Step 3: Verify against known product history**
 
-After applying in verification environment, select one product with at least two historical costs and test dates before first cost, between costs, and after latest. Expected: NULL, first historical cost, latest applicable cost respectively.
+After applying in verification environment, select one product with at least two historical costs and test dates before first cost, between costs, and after latest. Expected: no row, first historical cost, latest applicable cost respectively. Confirm returned currency/date match the actual price-history row.
 
 - [ ] **Step 4: Run test and commit**
 
-Commit message: `feat: resolve amazon cogs by historical date`
+Run: `node --test scripts/amazon-cogs.test.mjs`
+
+Commit message: `feat: resolve amazon historical source cost`
 
 ---
 
-### Task 5: Normalize historical EUR amounts on finance data
+### Task 5: Normalize finance and historical product costs to EUR
 
 **Files:**
 - Create: `supabase/migrations/20260916172200_amazon_fx_resolution.sql`
@@ -243,28 +262,51 @@ Commit message: `feat: resolve amazon cogs by historical date`
 
 **Interfaces:**
 - Produces private function `private.amazon_fx_rate_on_or_before(p_currency text,p_date date)`.
+- Produces private function `private.amazon_product_cost_eur_at(p_owner_id uuid,p_product_id uuid,p_date date)` returning `{unit_cost_eur, source_unit_cost, source_currency, source_price_date, fx_rate}` or no row when source cost/FX is unresolved.
 - Finance sync writes `amount_eur` and `fx_rate` when rate exists.
-- Reconciliation RPC can backfill previously-null EUR values after FX arrives.
+- Reconciliation RPC can backfill previously-null finance EUR values after FX arrives.
 
-- [ ] **Step 1: Write failing contract test**
+- [ ] **Step 1: Write failing contract tests**
 
-Assert conversion function selects latest FX date `<= p_date`; EUR returns 1; multiplication direction is `amount_original * eur_rate`.
+Assert FX lookup selects latest FX date `<= p_date`; EUR returns 1; multiplication direction is `amount_original * eur_rate`.
 
-- [ ] **Step 2: Implement lookup/reconciliation**
+Assert the product-cost EUR helper first chooses historical cost by **sale/reference date**, then converts the selected source cost using FX on the selected `source_price_date`:
 
-Create service-role-only RPC `public.reconcile_amazon_finance_fx(p_owner_id uuid,p_from date,p_to date)` that updates rows with missing/stale FX from `private.amazon_fx_rate_on_or_before`.
+```text
+unit_cost_eur = source_unit_cost * fx_rate(source_currency, source_price_date)
+```
 
-- [ ] **Step 3: Update finance synchronization**
+It must not use the sale date as the FX date for a historical purchase cost.
+
+- [ ] **Step 2: Implement FX lookup/reconciliation**
+
+Create `private.amazon_fx_rate_on_or_before`. Create service-role-only RPC `public.reconcile_amazon_finance_fx(p_owner_id uuid,p_from date,p_to date)` that updates rows with missing/stale FX from that helper.
+
+- [ ] **Step 3: Implement currency-aware historical COGS helper**
+
+Use `private.amazon_product_cost_at(...)` as the source selector, then:
+
+- source currency `EUR` → `fx_rate=1`;
+- otherwise call `private.amazon_fx_rate_on_or_before(source_currency, source_price_date)`;
+- no FX row → return no resolved EUR cost and let data-quality logic count it.
+
+Return both the EUR result and source audit fields so a reconciliation query can explain exactly which purchase cost/rate was used.
+
+- [ ] **Step 4: Update finance synchronization**
 
 When normalized finance event is received, resolve FX after ensuring relevant FX job has run; if rate is missing, persist original data with null EUR and let reconciliation fill it. Missing FX must not fail the entire finance job.
 
-- [ ] **Step 4: Test negative/refund amounts**
+- [ ] **Step 5: Test signs and purchase-cost currencies**
 
-Verify signs are preserved: `-10 GBP * 1.25 = -12.50 EUR`.
+Verify finance signs are preserved: `-10 GBP * 1.25 = -12.50 EUR`.
 
-- [ ] **Step 5: Commit**
+Verify historical COGS example: a `10.00 USD` source cost dated on a day whose stored `eur_rate` is `0.80` resolves to `8.00 EUR/unit`, regardless of the later Amazon sale-date FX rate.
 
-Commit message: `feat: reconcile amazon finance amounts to eur`
+- [ ] **Step 6: Commit**
+
+Run: `node --test scripts/amazon-fx-resolution.test.mjs scripts/amazon-cogs.test.mjs`
+
+Commit message: `feat: resolve amazon finance and cogs to eur`
 
 ---
 
@@ -290,8 +332,8 @@ Assert the RPC SQL:
 - derives sales from order-item monetary components, not by adding finance `sale` rows on top;
 - derives refunds/fees from finance ledger;
 - separates `fba_fee` from non-FBA fees;
-- calls historical COGS helper with order purchase/reference date;
-- leaves COGS NULL/incomplete when a mapped item lacks a prior cost;
+- calls `private.amazon_product_cost_eur_at` with order sale/reference date rather than using raw `normalized_unit_price` as EUR;
+- leaves COGS incomplete when a mapped item lacks a prior cost **or required purchase-cost FX**;
 - has `security invoker` or explicit workspace/permission guard;
 - accepts from/to and marketplace/product filters.
 
@@ -317,9 +359,14 @@ From `amazon_finance_transactions`, aggregate negative/positive signs consistent
 
 Do not include finance `sale` amount in gross sales again.
 
-- [ ] **Step 4: Define COGS CTE**
+- [ ] **Step 4: Define currency-aware COGS CTE**
 
-For each mapped order item call historical cost and multiply by quantity. Track `cogs_missing_units` separately. `cogs` can sum known costs, but response includes `cogs_complete = (cogs_missing_units=0)`.
+For each mapped order item call `private.amazon_product_cost_eur_at(owner_id, product_id, sale_reference_date)` and multiply `unit_cost_eur` by quantity. Track separately:
+
+- `cogs_missing_units`: no prior historical cost;
+- `cogs_fx_missing_units`: historical non-EUR cost exists but required purchase-date FX is missing.
+
+`cogs` may sum only resolved EUR costs. Response includes `cogs_complete = (cogs_missing_units=0 and cogs_fx_missing_units=0)`.
 
 - [ ] **Step 5: Define Phase C partial profit**
 
@@ -337,7 +384,7 @@ Do **not** name it `amazon_profit` yet. Return `ads_complete=false` and `profit_
 
 - [ ] **Step 6: Add product pagination and quality counts**
 
-Product rows include mapping, ASIN, SKU, marketplace, units, sales, fees, COGS, missing COGS units, and `profit_before_ads`. Quality RPC reports unmapped SKU count, unmapped revenue, missing-COGS units/revenue, and missing FX row count.
+Product rows include mapping, ASIN, SKU, marketplace, units, sales, fees, COGS, missing COGS units, missing purchase-cost FX units, and `profit_before_ads`. Quality RPC reports unmapped SKU count/revenue, missing-COGS units/revenue, missing purchase-cost FX, and missing Amazon transaction/order FX.
 
 - [ ] **Step 7: Implement typed frontend service**
 
@@ -377,15 +424,15 @@ Choose at least one unique exact SKU, one Amazon SKU absent in products, and one
 
 - [ ] **Step 3: Verify historical COGS against invoices**
 
-Choose at least three sales dates around known `product_price_history` changes. Manually compare the chosen cost to the latest confirmed purchase cost on/before each sale date.
+Choose at least three sales dates around known `product_price_history` changes. Manually compare the chosen source cost to the latest confirmed purchase cost on/before each sale date. Include at least one non-EUR historical price if such a mapped product exists; verify its COGS uses FX on `price_date`, not the Amazon sale date. If all real mapped purchase history is EUR, use a verification fixture for this currency branch.
 
 - [ ] **Step 4: Verify FX math**
 
-Pick a GBP or PLN transaction date. Compare persisted `eur_rate` with the corresponding ECB publication inverted to EUR-per-currency and recalculate one amount by hand.
+Pick a GBP or PLN Amazon transaction date and compare persisted `eur_rate` with the corresponding ECB publication inverted to EUR-per-currency. Also verify one non-EUR purchase-cost conversion when available.
 
 - [ ] **Step 5: Reconcile a marketplace/day without Ads**
 
-For one marketplace/day, explain gross sales, VAT, refunds, referral/non-FBA fees, FBA costs, COGS, and `profit_before_ads`. Confirm finance `sale` events are not double-counted with order sales.
+For one marketplace/day, explain gross sales, VAT, refunds, referral/non-FBA fees, FBA costs, EUR-normalized COGS, and `profit_before_ads`. Confirm finance `sale` events are not double-counted with order sales.
 
 - [ ] **Step 6: Confirm partial-profit labelling**
 
