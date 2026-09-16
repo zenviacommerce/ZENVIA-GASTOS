@@ -38,7 +38,7 @@ test('country persistence remains ISO alpha-2',async()=>{
     read('../src/components/forms/CountryPicker.tsx'),
   ]);
   assert.match(catalog,/ISO_ALPHA2/);
-  assert.match(picker,/value:country\.code/);
+  assert.match(picker,/value:option\.code/);
   assert.match(picker,/onChange=\{onChange\}/);
 });
 
