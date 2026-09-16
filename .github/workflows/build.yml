@@ -18,8 +18,8 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Test order status logic
-        run: node --test scripts/order-status.test.mjs
+      - name: Test application logic
+        run: node --test scripts/*.test.mjs
       - name: Build
         run: npm run build
       - name: Upload dist artifact
