@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import JSZip from 'jszip';
 import {
   AlertCircle, Calculator, CalendarDays, CheckCircle2, ChevronRight, Download, Euro,
   ExternalLink, LoaderCircle, MapPin, PackageCheck, Percent, Pencil, Plus, Printer, RefreshCw,
@@ -6,13 +7,14 @@ import {
 } from 'lucide-react';
 import { OrderEditModal } from '../components/OrderEditModal';
 import {
-  createManualOrder, createOrderLabel, downloadLabel, fetchOrderLabel, getSavedPrinter,
+  createManualOrder, createOrderLabel, fetchOrderLabel, getSavedPrinter,
   getSendcloudStatus, getShippingOptions, labelBlob, listFulfillmentOrders, listLocalPrinters,
   markHistorySyncDone, openLabelForPrint, printLabelWithClient, savePrinter,
   shouldRunHistorySync, syncSendcloudOrders, updateFulfillmentOrder,
   type FulfillmentOrder, type LocalPrinter, type ManualOrderItem, type OrderUpdateInput,
   type SendcloudStatus, type ShippingOption,
 } from '../services/orders';
+import { labelPdfBaseName, selectAutomaticShippingOption, uniqueLabelPdfFilename } from '../services/orderLabelFiles';
 import { errorMessage, showError, showSuccess } from '../services/toast';
 
 const money=(value:number|null,currency='EUR')=>value==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:currency||'EUR'}).format(value);
@@ -20,6 +22,15 @@ const dateLabel=(value?:string|null)=>value?new Date(value).toLocaleString('es-E
 const dayLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
 const text=(value:unknown)=>typeof value==='string'?value:'';
 const iso=(value:Date)=>`${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`;
+
+function downloadBlob(blob:Blob,fileName:string){
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=fileName;document.body.appendChild(a);a.click();a.remove();
+  window.setTimeout(()=>URL.revokeObjectURL(url),30000);
+}
+function downloadLabel(blob:Blob,fileName:string){
+  const clean=(fileName||'etiqueta.pdf').replace(/[^a-z0-9._-]+/gi,'_');
+  downloadBlob(blob,clean.toLowerCase().endsWith('.pdf')?clean:`${clean}.pdf`);
+}
 
 type PeriodPreset='today'|'month'|'quarter'|'year'|'all'|'custom';
 type OrderFilter='pending'|'labelled'|'shipped'|'cancelled'|'all';
@@ -174,6 +185,7 @@ export function Orders(){
   const [period,setPeriod]=useState<PeriodPreset>('quarter'),[dateFrom,setDateFrom]=useState(initialRange.from),[dateTo,setDateTo]=useState(initialRange.to);
   const [manualOpen,setManualOpen]=useState(false),[manualSaving,setManualSaving]=useState(false);
   const [editOrder,setEditOrder]=useState<FulfillmentOrder|null>(null),[editSaving,setEditSaving]=useState(false);
+  const [bulkGenerating,setBulkGenerating]=useState(false),[bulkProgress,setBulkProgress]=useState('');
 
   const refresh=useCallback(async()=>{try{setOrders(await listFulfillmentOrders())}catch(e){setError(errorMessage(e,'No se pudieron cargar los pedidos.'))}},[]);
   const refreshStatus=useCallback(async()=>{try{setStatus(await getSendcloudStatus())}catch(e){setStatus({configured:false,integrations:[],message:errorMessage(e,'No se pudo comprobar Sendcloud.')})}},[]);
@@ -187,20 +199,45 @@ export function Orders(){
   const orderPeriodOrders=useMemo(()=>orders.filter(order=>inPeriod(orderDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
   const labelPeriodOrders=useMemo(()=>orders.filter(order=>isLabelledOrder(order)&&inPeriod(labelDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
   const shippedPeriodOrders=useMemo(()=>orders.filter(order=>isProcessedOrder(order)&&inPeriod(shippedDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
+  const pendingOrders=useMemo(()=>orderPeriodOrders.filter(isPendingOrder),[orderPeriodOrders]);
   const salesKpis=useMemo(()=>{const sales=orderPeriodOrders.filter(order=>!isCancelledOrder(order)&&order.totalAmount!=null&&(order.currency==null||order.currency==='EUR'));let gross=0,net=0,vat=0;for(const order of sales){const parts=taxParts(order);gross+=parts.gross;net+=parts.net;vat+=parts.vat}return {gross,net,vat,count:sales.length,average:sales.length?gross/sales.length:0}},[orderPeriodOrders]);
-  const pending=orderPeriodOrders.filter(isPendingOrder).length,amazon=orderPeriodOrders.filter(o=>o.sourceChannel==='amazon'&&isPendingOrder(o)).length,shopify=orderPeriodOrders.filter(o=>o.sourceChannel==='shopify'&&isPendingOrder(o)).length,labelled=labelPeriodOrders.length,shipped=shippedPeriodOrders.length,cancelled=orderPeriodOrders.filter(isCancelledOrder).length;
+  const pending=pendingOrders.length,amazon=pendingOrders.filter(o=>o.sourceChannel==='amazon').length,shopify=pendingOrders.filter(o=>o.sourceChannel==='shopify').length,labelled=labelPeriodOrders.length,shipped=shippedPeriodOrders.length,cancelled=orderPeriodOrders.filter(isCancelledOrder).length;
   const filtered=useMemo(()=>{const q=query.trim().toLowerCase();const base=state==='labelled'?orders.filter(order=>inPeriod(labelDateKey(order),dateFrom,dateTo)):state==='shipped'?orders.filter(order=>inPeriod(shippedDateKey(order),dateFrom,dateTo)):orderPeriodOrders;return base.filter(order=>{if(channel!=='all'&&order.sourceChannel!==channel)return false;if(state==='pending'&&!isPendingOrder(order))return false;if(state==='labelled'&&!isLabelledOrder(order))return false;if(state==='shipped'&&!isProcessedOrder(order))return false;if(state==='cancelled'&&!isCancelledOrder(order))return false;if(trackingFilter!=='all'&&trackingFilterCode(order)!==trackingFilter)return false;if(q&&!`${order.orderNumber||''} ${order.orderId||''} ${order.customerName||''} ${order.trackingNumber||''} ${order.trackingStatusMessage||''} ${carrierLabel(order)} ${productsText(order)}`.toLowerCase().includes(q))return false;return true})},[orders,orderPeriodOrders,dateFrom,dateTo,query,channel,state,trackingFilter]);
 
   const prepare=async(order:FulfillmentOrder)=>{if(!canPrepareOrder(order)){showError('Este pedido ya no admite una nueva etiqueta.');return}setLabelOrder(order);setOptions([]);setOptionsLoading(true);try{const result=await getShippingOptions(order.id);setOptions(result.options)}catch(e){showError(errorMessage(e,'No se pudieron consultar los servicios y precios.'))}finally{setOptionsLoading(false)}};
-  const handleBlob=async(blob:Blob,order:FulfillmentOrder,mode:'print'|'download')=>{if(mode==='download'){downloadLabel(blob,order.orderNumber);return}if(printer){try{await printLabelWithClient(blob,printer);showSuccess('Etiqueta enviada a la impresora.');return}catch{/* PDF */}}openLabelForPrint(blob)};
-  const createLabel=async(option:ShippingOption|null)=>{if(!labelOrder)return;const order=labelOrder;setBusyOrder(order.id);setLabelOrder(null);try{const result=await createOrderLabel(order.id,option),blob=labelBlob(result);await refresh();const fresh=(await listFulfillmentOrders()).find(item=>item.id===order.id)||order;setOrders(await listFulfillmentOrders());setSelected(fresh);showSuccess(`Etiqueta creada${result.trackingNumber?` · ${result.trackingNumber}`:''}.`);await handleBlob(blob,fresh,'print')}catch(e){showError(errorMessage(e,'No se pudo crear la etiqueta.'))}finally{setBusyOrder(null)}};
+  const handleBlob=async(blob:Blob,order:FulfillmentOrder,mode:'print'|'download')=>{if(mode==='download'){downloadLabel(blob,`${labelPdfBaseName(order)}.pdf`);return}if(printer){try{await printLabelWithClient(blob,printer);showSuccess('Etiqueta enviada a la impresora.');return}catch{/* PDF */}}openLabelForPrint(blob)};
+  const createLabel=async(option:ShippingOption|null)=>{if(!labelOrder)return;const order=labelOrder;setBusyOrder(order.id);setLabelOrder(null);try{const result=await createOrderLabel(order.id,option),blob=labelBlob(result);const freshOrders=await listFulfillmentOrders();const fresh=freshOrders.find(item=>item.id===order.id)||order;setOrders(freshOrders);setSelected(fresh);downloadLabel(blob,`${labelPdfBaseName(fresh)}.pdf`);showSuccess(`Etiqueta creada y descargada${result.trackingNumber?` · ${result.trackingNumber}`:''}.`)}catch(e){showError(errorMessage(e,'No se pudo crear la etiqueta.'))}finally{setBusyOrder(null)}};
   const existingLabel=async(order:FulfillmentOrder,mode:'print'|'download')=>{setBusyOrder(order.id);try{const result=await fetchOrderLabel(order.id);await handleBlob(labelBlob(result),order,mode)}catch(e){showError(errorMessage(e,'No se pudo recuperar la etiqueta.'))}finally{setBusyOrder(null)}};
+  const generatePendingLabels=async()=>{
+    if(!pendingOrders.length){showSuccess('No hay pedidos pendientes en el periodo seleccionado.');return;}
+    setBulkGenerating(true);setBulkProgress(`0/${pendingOrders.length}`);setError('');
+    const zip=new JSZip(),usedNames=new Set<string>(),failed:string[]=[];
+    let processed=0,generated=0;
+    for(const order of pendingOrders){
+      try{
+        const shipping=await getShippingOptions(order.id);
+        const option=selectAutomaticShippingOption(order,shipping.options);
+        if(!option)throw new Error('No se encontró el servicio automático MRW 19:00 / Correos Baleares.');
+        const result=await createOrderLabel(order.id,option);
+        zip.file(uniqueLabelPdfFilename(order,usedNames),result.base64,{base64:true});
+        generated+=1;
+      }catch(e){failed.push(`${order.orderNumber||order.orderId||order.id}: ${errorMessage(e,'Error al generar etiqueta')}`)}
+      finally{processed+=1;setBulkProgress(`${processed}/${pendingOrders.length}`)}
+    }
+    try{
+      if(generated){const blob=await zip.generateAsync({type:'blob'});downloadBlob(blob,`etiquetas_pendientes_${iso(new Date())}.zip`)}
+      const freshOrders=await listFulfillmentOrders();setOrders(freshOrders);setSelected(current=>current?freshOrders.find(item=>item.id===current.id)||null:null);
+      if(failed.length){const detail=failed.slice(0,3).join(' · ');const message=`${generated} etiquetas generadas. ${failed.length} no se pudieron generar${detail?`: ${detail}`:''}`;setError(message);showError(message)}
+      else showSuccess(`${generated} etiquetas generadas y descargadas en un ZIP.`);
+    }catch(e){const message=errorMessage(e,'Las etiquetas se generaron, pero no se pudo preparar el ZIP.');setError(message);showError(message)}
+    finally{setBulkGenerating(false);setBulkProgress('')}
+  };
   const detectPrinters=async()=>{setPrinterChecking(true);try{const found=await listLocalPrinters();setPrinters(found);const chosen=printer||found.find(item=>item.default)?.id||found[0]?.id||'';setPrinter(chosen);savePrinter(chosen);showSuccess(found.length?`${found.length} impresora${found.length===1?'':'s'} detectada${found.length===1?'':'s'}.`:'No se han encontrado impresoras.')}catch{setPrinters([]);showError('No se detecta el Print Client de Sendcloud. Puedes imprimir desde PDF.')}finally{setPrinterChecking(false)}};
   const saveManual=async(value:any)=>{setManualSaving(true);try{const result=await createManualOrder(value);await refresh();setManualOpen(false);showSuccess(`Pedido ${result.orderNumber} creado en ZENVIA y Sendcloud.`)}catch(e){showError(errorMessage(e,'No se pudo crear el pedido manual.'))}finally{setManualSaving(false)}};
   const saveEdit=async(value:OrderUpdateInput)=>{if(!editOrder)return;setEditSaving(true);try{await updateFulfillmentOrder(editOrder.id,value);const freshOrders=await listFulfillmentOrders();setOrders(freshOrders);const fresh=freshOrders.find(item=>item.id===editOrder.id)||editOrder;setSelected(fresh);setEditOrder(null);showSuccess('Pedido actualizado en ZENVIA y Sendcloud.')}catch(e){showError(errorMessage(e,'No se pudo actualizar el pedido.'))}finally{setEditSaving(false)}};
 
   return <div className="page ordersPage">
-    <div className="pageHead"><div><div className="eyebrow">LOGÍSTICA</div><h1>Pedidos</h1><p>Amazon, Shopify y pedidos manuales, etiquetas y seguimiento desde un único sitio.</p></div><div className="actions"><button className="secondary" onClick={detectPrinters} disabled={printerChecking}>{printerChecking?<LoaderCircle className="spin" size={16}/>:<Printer size={16}/>} Impresora</button><button className="secondary" onClick={()=>setManualOpen(true)} disabled={!status?.configured}><Plus size={16}/> Nuevo pedido</button><button className="primary" onClick={()=>sync(false,false)} disabled={syncing||!status?.configured}>{syncing?<LoaderCircle className="spin" size={16}/>:<RefreshCw size={16}/>} Actualizar pedidos</button></div></div>
+    <div className="pageHead"><div><div className="eyebrow">LOGÍSTICA</div><h1>Pedidos</h1><p>Amazon, Shopify y pedidos manuales, etiquetas y seguimiento desde un único sitio.</p></div><div className="actions"><button className="secondary" onClick={detectPrinters} disabled={printerChecking}>{printerChecking?<LoaderCircle className="spin" size={16}/>:<Printer size={16}/>} Impresora</button><button className="secondary" onClick={()=>setManualOpen(true)} disabled={!status?.configured}><Plus size={16}/> Nuevo pedido</button><button className="secondary" onClick={generatePendingLabels} disabled={bulkGenerating||syncing||!status?.configured||pending===0}>{bulkGenerating?<LoaderCircle className="spin" size={16}/>:<Download size={16}/>} {bulkGenerating?`Generando ${bulkProgress}`:`Generar etiquetas pendientes (${pending})`}</button><button className="primary" onClick={()=>sync(false,false)} disabled={syncing||bulkGenerating||!status?.configured}>{syncing?<LoaderCircle className="spin" size={16}/>:<RefreshCw size={16}/>} Actualizar pedidos</button></div></div>
     {status?.configured&&<section className="ordersConnection"><CheckCircle2 size={16}/><span>Sendcloud conectado</span><small>{status.integrations.filter(item=>item.channel==='amazon'||item.channel==='shopify').map(item=>item.shopName||item.type).join(' · ')||'Integraciones disponibles'}</small></section>}
     {status&&!status.configured&&<section className="card ordersSetup"><AlertCircle/><div><h3>Falta conectar Sendcloud</h3><p>Configura las claves API para sincronizar pedidos y generar etiquetas.</p></div></section>}{error&&<div className="errorBox"><AlertCircle size={17}/>{error}</div>}
 
