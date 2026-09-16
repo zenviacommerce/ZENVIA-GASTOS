@@ -16,6 +16,7 @@ import { Orders } from './pages/Orders';
 import { Clients } from './pages/Clients';
 import { Products } from './pages/Products';
 import { Suppliers } from './pages/Suppliers';
+import { AmazonPage } from './pages/Amazon';
 import { AdminPage } from './pages/Admin';
 import { supabase } from './services/supabase';
 import { loadAccessProfile, type AccessProfile, type MenuPermission } from './services/access';
@@ -29,7 +30,7 @@ import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './typ
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
 const THEME_KEY = 'zenvia-gestion-theme';
-const regularPages: MenuPermission[] = ['dashboard','sales','orders','invoices','clients','products','suppliers'];
+const regularPages: MenuPermission[] = ['dashboard','sales','orders','invoices','clients','products','suppliers','amazon'];
 
 function initialTheme(): ThemeMode {
   const stored=window.localStorage.getItem(THEME_KEY) || window.localStorage.getItem('zenvia-gastos-theme');
@@ -188,6 +189,7 @@ export default function App(){
    {page==='clients'&&can('clients')&&<Clients/>}
    {page==='products'&&can('products')&&<Products products={data.products} onAdd={openNewProduct} onEdit={openEditProduct} onDelete={removeProduct}/>} 
    {page==='suppliers'&&can('suppliers')&&<Suppliers suppliers={data.suppliers} onAdd={openNewSupplier} onEdit={openEditSupplier} onDelete={removeSupplier}/>} 
+   {page==='amazon'&&can('amazon')&&<AmazonPage isAdmin={access.role==='admin'}/>} 
    {page==='admin'&&access.role==='admin'&&<AdminPage currentUserId={session.user.id}/>} 
  </main>
  {can('invoices')&&<UploadInvoiceModal open={upload} onClose={()=>setUpload(false)} onSave={saveInvoice} categories={data.categories} existingInvoices={data.invoices}/>} 
