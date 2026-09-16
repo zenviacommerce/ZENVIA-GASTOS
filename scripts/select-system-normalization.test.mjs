@@ -35,6 +35,7 @@ test('orders use the global tooltip instead of duplicate native title tooltips',
   const defaults=await source('src/components/OrderLabelDefaults.tsx');
   assert.equal(orders.includes('title={productsText(order)}'),false,'Orders product cell still has a native title tooltip');
   assert.equal(orders.includes('title={order.trackingStatusMessage||tracking.label}'),false,'Orders tracking badge still has a native title tooltip');
+  assert.match(orders,/aria-label=\{productsText\(order\)\}/,'Orders product cell should preserve an accessible full-text label');
   assert.equal(defaults.includes('badge.title=original'),false,'OrderLabelDefaults still adds a native title to tracking badges');
 });
 
