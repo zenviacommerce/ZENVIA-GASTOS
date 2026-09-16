@@ -10,19 +10,14 @@ import { InvoiceFilters } from '../components/InvoiceFilters';
 import { defaultInvoiceFilter, filterInvoices, periodLabel } from '../services/filters';
 import { loadSalesInvoices, type SalesInvoice } from '../services/sales';
 import { listFulfillmentOrders, type FulfillmentOrder } from '../services/orders';
+import { isCancelledOrder, isPendingOrder, orderStatusCode } from '../services/orderStatus';
 
 const colors = ['#0f766e','#2563eb','#7c3aed','#d97706','#64748b','#dc2626','#0891b2'];
 const money=(value:number)=>`${value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €`;
 
 function orderDate(order:FulfillmentOrder){return order.orderCreatedAt?.slice(0,10)||'';}
-function orderStatus(order:FulfillmentOrder){return String(order.sourceStatus||'').trim().toLowerCase();}
-function isCancelledOrder(order:FulfillmentOrder){return orderStatus(order).includes('cancel');}
-function isPendingOrder(order:FulfillmentOrder){
-  const status=orderStatus(order);
-  return status==='pending'||status==='unshipped'||status==='new'||status==='ready_to_send'||status==='ready-to-send';
-}
 function isShippedOrder(order:FulfillmentOrder){
-  const status=orderStatus(order);
+  const status=orderStatusCode(order);
   return ['shipped','fulfilled','delivered','processed','completed'].includes(status);
 }
 
