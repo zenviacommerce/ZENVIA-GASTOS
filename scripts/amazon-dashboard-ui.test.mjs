@@ -8,7 +8,7 @@ test('Amazon service exposes typed analytics and mapping calls',async()=>{
   for(const name of [
     'AmazonAnalyticsFilters','AmazonSummary','AmazonSeriesPoint','loadAmazonSummary','loadAmazonSeries',
     'loadAmazonProducts','loadAmazonMarketplaces','loadAmazonOrders','loadAmazonInventory','loadAmazonUnmapped',
-    'setAmazonProductMapping','deleteAmazonProductMapping','amazonQuickRange','loadAmazonProductOptions'
+    'setAmazonProductMapping','deleteAmazonProductMapping','amazonQuickRange','loadAmazonProductOptions','consumptionFactor'
   ]) assert.match(service,new RegExp(name));
   for(const rpc of [
     'amazon_analytics_summary','amazon_analytics_series','amazon_analytics_products','amazon_analytics_marketplaces',
@@ -56,4 +56,12 @@ test('Sin vincular uses the shared mapping editor for product selection and cons
   const editor=await source('src/components/amazon/AmazonMappingEditor.tsx');
   assert.match(unmapped,/loadAmazonUnmapped/);assert.match(unmapped,/AmazonMappingEditor/);assert.match(unmapped,/sellerSku/);
   assert.match(editor,/setAmazonProductMapping/);assert.match(editor,/Factor|factor/);assert.match(editor,/Producto interno|producto interno/);assert.doesNotMatch(editor,/<select/i);
+});
+
+test('Products editor receives the persisted consumption factor instead of resetting to one',async()=>{
+  const products=await source('src/components/amazon/AmazonProducts.tsx');
+  assert.match(products,/initialFactor=\{editingRow\?\.consumptionFactor\|\|1\}/);
+  const sql=await source('supabase/migrations/20260917002700_amazon_product_mapping_factor_fix.sql');
+  assert.match(sql,/'consumptionFactor'/);
+  assert.match(sql,/max\(consumption_factor\)/i);
 });
