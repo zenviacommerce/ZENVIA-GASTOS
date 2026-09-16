@@ -15,6 +15,28 @@ function normalizeKey(value:string){
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 }
 
+export async function createManualInvoiceCandidate(file:File):Promise<InvoiceImportCandidate>{
+  return {
+    id:crypto.randomUUID(),
+    file,
+    fileHash:await sha256File(file),
+    status:'needs_review',
+    reviewReason:'No se pudo completar la lectura automática. Revisa y completa los datos antes de guardar.',
+    supplierName:'',
+    invoiceNumber:'',
+    invoiceDate:new Date().toISOString().slice(0,10),
+    subtotal:0,
+    vat:0,
+    equivalenceSurcharge:0,
+    withholding:0,
+    total:0,
+    text:'',
+    confidence:0,
+    usedOcr:false,
+    lines:[],
+  };
+}
+
 export async function prepareInvoiceCandidate(
   file:File,
   categories:ExpenseCategory[],
