@@ -79,18 +79,21 @@ export function BulkInvoiceImportModal({open,onClose,categories,existingInvoices
     const ready=items.filter(item=>!item.excluded&&item.candidate?.status==='ready').map(item=>item.candidate!);
     if(!ready.length)return;
     setBusy(true);
-    for(const candidate of ready){
-      patch(candidate.id,{status:'importing'});
-      setItems(current=>current.map(item=>item.candidate?.id===candidate.id?{...item,status:'importing',candidate:{...candidate,status:'importing'}}:item));
-      try{
-        await onSave(invoiceCandidateToInput(candidate,'manual'));
-        setItems(current=>current.map(item=>item.candidate?.id===candidate.id?{...item,status:'imported',candidate:{...candidate,status:'imported'}}:item));
-      }catch(error){
-        setItems(current=>current.map(item=>item.candidate?.id===candidate.id?{...item,status:'error',error:error instanceof Error?error.message:'No se pudo importar.',candidate:{...candidate,status:'error'}}:item));
+    try{
+      for(const candidate of ready){
+        patch(candidate.id,{status:'importing'});
+        setItems(current=>current.map(item=>item.candidate?.id===candidate.id?{...item,status:'importing',candidate:{...candidate,status:'importing'}}:item));
+        try{
+          await onSave(invoiceCandidateToInput(candidate,'manual'));
+          setItems(current=>current.map(item=>item.candidate?.id===candidate.id?{...item,status:'imported',candidate:{...candidate,status:'imported'}}:item));
+        }catch(error){
+          setItems(current=>current.map(item=>item.candidate?.id===candidate.id?{...item,status:'error',error:error instanceof Error?error.message:'No se pudo importar.',candidate:{...candidate,status:'error'}}:item));
+        }
       }
+      await onFinished();
+    }finally{
+      setBusy(false);
     }
-    await onFinished();
-    setBusy(false);
   };
 
   const analyzed=items.filter(item=>item.status!=='analyzing').length;
