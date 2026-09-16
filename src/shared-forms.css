@@ -16,5 +16,12 @@
 .searchableSelectMenu{position:fixed;z-index:12001;padding:8px;border:1px solid var(--border,#d1d5db);border-radius:12px;background:var(--card,#fff);box-shadow:0 14px 34px rgba(15,23,42,.16);max-height:320px;overflow:hidden;box-sizing:border-box}
 .searchableSelectSearch{width:100%;box-sizing:border-box;margin-bottom:7px;border:1px solid var(--border,#d1d5db);border-radius:9px;padding:9px 10px;background:var(--input-bg,#fff);color:inherit}
 .searchableSelectList{max-height:245px;overflow:auto;display:flex;flex-direction:column;gap:2px}.searchableSelectOption{width:100%;border:0;background:transparent;color:inherit;border-radius:8px;padding:9px 10px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:2px}.searchableSelectOption:hover,.searchableSelectOption.isActive{background:var(--soft,#f3f4f6)}.searchableSelectOption.isSelected{font-weight:700}.searchableSelectOption small{font-weight:400;color:var(--muted,#6b7280)}.searchableSelectEmpty{padding:14px 10px;text-align:center;color:var(--muted,#6b7280);font-size:.88rem}
-[data-theme="dark"] .formSection,[data-theme="dark"] .searchableSelectMenu{background:var(--card,#151821)}
+html[data-theme="dark"] .formSection{background:#111827;border-color:#334155}
+html[data-theme="dark"] .searchableSelectTrigger{background:#0f172a;border-color:#334155;color:#e5e7eb}
+html[data-theme="dark"] .searchableSelectTrigger.isPlaceholder{color:#94a3b8}
+html[data-theme="dark"] .searchableSelectMenu{background:#111827;border-color:#334155;color:#e5e7eb;box-shadow:0 14px 34px rgba(0,0,0,.38)}
+html[data-theme="dark"] .searchableSelectSearch{background:#0f172a;border-color:#334155;color:#e5e7eb}
+html[data-theme="dark"] .searchableSelectOption:hover,html[data-theme="dark"] .searchableSelectOption.isActive{background:#172033}
+html[data-theme="dark"] .searchableSelectOption.isSelected{color:#5eead4}
+html[data-theme="dark"] .searchableSelectOption small,html[data-theme="dark"] .searchableSelectEmpty{color:#94a3b8}
 @media(max-width:700px){.formModal{width:min(100%,calc(100vw - 18px));max-height:92vh}.formGrid{grid-template-columns:1fr}.formSpan2{grid-column:auto}.formSection{padding:14px}.formModalActions{padding-bottom:max(2px,env(safe-area-inset-bottom))}}
