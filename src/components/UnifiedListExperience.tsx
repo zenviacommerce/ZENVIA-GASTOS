@@ -310,7 +310,10 @@ export function UnifiedListExperience(){
     const onResize=()=>{hideTooltip();schedule();};
 
     sync();
-    const observer=new MutationObserver(schedule);
+    const observer=new MutationObserver(mutations=>{
+      if(mutations.every(mutation=>mutation.target===tooltip||tooltip.contains(mutation.target)))return;
+      schedule();
+    });
     observer.observe(document.body,{childList:true,subtree:true,characterData:true});
     document.addEventListener('pointerover',onPointerOver);
     document.addEventListener('pointerout',onPointerOut);
