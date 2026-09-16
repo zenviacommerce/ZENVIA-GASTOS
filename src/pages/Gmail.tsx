@@ -13,6 +13,7 @@ import {
 import { isDecorativeGmailImage, searchGmailInvoiceCandidatesStable } from '../services/gmailStableSearch';
 import { importGmailCandidate } from '../services/gmailImport';
 import { loadRecoverableGmailImports } from '../services/invoiceLifecycle';
+import { SelectField } from '../components/forms/SelectField';
 
 const PAGE_SIZE = 20;
 type GmailViewFilter = 'all' | 'pending' | 'imported' | 'not_imported' | 'ignored' | 'not_ignored' | 'error';
@@ -195,7 +196,7 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
 
     {!gmailOAuthConfigured()?<section className="gmailSetup card"><AlertCircle/><div><h3>Falta el Client ID de Google</h3><p>La integración está implementada, pero Google exige un OAuth Client ID para autorizar el acceso de solo lectura a Gmail. Configura <code>VITE_GOOGLE_CLIENT_ID</code> en Vercel y añade el dominio de la aplicación como origen JavaScript autorizado.</p></div></section>:null}
 
-    <section className="gmailHero card"><div className="gmailIcon"><Mail/></div><div className="gmailHeroBody"><h2>{connection?`Conectado a ${connection.email}`:'Conecta el buzón de facturas'}</h2><p>La app solicita únicamente permiso de lectura de Gmail. Busca PDFs e imágenes adjuntas y no elimina, mueve ni modifica correos.</p><div className="gmailControls"><label>Periodo<select value={months} onChange={e=>setMonths(Number(e.target.value))}><option value={3}>3 meses</option><option value={6}>6 meses</option><option value={12}>12 meses</option><option value={24}>24 meses</option></select></label><span><ShieldCheck size={15}/> Acceso solo lectura</span></div></div></section>
+    <section className="gmailHero card"><div className="gmailIcon"><Mail/></div><div className="gmailHeroBody"><h2>{connection?`Conectado a ${connection.email}`:'Conecta el buzón de facturas'}</h2><p>La app solicita únicamente permiso de lectura de Gmail. Busca PDFs e imágenes adjuntas y no elimina, mueve ni modifica correos.</p><div className="gmailControls"><label>Periodo<SelectField value={String(months)} options={[{value:'3',label:'3 meses'},{value:'6',label:'6 meses'},{value:'12',label:'12 meses'},{value:'24',label:'24 meses'}]} onChange={value=>setMonths(Number(value))} ariaLabel="Periodo de Gmail"/></label><span><ShieldCheck size={15}/> Acceso solo lectura</span></div></div></section>
 
     <div className="stats gmailStats"><div className="stat"><div className="statIcon"><Paperclip/></div><div><span>Pendientes</span><strong>{pendingCount}</strong><small>Adjuntos por revisar</small></div></div><div className="stat"><div className="statIcon"><CheckCircle2/></div><div><span>Importadas</span><strong>{importedCount}</strong><small>Facturas creadas</small></div></div><div className="stat"><div className="statIcon"><Sparkles/></div><div><span>Automático</span><strong>IA/OCR</strong><small>Lectura de importes y líneas</small></div></div></div>
 
@@ -205,15 +206,7 @@ export function GmailPage({ categories, onImported }:{ categories:ExpenseCategor
     <div className="toolbar gmailToolbar">
       <div className="gmailFilterBar">
         <div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por proveedor, asunto o archivo…"/></div>
-        <select className="gmailStatusFilter" value={statusFilter} onChange={e=>setStatusFilter(e.target.value as GmailViewFilter)} aria-label="Filtrar por estado">
-          <option value="all">Todos los estados</option>
-          <option value="pending">Pendientes</option>
-          <option value="imported">Importadas</option>
-          <option value="not_imported">No importadas</option>
-          <option value="ignored">Ignoradas</option>
-          <option value="not_ignored">No ignoradas</option>
-          <option value="error">Con error</option>
-        </select>
+        <SelectField className="gmailStatusFilter" value={statusFilter} onChange={value=>setStatusFilter(value as GmailViewFilter)} ariaLabel="Filtrar por estado" options={[{value:'all',label:'Todos los estados'},{value:'pending',label:'Pendientes'},{value:'imported',label:'Importadas'},{value:'not_imported',label:'No importadas'},{value:'ignored',label:'Ignoradas'},{value:'not_ignored',label:'No ignoradas'},{value:'error',label:'Con error'}]}/>
         <span className="gmailFilterSummary">{shown.length} resultado{shown.length===1?'':'s'}</span>
       </div>
       {connection&&<button className="secondary" disabled={scanning} onClick={scan}><RefreshCw size={16}/> Actualizar Gmail</button>}

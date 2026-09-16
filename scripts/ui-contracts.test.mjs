@@ -13,7 +13,8 @@ test('Orders exposes bulk pending-label generation and downloads newly created l
 test('the shared invoice period filters expose Hoy', async () => {
   const source = await readFile(new URL('../src/components/InvoiceFilters.tsx', import.meta.url), 'utf8');
   assert.match(source, /\['today',\s*'Hoy'\]/);
-  assert.match(source, /<option value="today">Hoy<\/option>/);
+  assert.match(source, /\{value:'today',label:'Hoy'\}/);
+  assert.match(source, /SelectField/);
 });
 
 test('Suppliers exposes the same Hoy quick filter', async () => {

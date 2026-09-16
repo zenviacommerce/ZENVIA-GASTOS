@@ -29,8 +29,8 @@ test('expense supplier filter is searchable by supplier data',async()=>{
   assert.doesNotMatch(source,/<select value=\{filter\.supplierId\}/);
 });
 
-test('short VAT-rate enum remains a native select',async()=>{
+test('short VAT-rate enum uses SelectField without native select',async()=>{
   const source=await read('../src/pages/SalesInvoices.tsx');
-  assert.match(source,/<select value=\{line\.taxRate\}/);
-  assert.match(source,/<option value=\{21\}>21 %<\/option>/);
+  assert.match(source,/SelectField/);
+  assert.doesNotMatch(source,/<select value=\{line\.taxRate\}/);
 });

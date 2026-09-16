@@ -3,8 +3,15 @@ import { X } from 'lucide-react';
 import type { Supplier } from '../types';
 import type { SupplierInput, SupplierType } from '../services/supplierEditor';
 import { emailError, nameError, normalizeEmail, normalizePhone, normalizeTaxId, phoneError, taxIdError } from '../services/validation';
+import { SelectField } from './forms/SelectField';
 
 type FieldErrors = {name?:string;taxId?:string;email?:string;phone?:string};
+const SUPPLIER_TYPE_OPTIONS=[
+ {value:'unclassified',label:'Sin clasificar'},
+ {value:'service',label:'Servicios'},
+ {value:'goods',label:'Mercancía'},
+ {value:'both',label:'Ambos'},
+];
 
 export function SupplierModal({open,onClose,onSave,supplier}:{open:boolean;onClose:()=>void;onSave:(v:SupplierInput)=>Promise<void>;supplier?:Supplier|null}){
  const [name,setName]=useState('');
@@ -73,7 +80,7 @@ export function SupplierModal({open,onClose,onSave,supplier}:{open:boolean;onClo
      <label>Teléfono<input aria-invalid={Boolean(fieldErrors.phone)} type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={e=>{setPhone(e.target.value);if(fieldErrors.phone)setFieldErrors(current=>({...current,phone:undefined}))}} placeholder="+34 600 000 000"/>{fieldErrors.phone&&<small className="fieldValidationError">{fieldErrors.phone}</small>}</label>
      <label>Dirección<input value={address} onChange={e=>setAddress(e.target.value)} placeholder="Calle, número, código postal y localidad"/></label>
      <label>Web<input type="url" inputMode="url" value={website} onChange={e=>setWebsite(e.target.value)} placeholder="https://empresa.com"/></label>
-     <label>Tipo de proveedor<select value={supplierType} onChange={e=>setSupplierType(e.target.value as SupplierType)}><option value="unclassified">Sin clasificar</option><option value="service">Servicios</option><option value="goods">Mercancía</option><option value="both">Ambos</option></select></label>
+     <label>Tipo de proveedor<SelectField value={supplierType} options={SUPPLIER_TYPE_OPTIONS} onChange={value=>setSupplierType(value as SupplierType)} ariaLabel="Tipo de proveedor"/></label>
    </div>
    {error&&<div className="errorBox">{error}</div>}
    <div className="modalActions"><button className="secondary" onClick={onClose} disabled={busy}>Cancelar</button><button className="primary" onClick={save} disabled={busy||!name.trim()}>{busy?'Guardando…':editing?'Guardar cambios':'Crear proveedor'}</button></div>

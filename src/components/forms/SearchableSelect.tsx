@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Search } from 'lucide-react';
+import { useFloatingSelectMenu } from './useFloatingSelectMenu';
 import '../../shared-forms.css';
 
 export type SearchableSelectOption={value:string;label:string;searchText?:string;description?:string};
@@ -17,19 +18,15 @@ type Props={
   ariaLabel?:string;
 };
 
-type MenuPosition={top:number;left:number;width:number;visibility:'visible'|'hidden'};
-
 const normalize=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 
 export function SearchableSelect({value,options,onChange,placeholder='Selecciona…',searchPlaceholder='Buscar…',disabled=false,allowEmpty=false,emptyLabel='Sin seleccionar',ariaLabel}:Props){
-  const rootRef=useRef<HTMLDivElement>(null);
-  const menuRef=useRef<HTMLDivElement>(null);
   const searchRef=useRef<HTMLInputElement>(null);
   const listId=useId();
   const [open,setOpen]=useState(false);
   const [query,setQuery]=useState('');
   const [active,setActive]=useState(0);
-  const [menuPosition,setMenuPosition]=useState<MenuPosition>({top:0,left:-10000,width:0,visibility:'hidden'});
+  const {rootRef,menuRef,menuPosition,positionMenu,hideMenu}=useFloatingSelectMenu(open);
   const selected=options.find(option=>option.value===value);
   const filtered=useMemo(()=>{
     const needle=normalize(query);
@@ -38,22 +35,6 @@ export function SearchableSelect({value,options,onChange,placeholder='Selecciona
     return rows.filter(option=>normalize(`${option.label} ${option.searchText||''} ${option.value}`).includes(needle));
   },[allowEmpty,emptyLabel,options,query]);
 
-  const positionMenu=()=>{
-    const root=rootRef.current;
-    if(!root)return;
-    const rect=root.getBoundingClientRect();
-    const measuredHeight=menuRef.current?.getBoundingClientRect().height||320;
-    const below=window.innerHeight-rect.bottom-8;
-    const above=rect.top-8;
-    const openAbove=below<Math.min(measuredHeight,220)&&above>below;
-    const top=openAbove
-      ?Math.max(8,rect.top-measuredHeight-6)
-      :Math.min(rect.bottom+6,Math.max(8,window.innerHeight-measuredHeight-8));
-    const width=Math.min(rect.width,Math.max(0,window.innerWidth-16));
-    const left=Math.min(Math.max(8,rect.left),Math.max(8,window.innerWidth-width-8));
-    setMenuPosition({top,left,width,visibility:'visible'});
-  };
-
   useEffect(()=>{
     if(!open)return;
     const onPointerDown=(event:PointerEvent)=>{
@@ -61,22 +42,15 @@ export function SearchableSelect({value,options,onChange,placeholder='Selecciona
       if(rootRef.current?.contains(target)||menuRef.current?.contains(target))return;
       setOpen(false);
     };
-    const reposition=()=>positionMenu();
     document.addEventListener('pointerdown',onPointerDown);
-    document.addEventListener('scroll',reposition,true);
-    window.addEventListener('resize',reposition);
-    return()=>{
-      document.removeEventListener('pointerdown',onPointerDown);
-      document.removeEventListener('scroll',reposition,true);
-      window.removeEventListener('resize',reposition);
-    };
-  },[open]);
+    return()=>document.removeEventListener('pointerdown',onPointerDown);
+  },[open,menuRef,rootRef]);
 
   useEffect(()=>{
     if(!open)return;
     setQuery('');
     setActive(Math.max(0,options.findIndex(option=>option.value===value)));
-    setMenuPosition(position=>({...position,visibility:'hidden'}));
+    hideMenu();
     requestAnimationFrame(()=>{
       positionMenu();
       searchRef.current?.focus();

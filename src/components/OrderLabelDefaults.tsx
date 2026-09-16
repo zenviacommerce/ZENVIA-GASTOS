@@ -29,7 +29,7 @@ function translateTrackingBadges(){
     const original=(badge.textContent||'').trim();
     const translated=trackingTranslation(original);
     if(!translated||translated===original)return;
-    if(!badge.title)badge.title=original;
+    if(!badge.getAttribute('aria-label'))badge.setAttribute('aria-label',original);
     badge.textContent=translated;
   });
 }
@@ -49,8 +49,6 @@ function carrierCard(modal:HTMLElement,carrier:'mrw'|'correos'){
 function mrwUrgent1900(button:HTMLButtonElement){
   const value=normalized(button.textContent||'');
   const friendly=value.includes('urgent')&&value.includes('19:00')&&value.includes('expedition')&&/0\s*[-–]\s*80\s*kg/.test(value);
-  // Important: timeslot=12 is MRW Urgent 12:00, not the desired 19:00 service.
-  // Only accept a technical code as the default when it explicitly identifies the 19:00 slot.
   const technical=value.includes('mrw:')&&(value.includes('timeslot=19')||value.includes('timeslot=19:00'))&&value.includes('expedition');
   return friendly||technical;
 }

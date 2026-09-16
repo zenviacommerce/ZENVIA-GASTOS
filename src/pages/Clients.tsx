@@ -6,6 +6,7 @@ import { errorMessage, showError, showSuccess } from '../services/toast';
 import { Pagination } from '../components/Pagination';
 import { FormGrid, FormModal, FormSection } from '../components/forms/FormPrimitives';
 import { PostalAddressFields } from '../components/forms/PostalAddressFields';
+import { SelectField } from '../components/forms/SelectField';
 import '../sales.css';
 
 const PAGE_SIZE=20;
@@ -85,7 +86,7 @@ function ClientModal({open,client,onClose,onSaved}:{open:boolean;client:Client|n
     </FormSection>
     <FormSection icon={<WalletCards size={18}/>} title="Condiciones comerciales" subtitle="Plazo de pago y notas internas">
       <FormGrid>
-        <label>Pago habitual<select value={form.paymentTermsDays} onChange={e=>set('paymentTermsDays',Number(e.target.value))}><option value={0}>Al contado</option><option value={15}>15 días</option><option value={30}>30 días</option><option value={60}>60 días</option><option value={90}>90 días</option></select></label>
+        <label>Pago habitual<SelectField value={String(form.paymentTermsDays||0)} options={[{value:'0',label:'Al contado'},{value:'15',label:'15 días'},{value:'30',label:'30 días'},{value:'60',label:'60 días'},{value:'90',label:'90 días'}]} onChange={value=>set('paymentTermsDays',Number(value))} ariaLabel="Pago habitual"/></label>
         <label className="formSpan2">Notas<textarea rows={3} value={form.notes||''} onChange={e=>set('notes',e.target.value)} placeholder="Información interna sobre el cliente"/></label>
       </FormGrid>
     </FormSection>

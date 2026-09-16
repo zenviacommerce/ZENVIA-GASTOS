@@ -18,6 +18,7 @@ export function InvoiceDetailModal({invoice,suppliers,categories,onClose,onOpenF
     description:s.taxId||s.email||undefined,
     searchText:[s.name,s.taxId,s.email,s.phone,s.address].filter(Boolean).join(' '),
   })),[suppliers]);
+  const categoryOptions=useMemo(()=>categories.map(category=>({value:category.id,label:category.name,searchText:category.name})),[categories]);
 
   useEffect(()=>{
     setSupplierId(invoice?.supplierId || '');
@@ -70,12 +71,9 @@ export function InvoiceDetailModal({invoice,suppliers,categories,onClose,onOpenF
       </div>
 
       <div className="invoiceCategoryEditor">
-        <label htmlFor="invoiceCategory">Categoría</label>
+        <label>Categoría</label>
         <div className="invoiceCategoryEditorRow">
-          <select id="invoiceCategory" value={categoryId} onChange={e=>setCategoryId(e.target.value)}>
-            <option value="">Selecciona una categoría…</option>
-            {categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <SearchableSelect value={categoryId} options={categoryOptions} onChange={setCategoryId} placeholder="Selecciona una categoría…" searchPlaceholder="Buscar categoría…" ariaLabel="Categoría asignada"/>
           <button className="secondary" disabled={!categoryChanged||!categoryId||savingCategory} onClick={saveCategory}>{savingCategory?'Guardando…':'Guardar categoría'}</button>
         </div>
         <span className={`invoiceCategoryHint ${!invoice.categoryId?'warn':''}`}>{!invoice.categoryId?'Esta factura no tiene categoría asignada. Selecciona una y guarda el cambio.':'Puedes reclasificar la factura sin volver a importarla.'}</span>

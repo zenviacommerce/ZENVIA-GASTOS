@@ -2,6 +2,7 @@ import { CalendarDays, History, RotateCcw } from 'lucide-react';
 import type { Invoice, Supplier } from '../types';
 import { filterForPreset, quarterOptions, type InvoiceFilter, type PeriodPreset } from '../services/filters';
 import { SearchableSelect } from './forms/SearchableSelect';
+import { SelectField } from './forms/SelectField';
 
 export function InvoiceFilters({
   filter,
@@ -22,6 +23,15 @@ export function InvoiceFilters({
     label:supplier.name,
     searchText:[supplier.taxId,supplier.email,supplier.phone,supplier.address].filter(Boolean).join(' '),
   }));
+  const periodOptions=[
+    {value:'today',label:'Hoy'},
+    {value:'current_month',label:'Mes actual'},
+    {value:'current_quarter',label:'Trimestre actual'},
+    {value:'current_year',label:'Año actual'},
+    {value:'all',label:'Todo el histórico'},
+    {value:'custom',label:'Personalizado'},
+    ...quarters.map(option=>({value:option.value,label:option.label})),
+  ];
 
   const selectPreset = (preset: PeriodPreset) => {
     if (preset === 'custom') {
@@ -54,17 +64,7 @@ export function InvoiceFilters({
     </div>
     <div className="filterGrid">
       <label>Periodo
-        <select value={filter.preset} onChange={event => selectPreset(event.target.value as PeriodPreset)}>
-          <option value="today">Hoy</option>
-          <option value="current_month">Mes actual</option>
-          <option value="current_quarter">Trimestre actual</option>
-          <option value="current_year">Año actual</option>
-          <option value="all">Todo el histórico</option>
-          <option value="custom">Personalizado</option>
-          <optgroup label="Trimestres">
-            {quarters.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </optgroup>
-        </select>
+        <SelectField value={filter.preset} options={periodOptions} onChange={value=>selectPreset(value as PeriodPreset)} ariaLabel="Periodo de facturas"/>
       </label>
       {showSupplier&&<label>Proveedor
         <SearchableSelect
