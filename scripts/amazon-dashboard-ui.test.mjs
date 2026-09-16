@@ -20,3 +20,38 @@ test('Quick ranges include current month as the dashboard default preset',async(
   const service=await source('src/services/amazon.ts');
   for(const key of ['today','7d','30d','current_month','previous_month','current_quarter','current_year','custom'])assert.match(service,new RegExp(key));
 });
+
+test('Amazon page is a tabbed analytics dashboard with all approved tabs',async()=>{
+  const page=await source('src/pages/Amazon.tsx');
+  for(const tab of ['Resumen','Productos','Marketplaces','Pedidos','Inventario','Sin vincular'])assert.match(page,new RegExp(tab));
+  assert.match(page,/amazonQuickRange\('current_month'/);
+});
+
+test('Amazon Summary renders approved KPI hierarchy and Recharts trend',async()=>{
+  const summary=await source('src/components/amazon/AmazonSummary.tsx');
+  for(const label of ['Ventas sin IVA','Pedidos','Unidades vendidas','Tarifas Amazon','Reembolsos','Coste producto','Beneficio antes de Ads','Margen'])assert.match(summary,new RegExp(label));
+  assert.match(summary,/recharts/);
+  assert.match(summary,/ResponsiveContainer/);
+  assert.match(summary,/loadAmazonSummary/);
+  assert.match(summary,/loadAmazonSeries/);
+});
+
+test('Completeness UI surfaces historical sync and missing input states',async()=>{
+  const banner=await source('src/components/amazon/AmazonCompleteness.tsx');
+  for(const label of ['Sincronización histórica en curso','SKU sin vincular','coste histórico','FX','IVA','Ads'])assert.match(banner,new RegExp(label,'i'));
+});
+
+test('Amazon detail tabs use typed loaders and expose approved fields',async()=>{
+  const cases=[
+    ['src/components/amazon/AmazonProducts.tsx','loadAmazonProducts',['SKU','Unidades','Ventas','Coste','Tarifas','Beneficio','Margen']],
+    ['src/components/amazon/AmazonMarketplaces.tsx','loadAmazonMarketplaces',['Marketplace','Pedidos','Unidades','Ventas','Beneficio']],
+    ['src/components/amazon/AmazonOrders.tsx','loadAmazonOrders',['Pedido','Fecha','Marketplace','Estado','Ventas','Beneficio']],
+    ['src/components/amazon/AmazonInventory.tsx','loadAmazonInventory',['SKU','Disponible','Reservado','Entrante','No disponible','Total']],
+  ];
+  for(const [path,loader,labels] of cases){const text=await source(path);assert.match(text,new RegExp(loader));for(const label of labels)assert.match(text,new RegExp(label));}
+});
+
+test('Sin vincular supports internal product selection and consumption factor',async()=>{
+  const text=await source('src/components/amazon/AmazonUnmapped.tsx');
+  assert.match(text,/loadAmazonUnmapped/);assert.match(text,/setAmazonProductMapping/);assert.match(text,/Factor|factor/);assert.match(text,/Producto interno|producto interno/);assert.match(text,/sellerSku/);
+});
