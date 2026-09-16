@@ -61,7 +61,7 @@ function isMrwUrgent1900(option: LabelOption) {
   return friendlyMatch || technicalMatch;
 }
 
-export function selectAutomaticShippingOption(order: LabelOrder, options: LabelOption[]) {
+export function selectAutomaticShippingOption<T extends LabelOption>(order: LabelOrder, options: T[]): T | null {
   if (isBalearicOrder(order)) return options.find(isCorreos) || null;
   return options.find(isMrwUrgent1900) || null;
 }
