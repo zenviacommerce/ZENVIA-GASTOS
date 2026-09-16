@@ -48,12 +48,14 @@ test('postal lookup sends no client or company personal fields',async()=>{
   assert.doesNotMatch(source,/email|phone|taxId|legalName|addressLine/i);
 });
 
-test('short closed enums remain native selects',async()=>{
+test('short closed enums use SelectField instead of native selects',async()=>{
   const [sales,config]=await Promise.all([
     read('../src/pages/SalesInvoices.tsx'),
     read('../src/components/SalesConfigurationModals.tsx'),
   ]);
-  assert.match(sales,/<select value=\{line\.taxRate\}/);
-  assert.match(sales,/<select value=\{status\}/);
-  assert.match(config,/<select value=\{form\.kind\}/);
+  assert.match(sales,/SelectField/);
+  assert.doesNotMatch(sales,/<select value=\{line\.taxRate\}/);
+  assert.doesNotMatch(sales,/<select value=\{status\}/);
+  assert.match(config,/SelectField/);
+  assert.doesNotMatch(config,/<select value=\{form\.kind\}/);
 });
