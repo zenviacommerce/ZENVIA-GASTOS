@@ -6,7 +6,6 @@ const LIST_CLASS='zenviaUnifiedMobileList';
 const TABLE_CLASS='zenviaUnifiedDesktopTable';
 const MASTER_ACTIONS='zenviaMasterRowActions';
 const MASTER_MOBILE_ACTIONS='zenviaMasterMobileActions';
-const TOOLTIP_SCOPE='.tableCard,.masterMobileList,.zenviaUnifiedMobileList,.ordersPage,[class*="gmail"]';
 
 function clean(value:string){return value.replace(/\s+/g,' ').trim();}
 
@@ -217,12 +216,10 @@ function buildMobileCards(table:HTMLTableElement){
 
 function tooltipTargetFrom(origin:EventTarget|null){
   if(!(origin instanceof Element))return null;
-  const scope=origin.closest<HTMLElement>(TOOLTIP_SCOPE);
-  if(!scope)return null;
   let current:HTMLElement|null=origin instanceof HTMLElement?origin:origin.parentElement;
-  while(current&&scope.contains(current)){
+  while(current&&document.body.contains(current)){
     if(isTooltipEligible(current)&&isTextOverflowing(current))return current;
-    if(current===scope)break;
+    if(current===document.body)break;
     current=current.parentElement;
   }
   return null;
