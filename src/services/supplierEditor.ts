@@ -7,6 +7,8 @@ export type SupplierInput = {
   taxId?: string;
   email?: string;
   phone?: string;
+  address?: string;
+  website?: string;
   supplierType: SupplierType;
 };
 
@@ -16,6 +18,8 @@ function supplierRow(input: SupplierInput) {
     tax_id: input.taxId?.trim() || null,
     email: input.email?.trim() || null,
     phone: input.phone?.trim() || null,
+    address: input.address?.trim() || null,
+    website: input.website?.trim() || null,
     supplier_type: input.supplierType,
   };
 }

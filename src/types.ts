@@ -14,6 +14,8 @@ export interface Supplier {
   taxId?: string | null;
   email?: string | null;
   phone?: string | null;
+  address?: string | null;
+  website?: string | null;
   supplierType: SupplierType;
   defaultCategoryId?: string | null;
 }
@@ -91,6 +93,8 @@ export interface NewInvoiceInput {
   supplierTaxId?: string;
   supplierEmail?: string;
   supplierPhone?: string;
+  supplierAddress?: string;
+  supplierWebsite?: string;
   invoiceNumber: string;
   invoiceDate: string;
   categoryId?: string;

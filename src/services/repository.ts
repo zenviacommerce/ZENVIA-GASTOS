@@ -2,6 +2,8 @@ import { supabase, INVOICE_BUCKET } from './supabase';
 import type { AppData, ExpenseCategory, Invoice, NewInvoiceInput, Product, Supplier } from '../types';
 import { canonicalizeSupplierName, isLikelySameSupplier, supplierIdentityKey } from './supplierIdentity';
 import { extractSupplierContactData, type SupplierContactData } from './supplierContactExtractor';
+import { extractSupplierInvoiceDetails } from './supplierInvoiceDetails';
+import { repairInvoiceProductLines } from './invoiceProductLine';
 import { emailError, normalizeEmail, normalizePhone, normalizeTaxId, phoneError, taxIdError } from './validation';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
@@ -11,6 +13,8 @@ const normalizeProductKey = (value: string) => value
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, ' ')
   .trim();
+
+type SupplierProfileData = SupplierContactData & { address?: string; website?: string };
 
 export async function bootstrapUser() {
   const { error } = await supabase.rpc('bootstrap_expense_categories');
@@ -36,6 +40,8 @@ export async function loadAppData(): Promise<AppData> {
     taxId: s.tax_id,
     email: s.email,
     phone: s.phone,
+    address: s.address,
+    website: s.website,
     supplierType: s.supplier_type,
     defaultCategoryId: s.default_category_id,
   }));
@@ -104,25 +110,30 @@ async function sha256(file: File) {
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-function cleanSupplierContact(contact: SupplierContactData): SupplierContactData {
+function cleanSupplierContact(contact: SupplierProfileData): SupplierProfileData {
   const taxId = contact.taxId ? normalizeTaxId(contact.taxId) : '';
   const email = contact.email ? normalizeEmail(contact.email) : '';
   const phone = contact.phone ? normalizePhone(contact.phone) : '';
+  const address = contact.address?.replace(/\s+/g, ' ').trim().slice(0, 500) || '';
+  const rawWebsite = contact.website?.trim().slice(0, 300) || '';
+  const website = rawWebsite ? (/^https?:\/\//i.test(rawWebsite) ? rawWebsite : `https://${rawWebsite}`) : '';
   return {
     taxId: taxId && !taxIdError(taxId, false) ? taxId : undefined,
     email: email && !emailError(email, false) ? email : undefined,
     phone: phone && !phoneError(phone, false) ? phone : undefined,
+    address: address || undefined,
+    website: website || undefined,
   };
 }
 
-async function ensureSupplier(name: string, contactInput: SupplierContactData = {}): Promise<string> {
+async function ensureSupplier(name: string, contactInput: SupplierProfileData = {}, supplierTypeHint?: 'goods'): Promise<string> {
   const clean = canonicalizeSupplierName(name) || name.trim().slice(0, 120);
   const cleanKey = supplierIdentityKey(clean);
   const contact = cleanSupplierContact(contactInput);
 
   const { data: existing, error: findError } = await supabase
     .from('suppliers')
-    .select('id,name,tax_id,email,phone');
+    .select('id,name,tax_id,email,phone,address,website,supplier_type');
   if (findError) throw findError;
 
   const ranked = (existing ?? [])
@@ -146,6 +157,12 @@ async function ensureSupplier(name: string, contactInput: SupplierContactData = 
     if (!match.tax_id && contact.taxId) patch.tax_id = contact.taxId;
     if (!match.email && contact.email) patch.email = contact.email;
     if (!match.phone && contact.phone) patch.phone = contact.phone;
+    if (!match.address && contact.address) patch.address = contact.address;
+    if (!match.website && contact.website) patch.website = contact.website;
+    if (supplierTypeHint === 'goods') {
+      if (!match.supplier_type || match.supplier_type === 'unclassified') patch.supplier_type = 'goods';
+      else if (match.supplier_type === 'service') patch.supplier_type = 'both';
+    }
     if (Object.keys(patch).length) {
       const { error: updateError } = await supabase.from('suppliers').update(patch).eq('id', match.id);
       if (updateError) throw updateError;
@@ -158,6 +175,9 @@ async function ensureSupplier(name: string, contactInput: SupplierContactData = 
     tax_id: contact.taxId || null,
     email: contact.email || null,
     phone: contact.phone || null,
+    address: contact.address || null,
+    website: contact.website || null,
+    supplier_type: supplierTypeHint === 'goods' ? 'goods' : 'unclassified',
   }).select('id').single();
   if (error) throw error;
   return data.id;
@@ -286,12 +306,20 @@ export async function createInvoice(input: NewInvoiceInput) {
   if (duplicateError) throw duplicateError;
   if (duplicates?.length) throw new Error(`Esta factura parece estar subida ya (${duplicates[0].invoice_number || 'sin número'}).`);
 
+  const preparedInput: NewInvoiceInput = {
+    ...input,
+    lines: repairInvoiceProductLines(input.ocrText || '', input.lines || []),
+  };
   const extractedContact = input.ocrText ? extractSupplierContactData(input.ocrText, input.supplierName) : {};
+  const extractedDetails = input.ocrText ? extractSupplierInvoiceDetails(input.ocrText, input.supplierName) : {};
+  const merchandiseSupplier = await isMerchandiseCategory(input.categoryId);
   const supplierId = await ensureSupplier(input.supplierName, {
-    taxId: input.supplierTaxId || extractedContact.taxId,
+    taxId: input.supplierTaxId || extractedContact.taxId || extractedDetails.taxId,
     email: input.supplierEmail || extractedContact.email,
     phone: input.supplierPhone || extractedContact.phone,
-  });
+    address: input.supplierAddress || extractedDetails.address,
+    website: input.supplierWebsite || extractedDetails.website,
+  }, merchandiseSupplier ? 'goods' : undefined);
   const year = input.invoiceDate ? new Date(`${input.invoiceDate}T12:00:00`).getFullYear() : new Date().getFullYear();
   const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-100);
   const storagePath = `${user.id}/${year}/${crypto.randomUUID()}-${safeName}`;
@@ -319,9 +347,12 @@ export async function createInvoice(input: NewInvoiceInput) {
     ocr_text: input.ocrText || null,
     extraction: {
       ...(input.extraction ?? {}),
-      supplierTaxId: input.supplierTaxId || extractedContact.taxId || null,
+      supplierTaxId: input.supplierTaxId || extractedContact.taxId || extractedDetails.taxId || null,
       supplierEmail: input.supplierEmail || extractedContact.email || null,
       supplierPhone: input.supplierPhone || extractedContact.phone || null,
+      supplierAddress: input.supplierAddress || extractedDetails.address || null,
+      supplierWebsite: input.supplierWebsite || extractedDetails.website || null,
+      normalizedLineCount: preparedInput.lines?.length || 0,
     },
     extraction_confidence: input.extractionConfidence ?? null,
   }).select('id').single();
@@ -332,7 +363,7 @@ export async function createInvoice(input: NewInvoiceInput) {
   }
 
   try {
-    await createInvoiceLinesWithProducts(invoice.id, supplierId, input);
+    await createInvoiceLinesWithProducts(invoice.id, supplierId, preparedInput);
   } catch (lineError) {
     await supabase.from('invoices').delete().eq('id', invoice.id);
     await supabase.storage.from(INVOICE_BUCKET).remove([storagePath]);
@@ -385,7 +416,7 @@ export async function deleteProduct(productId: string) {
   if (error) throw error;
 }
 
-type SupplierInput = { name: string; taxId?: string; email?: string; phone?: string; supplierType: 'goods' | 'service' | 'both' };
+type SupplierInput = { name: string; taxId?: string; email?: string; phone?: string; address?: string; website?: string; supplierType: 'unclassified' | 'goods' | 'service' | 'both' };
 
 export async function addSupplier(input: SupplierInput) {
   const { error } = await supabase.from('suppliers').insert({
@@ -393,6 +424,8 @@ export async function addSupplier(input: SupplierInput) {
     tax_id: input.taxId?.trim() || null,
     email: input.email?.trim() || null,
     phone: input.phone?.trim() || null,
+    address: input.address?.trim() || null,
+    website: input.website?.trim() || null,
     supplier_type: input.supplierType,
   });
   if (error) throw error;
@@ -404,6 +437,8 @@ export async function updateSupplier(supplierId: string, input: SupplierInput) {
     tax_id: input.taxId?.trim() || null,
     email: input.email?.trim() || null,
     phone: input.phone?.trim() || null,
+    address: input.address?.trim() || null,
+    website: input.website?.trim() || null,
     supplier_type: input.supplierType,
   }).eq('id', supplierId);
   if (error) throw error;
