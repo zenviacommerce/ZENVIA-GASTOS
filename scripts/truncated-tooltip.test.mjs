@@ -27,6 +27,13 @@ test('UnifiedListExperience manages one delegated floating tooltip',async()=>{
   assert.match(source,/removeEventListener/);
 });
 
+test('tooltip targeting is global rather than restricted to a hard-coded list scope',async()=>{
+  const source=await read('../src/components/UnifiedListExperience.tsx');
+  assert.doesNotMatch(source,/TOOLTIP_SCOPE/);
+  assert.doesNotMatch(source,/closest<HTMLElement>\(TOOLTIP_SCOPE\)/);
+  assert.match(source,/document\.body/);
+});
+
 test('tooltip ignores its own DOM mutations so showing text does not immediately hide it',async()=>{
   const source=await read('../src/components/UnifiedListExperience.tsx');
   assert.match(source,/new\s+MutationObserver\(\s*mutations\s*=>/);
