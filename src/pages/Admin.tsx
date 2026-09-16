@@ -4,6 +4,8 @@ import { createManagedUser, deleteManagedUser, listManagedUsers, permissionOptio
 import { listAuditLogs, type AuditEntry } from '../services/audit';
 import { errorMessage, showError, showSuccess } from '../services/toast';
 import { Pagination } from '../components/Pagination';
+import { SelectField } from '../components/forms/SelectField';
+import { SearchableSelect } from '../components/forms/SearchableSelect';
 import '../admin.css';
 
 const PAGE_SIZE=20;
@@ -175,10 +177,10 @@ function AuditPanel({users,currentUserId}:{users:ManagedUser[];currentUserId:str
       <div className="adminUsersHead"><div><h3>Registro de actividad</h3><p>Acciones realizadas por los usuarios desde que se activó la auditoría.</p></div><button className="secondary" onClick={refresh} disabled={loading}><RefreshCw size={15} className={loading?'spin':''}/> Actualizar</button></div>
       <div className="auditFilters">
         <div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar acción, elemento o usuario…"/></div>
-        <select value={actor} onChange={e=>setActor(e.target.value)}><option value="">Todos los usuarios</option>{actorOptions.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
-        <select value={module} onChange={e=>setModule(e.target.value)}><option value="">Todos los módulos</option>{modules.map(value=><option key={value} value={value}>{moduleLabels[value]||value}</option>)}</select>
-        <select value={action} onChange={e=>setAction(e.target.value)}><option value="">Todas las acciones</option>{actions.map(value=><option key={value} value={value}>{actionLabels[value]||value}</option>)}</select>
-        <select value={days} onChange={e=>setDays(e.target.value)}><option value="7">7 días</option><option value="30">30 días</option><option value="90">90 días</option><option value="365">1 año</option><option value="all">Todo</option></select>
+        <SearchableSelect value={actor} options={actorOptions.map(([value,label])=>({value,label}))} onChange={setActor} allowEmpty emptyLabel="Todos los usuarios" searchPlaceholder="Buscar usuario…" ariaLabel="Filtrar auditoría por usuario"/>
+        <SelectField value={module} options={[{value:'',label:'Todos los módulos'},...modules.map(value=>({value,label:moduleLabels[value]||value}))]} onChange={setModule} ariaLabel="Filtrar auditoría por módulo"/>
+        <SelectField value={action} options={[{value:'',label:'Todas las acciones'},...actions.map(value=>({value,label:actionLabels[value]||value}))]} onChange={setAction} ariaLabel="Filtrar auditoría por acción"/>
+        <SelectField value={days} options={[{value:'7',label:'7 días'},{value:'30',label:'30 días'},{value:'90',label:'90 días'},{value:'365',label:'1 año'},{value:'all',label:'Todo'}]} onChange={setDays} ariaLabel="Periodo de auditoría"/>
       </div>
       {error&&<div className="errorBox adminError">{error}</div>}
       <div className="auditList">
