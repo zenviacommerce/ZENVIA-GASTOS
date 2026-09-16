@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, FileUp, X, ScanLine, CheckCircle2, AlertCircle, LoaderCircle } from 'lucide-react';
 import { imageFilesToPdf } from '../services/pdf';
 import { isMultiInvoiceDocumentError } from '../services/invoiceReaderEnhanced';
-import { classifyInvoiceCandidate, invoiceCandidateToInput, prepareInvoiceCandidate } from '../services/invoiceImportPipeline';
+import { classifyInvoiceCandidate, createManualInvoiceCandidate, invoiceCandidateToInput, prepareInvoiceCandidate } from '../services/invoiceImportPipeline';
 import { InvoiceCandidateForm } from './InvoiceCandidateForm';
 import type { ExpenseCategory, Invoice, InvoiceImportCandidate, InvoiceSource, NewInvoiceInput } from '../types';
 
@@ -48,8 +48,16 @@ export function UploadInvoiceModal({open,onClose,onSave,categories,existingInvoi
         setError(e.message);
         setReaderMessage('Documento bloqueado: contiene varias facturas o abonos y no debe contabilizarse como una sola factura.');
       } else {
-        setReaderMessage(`No se pudo completar la lectura automática. ${e instanceof Error?e.message:''}`.trim());
-        setError('No se pudo preparar la factura. Prueba con otro archivo o vuelve a intentarlo.');
+        const manualCandidate=classifyInvoiceCandidate(await createManualInvoiceCandidate(prepared),existingInvoices);
+        setCandidate(manualCandidate);
+        if(manualCandidate.status==='duplicate'){
+          setReaderBlocked(true);
+          setError(manualCandidate.reviewReason||'Esta factura ya está importada.');
+          setReaderMessage('Documento bloqueado: se ha detectado como duplicado.');
+        }else{
+          setError('');
+          setReaderMessage(`No se pudo completar la lectura automática. ${e instanceof Error?e.message:''} Puedes rellenar los datos manualmente.`.trim());
+        }
       }
     } finally { setReading(false); }
   };
