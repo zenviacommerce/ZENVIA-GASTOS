@@ -1,0 +1,23 @@
+.amazonPage{display:flex;flex-direction:column;gap:18px}
+.amazonPageHead{margin-bottom:0}
+.amazonExternalLinks{flex-wrap:wrap;justify-content:flex-end}
+.amazonExternalLink{text-decoration:none;white-space:nowrap}
+.amazonConnectionCard{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:flex-start;padding:21px}
+.amazonConnectionIcon,.amazonPreviewIcon{width:44px;height:44px;border-radius:12px;background:#fff7ed;color:#c2410c;display:grid;place-items:center;flex:0 0 auto}
+.amazonConnectionBody{min-width:0}
+.amazonSectionLabel,.amazonPreviewCard>span{display:block;font-size:10px;font-weight:800;letter-spacing:.09em;color:#94a3b8;text-transform:uppercase}
+.amazonStatusRow{display:flex;align-items:center;gap:8px;margin:5px 0 7px;color:#172033}
+.amazonStatusDot{width:9px;height:9px;border-radius:999px;background:#f59e0b;box-shadow:0 0 0 4px #fef3c7}
+.amazonConnectionBody p,.amazonPreviewCard p{margin:0;color:#64748b;font-size:13px;line-height:1.6}
+.amazonPreviewGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
+.amazonPreviewCard{padding:19px;min-width:0}
+.amazonPreviewCard .amazonPreviewIcon{margin-bottom:15px;background:#ecfdf5;color:#0f766e}
+.amazonPreviewCard>strong{display:block;margin:5px 0 7px;color:#172033;font-size:15px}
+[data-theme='dark'] .amazonConnectionCard,[data-theme='dark'] .amazonPreviewCard{background:#111827;border-color:#263449}
+[data-theme='dark'] .amazonStatusRow,[data-theme='dark'] .amazonPreviewCard>strong{color:#f8fafc}
+[data-theme='dark'] .amazonConnectionBody p,[data-theme='dark'] .amazonPreviewCard p{color:#94a3b8}
+[data-theme='dark'] .amazonExternalLink{background:#111827;color:#e2e8f0;border-color:#334155}
+[data-theme='dark'] .amazonConnectionIcon{background:#422006;color:#fdba74}
+[data-theme='dark'] .amazonPreviewCard .amazonPreviewIcon{background:#042f2e;color:#5eead4}
+@media(max-width:900px){.amazonPreviewGrid{grid-template-columns:1fr}.amazonPageHead{display:flex;flex-direction:column}.amazonExternalLinks{justify-content:flex-start;margin-top:15px}}
+@media(max-width:520px){.amazonExternalLinks{display:grid;grid-template-columns:1fr 1fr;width:100%}.amazonExternalLink{padding-inline:10px}.amazonConnectionCard{grid-template-columns:1fr}.amazonConnectionIcon{width:40px;height:40px}}
