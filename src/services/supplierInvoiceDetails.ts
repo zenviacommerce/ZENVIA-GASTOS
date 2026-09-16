@@ -66,7 +66,7 @@ function extractWebsite(lines:string[]){
 
 function isAddressLine(line:string){
   if(/\b\d{5}\b/.test(line))return true;
-  return /\b(?:c\/?|calle|avda\.?|avenida|ctra\.?|carretera|camino|paseo|plaza|pol[ií]gono|nave|km\.?|merc[a-záéíóúñ]+)\b/i.test(line);
+  return /(?:^|\s)(?:c\/|c\.|calle\b|avda\.?\b|avenida\b|ctra\.?\b|carretera\b|camino\b|paseo\b|plaza\b|pol[ií]gono\b|nave\b|km\.?\b|merc[a-záéíóúñ]+\b)/i.test(line);
 }
 
 function extractAddress(lines:string[],supplierName:string){
