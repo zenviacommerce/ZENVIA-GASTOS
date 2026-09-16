@@ -1,0 +1,61 @@
+.amazonPageHead {
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.amazonExternalLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.amazonExternalLinks a {
+  text-decoration: none;
+}
+
+.amazonConnectionPlaceholder {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 150px;
+  padding: 24px;
+}
+
+.amazonConnectionPlaceholder h3 {
+  margin: 0 0 6px;
+}
+
+.amazonConnectionPlaceholder p {
+  margin: 0;
+}
+
+.amazonConnectionIcon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+@media (max-width: 760px) {
+  .amazonPageHead {
+    align-items: stretch;
+  }
+
+  .amazonExternalLinks {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .amazonExternalLinks .secondary {
+    justify-content: center;
+  }
+
+  .amazonConnectionPlaceholder {
+    align-items: flex-start;
+    padding: 20px;
+  }
+}
