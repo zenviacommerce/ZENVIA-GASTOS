@@ -39,6 +39,13 @@ test('orders use the global tooltip instead of duplicate native title tooltips',
   assert.equal(defaults.includes('badge.title=original'),false,'OrderLabelDefaults still adds a native title to tracking badges');
 });
 
+test('orders use searchable selects for growing catalogs and SelectField for tracking enum',async()=>{
+  const orders=await source('src/pages/Orders.tsx');
+  assert.match(orders,/Integración Sendcloud<\/span><SearchableSelect/);
+  assert.match(orders,/Impresora directa:<\/span>\{printers\.length\?<SearchableSelect/);
+  assert.match(orders,/ordersTrackingFilter[^]*<SelectField/);
+});
+
 test('unified select system exposes simple and searchable sibling controls',async()=>{
   const searchable=await source('src/components/forms/SearchableSelect.tsx');
   const simplePath=path.join(ROOT,'src/components/forms/SelectField.tsx');
