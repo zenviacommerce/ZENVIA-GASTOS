@@ -43,7 +43,7 @@ function buildUrl(path:string,query?:SpApiRequestOptions['query']){
   const url=new URL(path.startsWith('http')?path:`${SP_API_BASE}${path.startsWith('/')?'':'/'}${path}`);
   for(const [key,value] of Object.entries(query||{})){
     if(value==null)continue;
-    if(Array.isArray(value)){for(const item of value)url.searchParams.append(key,String(item));}
+    if(Array.isArray(value))url.searchParams.set(key,value.map(String).join(','));
     else url.searchParams.set(key,String(value));
   }
   return url;
