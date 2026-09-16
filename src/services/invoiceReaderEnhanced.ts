@@ -253,9 +253,9 @@ export async function readInvoiceDocumentEnhanced(
   const serviceLines = extractServiceTableLines(textLines);
   const specializedLines = structuredLines.length >= 2 ? structuredLines : serviceLines.length >= 2 ? serviceLines : [];
   const invoiceLines = retailCorrection ? retailCorrection.lines : specializedLines.length ? specializedLines : base.lines;
-  const serviceCategoryId = serviceCategoryByContent(categories, base.text);
-  const merchandiseCategoryId = serviceCategoryId ? undefined : detectMerchandiseCategory(categories, base.text, invoiceLines);
-  const categoryId = serviceCategoryId || merchandiseCategoryId || base.categoryId;
+  const merchandiseCategoryId = detectMerchandiseCategory(categories, base.text, invoiceLines);
+  const serviceCategoryId = merchandiseCategoryId ? undefined : serviceCategoryByContent(categories, base.text);
+  const categoryId = merchandiseCategoryId || serviceCategoryId || base.categoryId;
   const repaired = repairInvoiceAmounts(base.subtotal, base.vat, base.withholding, base.total, textLines);
   const explicitSubtotal = explicitTaxBase(base.text);
   const reverseCharge = /inv\.?\s*pasivo|reverse\s+charge|inversi[oó]n\s+del\s+sujeto\s+pasivo/i.test(base.text);
