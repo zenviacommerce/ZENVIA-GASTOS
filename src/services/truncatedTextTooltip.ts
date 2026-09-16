@@ -10,10 +10,13 @@ export function tooltipTextFor(element:HTMLElement){
 }
 
 export function isTooltipEligible(element:HTMLElement){
-  if(element.matches(INTERACTIVE_SELECTOR)||element.closest(ACTION_SELECTOR))return false;
+  if(element.closest(INTERACTIVE_SELECTOR)||element.closest(ACTION_SELECTOR))return false;
   if(element.hidden||element.getAttribute('aria-hidden')==='true')return false;
   const text=tooltipTextFor(element);
   if(!text)return false;
   const style=window.getComputedStyle(element);
-  return style.display!=='none'&&style.visibility!=='hidden';
+  if(style.display==='none'||style.visibility==='hidden')return false;
+  const lineClamp=Number.parseInt(style.webkitLineClamp||'0',10)>0;
+  const singleLineClip=style.textOverflow==='ellipsis'||((style.overflowX==='hidden'||style.overflowX==='clip')&&style.whiteSpace==='nowrap');
+  return singleLineClip||lineClamp;
 }
