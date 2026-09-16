@@ -29,6 +29,7 @@ export function isNonProductInvoiceLine(value:string){
 }
 
 export type SimpleInvoiceProductRow={description:string;quantity:number;unitPrice:number;lineTotal:number};
+export type RepairableInvoiceLine={description:string;quantity:number;unit?:string|null;supplierSku?:string|null;unitPrice?:number|null;lineTotal?:number|null};
 
 export function parseSimpleInvoiceProductRow(value:string):SimpleInvoiceProductRow|null{
   const line=compact(value);
@@ -42,4 +43,16 @@ export function parseSimpleInvoiceProductRow(value:string):SimpleInvoiceProductR
   const lineTotal=parseNumber(match[4]);
   if(!quantity||quantity>1_000_000||description.length<3||!lineTotal)return null;
   return {description,quantity,unitPrice,lineTotal};
+}
+
+export function repairInvoiceProductLines(text:string,lines:RepairableInvoiceLine[]):RepairableInvoiceLine[]{
+  const simple=text.split(/\r?\n/)
+    .map(parseSimpleInvoiceProductRow)
+    .filter((line):line is SimpleInvoiceProductRow=>Boolean(line));
+  if(simple.length>=2)return simple.slice(0,50);
+  return lines
+    .filter(line=>!isNonProductInvoiceLine(line.description))
+    .map(line=>({...line,description:cleanInvoiceProductDescription(line.description)}))
+    .filter(line=>line.description.length>=3)
+    .slice(0,50);
 }
