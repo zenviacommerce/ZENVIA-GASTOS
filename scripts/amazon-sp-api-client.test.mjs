@@ -30,12 +30,15 @@ test('SP-API client exchanges LWA refresh token and calls the EU endpoint', asyn
 
 test('SP-API client retries only transient failures with a bounded attempt count', async () => {
   const sp=await source('supabase/functions/_shared/amazon/sp-api.ts');
+  const http=await source('supabase/functions/_shared/amazon/http.ts');
   assert.match(sp,/429/);
   assert.match(sp,/500/);
   assert.match(sp,/503/);
   assert.match(sp,/MAX_ATTEMPTS\s*=\s*4/);
-  assert.match(sp,/retry-after/i);
+  assert.match(sp,/retryAfterMs/);
+  assert.match(http,/retry-after/i);
   assert.match(sp,/sanitizeAmazonError/);
+  assert.match(http,/sanitizeAmazonError/);
 });
 
 test('Amazon setup documentation never instructs putting credentials in frontend variables', async () => {
