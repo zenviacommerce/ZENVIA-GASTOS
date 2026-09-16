@@ -14,7 +14,16 @@ test('tooltip eligibility excludes buttons and action controls',async()=>{
   const source=await read('../src/services/truncatedTextTooltip.ts');
   assert.match(source,/button|input|select|textarea/i);
   assert.match(source,/zenviaRowAction|iconBtn|statusBtn/);
+  assert.match(source,/closest\(INTERACTIVE_SELECTOR\)/);
   assert.match(source,/textContent/);
+});
+
+test('tooltip eligibility requires text clipping rather than generic scroll overflow',async()=>{
+  const source=await read('../src/services/truncatedTextTooltip.ts');
+  assert.match(source,/textOverflow/);
+  assert.match(source,/whiteSpace/);
+  assert.match(source,/overflowX/);
+  assert.match(source,/webkitLineClamp/);
 });
 
 test('UnifiedListExperience manages one delegated floating tooltip',async()=>{
