@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Building2, ChevronRight, CircleDollarSign, FileText, Mail, MapPin, Pencil, Phone, Search, Trash2, UserRound, WalletCards, X } from 'lucide-react';
 import { addClient, deleteClient, loadClients, loadSalesInvoices, updateClient, type Client, type ClientInput, type SalesInvoice } from '../services/sales';
 import { emailError, nameError, normalizeEmail, normalizePhone, normalizeTaxId, phoneError, taxIdError } from '../services/validation';
 import { errorMessage, showError, showSuccess } from '../services/toast';
 import { Pagination } from '../components/Pagination';
+import { FormGrid, FormModal, FormSection } from '../components/forms/FormPrimitives';
+import { PostalAddressFields } from '../components/forms/PostalAddressFields';
 import '../sales.css';
 
 const PAGE_SIZE=20;
@@ -21,6 +23,13 @@ function ClientModal({open,client,onClose,onSaved}:{open:boolean;client:Client|n
   const [form,setForm]=useState<ClientInput>(emptyClient());
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
+  const set=useCallback((key:keyof ClientInput,value:string|number)=>setForm(current=>({...current,[key]:value})),[]);
+  const addressHandlers=useMemo(()=>({
+    onCountryCodeChange:(value:string)=>set('countryCode',value),
+    onPostalCodeChange:(value:string)=>set('postalCode',value),
+    onCityChange:(value:string)=>set('city',value),
+    onProvinceChange:(value:string)=>set('province',value),
+  }),[set]);
 
   useEffect(()=>{
     if(!open)return;
@@ -31,7 +40,6 @@ function ClientModal({open,client,onClose,onSaved}:{open:boolean;client:Client|n
   },[open,client]);
 
   if(!open)return null;
-  const set=(key:keyof ClientInput,value:string|number)=>setForm(current=>({...current,[key]:value}));
   const save=async()=>{
     const validation = nameError(form.name,'El nombre o razón social') || taxIdError(form.taxId||'',false) || emailError(form.email||'',false) || phoneError(form.phone||'',false);
     if(validation){setError(validation);return;}
@@ -46,37 +54,43 @@ function ClientModal({open,client,onClose,onSaved}:{open:boolean;client:Client|n
     finally{setBusy(false)}
   };
 
-  return <div className="modalBackdrop"><div className="modal salesClientModal polishedModal">
-    <div className="modalHead salesModalHead"><div><div className="eyebrow">CLIENTES</div><h3>{client?'Editar cliente':'Nuevo cliente'}</h3><p>Datos fiscales, contacto y condiciones de pago que se reutilizarán al facturar.</p></div><button onClick={onClose}><X/></button></div>
-    <section className="salesFormSection">
-      <div className="salesSectionTitle"><Building2 size={18}/><div><strong>Identificación</strong><span>Razón social y datos fiscales</span></div></div>
-      <div className="salesFormGrid">
-        <label className="salesSpan2">Nombre / razón social *<input value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Empresa o cliente"/></label>
+  return <FormModal
+    open={open}
+    eyebrow="CLIENTES"
+    title={client?'Editar cliente':'Nuevo cliente'}
+    subtitle="Datos fiscales, contacto y condiciones de pago que se reutilizarán al facturar."
+    onClose={onClose}
+    className="salesClientModal"
+    actions={<><button className="secondary" onClick={onClose} disabled={busy}>Cancelar</button><button className="primary" onClick={save} disabled={busy||!form.name.trim()}>{busy?'Guardando…':client?'Guardar cambios':'Crear cliente'}</button></>}
+  >
+    <FormSection icon={<Building2 size={18}/>} title="Identificación" subtitle="Razón social y datos fiscales">
+      <FormGrid>
+        <label className="formSpan2">Nombre / razón social *<input value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Empresa o cliente"/></label>
         <label>CIF/NIF<input value={form.taxId||''} onChange={e=>set('taxId',e.target.value)} placeholder="B12345678"/></label>
-        <label>País<input value={form.countryCode} maxLength={2} onChange={e=>set('countryCode',e.target.value.toUpperCase())}/></label>
-      </div>
-    </section>
-    <section className="salesFormSection">
-      <div className="salesSectionTitle"><UserRound size={18}/><div><strong>Contacto y dirección</strong><span>Información para envío y documentación</span></div></div>
-      <div className="salesFormGrid">
+      </FormGrid>
+    </FormSection>
+    <FormSection icon={<UserRound size={18}/>} title="Contacto y dirección" subtitle="Información para envío y documentación">
+      <FormGrid>
         <label>Email<input type="email" value={form.email||''} onChange={e=>set('email',e.target.value)} placeholder="facturacion@cliente.com"/></label>
         <label>Teléfono<input type="tel" value={form.phone||''} onChange={e=>set('phone',e.target.value)} placeholder="+34 600 000 000"/></label>
-        <label className="salesSpan2">Dirección<input value={form.addressLine1||''} onChange={e=>set('addressLine1',e.target.value)} placeholder="Calle, número"/></label>
-        <label>Código postal<input value={form.postalCode||''} onChange={e=>set('postalCode',e.target.value)}/></label>
-        <label>Ciudad<input value={form.city||''} onChange={e=>set('city',e.target.value)}/></label>
-        <label>Provincia<input value={form.province||''} onChange={e=>set('province',e.target.value)}/></label>
-      </div>
-    </section>
-    <section className="salesFormSection">
-      <div className="salesSectionTitle"><WalletCards size={18}/><div><strong>Condiciones comerciales</strong><span>Plazo de pago y notas internas</span></div></div>
-      <div className="salesFormGrid">
+        <label className="formSpan2">Dirección<input value={form.addressLine1||''} onChange={e=>set('addressLine1',e.target.value)} placeholder="Calle, número" autoComplete="street-address"/></label>
+        <PostalAddressFields
+          countryCode={form.countryCode||'ES'}
+          postalCode={form.postalCode||''}
+          city={form.city||''}
+          province={form.province||''}
+          {...addressHandlers}
+        />
+      </FormGrid>
+    </FormSection>
+    <FormSection icon={<WalletCards size={18}/>} title="Condiciones comerciales" subtitle="Plazo de pago y notas internas">
+      <FormGrid>
         <label>Pago habitual<select value={form.paymentTermsDays} onChange={e=>set('paymentTermsDays',Number(e.target.value))}><option value={0}>Al contado</option><option value={15}>15 días</option><option value={30}>30 días</option><option value={60}>60 días</option><option value={90}>90 días</option></select></label>
-        <label className="salesSpan2">Notas<textarea rows={3} value={form.notes||''} onChange={e=>set('notes',e.target.value)} placeholder="Información interna sobre el cliente"/></label>
-      </div>
-    </section>
+        <label className="formSpan2">Notas<textarea rows={3} value={form.notes||''} onChange={e=>set('notes',e.target.value)} placeholder="Información interna sobre el cliente"/></label>
+      </FormGrid>
+    </FormSection>
     {error&&<div className="errorBox">{error}</div>}
-    <div className="modalActions salesStickyActions"><button className="secondary" onClick={onClose} disabled={busy}>Cancelar</button><button className="primary" onClick={save} disabled={busy||!form.name.trim()}>{busy?'Guardando…':client?'Guardar cambios':'Crear cliente'}</button></div>
-  </div></div>;
+  </FormModal>;
 }
 
 function ClientDrawer({client,metric,onClose,onEdit,onDelete,busy}:{client:Client;metric:ClientMetric;onClose:()=>void;onEdit:()=>void;onDelete:()=>void;busy:boolean}){
