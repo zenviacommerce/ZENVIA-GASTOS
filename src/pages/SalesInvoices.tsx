@@ -23,6 +23,7 @@ import { errorMessage, showError, showSuccess } from '../services/toast';
 import { ProductCatalogPicker } from '../components/ProductCatalogPicker';
 import { SendInvoiceModal } from '../components/SendInvoiceModal';
 import { PostalAddressFields } from '../components/forms/PostalAddressFields';
+import { SearchableSelect } from '../components/forms/SearchableSelect';
 import '../sales.css';
 
 const today=()=>new Date().toISOString().slice(0,10);
@@ -47,6 +48,12 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
   const [lines,setLines]=useState<SalesInvoiceLine[]>([emptyLine()]);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
+  const clientOptions=useMemo(()=>clients.map(client=>({
+    value:client.id,
+    label:client.name,
+    description:client.taxId||client.city||undefined,
+    searchText:[client.name,client.taxId,client.email,client.phone,client.city].filter(Boolean).join(' '),
+  })),[clients]);
 
   useEffect(()=>{
     if(!open)return;
@@ -115,7 +122,7 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
     <section className="salesFormSection">
       <div className="salesSectionTitle"><UserRound size={18}/><div><strong>Cliente, serie e IVA emisor</strong><span>Quién recibe la factura, cómo se numera y desde qué registro IVA se emite</span></div></div>
       <div className="salesInvoiceMeta salesInvoiceMetaTriple">
-        <label>Cliente *<select value={clientId} onChange={e=>chooseClient(e.target.value)}><option value="">Selecciona cliente</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}{c.taxId?` · ${c.taxId}`:''}</option>)}</select></label>
+        <label>Cliente *<SearchableSelect value={clientId} options={clientOptions} onChange={chooseClient} placeholder="Selecciona cliente" searchPlaceholder="Buscar cliente, CIF, email…" ariaLabel="Cliente de la factura"/></label>
         <label>Serie<select value={seriesId} onChange={e=>setSeriesId(e.target.value)}>{selectableSeries.map(s=><option key={s.id} value={s.id}>{s.name} · próximo {s.prefix}{String(s.nextNumber).padStart(s.padding,'0')}</option>)}</select></label>
         <label>Registro IVA<select value={taxRegistrationId} onChange={e=>setTaxRegistrationId(e.target.value)}><option value="">{taxRegistrations.length?'Selecciona registro IVA':'Sin registros IVA'}</option>{taxRegistrations.map(item=><option key={item.id} value={item.id}>{item.label} · {item.vatNumber}{item.isDefault?' · predeterminado':''}</option>)}</select></label>
       </div>
