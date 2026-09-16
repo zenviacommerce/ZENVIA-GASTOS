@@ -30,6 +30,7 @@ export function InvoiceFilters({
   };
 
   const quick = [
+    ['today', 'Hoy'],
     ['current_month', 'Mes actual'],
     ['current_quarter', 'Trimestre actual'],
     ['current_year', 'Año actual'],
@@ -48,6 +49,7 @@ export function InvoiceFilters({
     <div className="filterGrid">
       <label>Periodo
         <select value={filter.preset} onChange={event => selectPreset(event.target.value as PeriodPreset)}>
+          <option value="today">Hoy</option>
           <option value="current_month">Mes actual</option>
           <option value="current_quarter">Trimestre actual</option>
           <option value="current_year">Año actual</option>
