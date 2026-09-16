@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-const file=new URL('../supabase/migrations/20260917002000_amazon_analytics_dashboard_rpcs.sql',import.meta.url);
-async function sql(){return readFile(file,'utf8');}
+const files=[
+  new URL('../supabase/migrations/20260917002000_amazon_analytics_dashboard_rpcs.sql',import.meta.url),
+  new URL('../supabase/migrations/20260917002500_amazon_analytics_detail_rpcs.sql',import.meta.url),
+];
+async function sql(){return (await Promise.all(files.map(file=>readFile(file,'utf8')))).join('\n');}
 
 test('Analytics RPC migration defines historical cost and bounded FX helpers',async()=>{
   const text=await sql();
@@ -41,6 +44,14 @@ test('Detail and mapping RPCs are present and paginated',async()=>{
   assert.match(text,/consumption_factor > 0|consumption_factor must be greater than zero/i);
   assert.match(text,/private\.app_workspace_owner_id\(\)/);
   assert.match(text,/private\.app_has_permission\('amazon'\)/);
+});
+
+test('Exact SKU auto-mapping is deterministic and does not override manual mappings',async()=>{
+  const text=await sql();
+  assert.match(text,/amazon_auto_map_order_item/);
+  assert.match(text,/having count\(\*\)=1/i);
+  assert.match(text,/mapping_source/i);
+  assert.match(text,/on conflict\(owner_id,amazon_account_id,seller_sku\) do nothing/i);
 });
 
 test('Detail RPCs do not expose buyer or recipient PII',async()=>{
