@@ -47,7 +47,28 @@ export function extractInclusiveTaxSummary(text:string):InclusiveTaxSummary|null
   return {taxRate,subtotal,vat,total};
 }
 
-export type SimpleInvoiceProductRow={description:string;quantity:number;unitPrice:number;lineTotal:number};
+export type EquivalenceSurchargeSummary={subtotal:number;vatRate:number;vat:number;equivalenceRate:number;equivalenceSurcharge:number};
+
+export function extractEquivalenceSurchargeSummary(text:string):EquivalenceSurchargeSummary|null{
+  if(!/(?:%\s*R\.?\s*E\.?|importe\s+R\.?\s*E\.?|recargo\s+de\s+equivalencia)/i.test(text))return null;
+  const pattern=new RegExp(`^\\s*(${MONEY})\\s+(\\d{1,2}(?:[.,]\\d{1,2})?)\\s+(${MONEY})\\s+(\\d{1,2}(?:[.,]\\d{1,2})?)\\s+(${MONEY})\\s*$`,'i');
+  for(const line of text.split(/\r?\n/)){
+    const match=line.match(pattern);
+    if(!match)continue;
+    const subtotal=parseNumber(match[1]);
+    const vatRate=parseNumber(match[2]);
+    const vat=parseNumber(match[3]);
+    const equivalenceRate=parseNumber(match[4]);
+    const equivalenceSurcharge=parseNumber(match[5]);
+    if(subtotal<=0||vatRate<=0||vatRate>100||vat<0||equivalenceRate<=0||equivalenceRate>20||equivalenceSurcharge<=0)continue;
+    if(Math.abs(round(subtotal*vatRate/100,2)-vat)>0.08)continue;
+    if(Math.abs(round(subtotal*equivalenceRate/100,2)-equivalenceSurcharge)>0.08)continue;
+    return {subtotal,vatRate,vat,equivalenceRate,equivalenceSurcharge};
+  }
+  return null;
+}
+
+export type SimpleInvoiceProductRow={description:string;quantity:number;unitPrice:number;lineTotal:number;supplierSku?:string};
 export type RepairableInvoiceLine={
   description:string;
   quantity:number;
@@ -75,6 +96,21 @@ export function parseSimpleInvoiceProductRow(value:string):SimpleInvoiceProductR
   return {description,quantity,unitPrice,lineTotal};
 }
 
+export function parseCodedInvoiceProductRow(value:string):SimpleInvoiceProductRow|null{
+  const line=compact(value);
+  if(isNonProductInvoiceLine(line))return null;
+  const pattern=new RegExp(`^(\\d{4})\\s+(.+?)\\s+(${MONEY})\\s+(${MONEY})\\s+(${MONEY})\\s+(${MONEY})$`,'i');
+  const match=line.match(pattern);
+  if(!match)return null;
+  const supplierSku=match[1];
+  const description=cleanInvoiceProductDescription(match[2]);
+  const quantity=parseNumber(match[4]);
+  const unitPrice=parseNumber(match[5]);
+  const lineTotal=parseNumber(match[6]);
+  if(!quantity||quantity>1_000_000||description.length<3||!lineTotal)return null;
+  return {supplierSku,description,quantity,unitPrice,lineTotal};
+}
+
 function normalizeInclusiveLine(line:RepairableInvoiceLine,summary:InclusiveTaxSummary):RepairableInvoiceLine{
   const factor=1+summary.taxRate/100;
   const unitPrice=line.unitPrice??null;
@@ -87,20 +123,33 @@ function normalizeInclusiveLine(line:RepairableInvoiceLine,summary:InclusiveTaxS
 
 export function repairInvoiceProductLines(text:string,lines:RepairableInvoiceLine[]):RepairableInvoiceLine[]{
   const inclusiveSummary=extractInclusiveTaxSummary(text);
-  const simple=text.split(/\r?\n/)
+  const sourceLines=text.split(/\r?\n/);
+  const coded=sourceLines
+    .map(parseCodedInvoiceProductRow)
+    .filter((line):line is SimpleInvoiceProductRow=>Boolean(line));
+  const simple=sourceLines
     .map(parseSimpleInvoiceProductRow)
     .filter((line):line is SimpleInvoiceProductRow=>Boolean(line));
-  const repaired=simple.length>=2
-    ? simple.slice(0,50)
-    : lines
-      .filter(line=>!isNonProductInvoiceLine(line.description))
-      .map(line=>({...line,description:cleanInvoiceProductDescription(line.description)}))
-      .filter(line=>line.description.length>=3)
-      .slice(0,50);
+  const repaired=coded.length>=2
+    ? coded.slice(0,50)
+    : simple.length>=2
+      ? simple.slice(0,50)
+      : lines
+        .filter(line=>!isNonProductInvoiceLine(line.description))
+        .map(line=>({...line,description:cleanInvoiceProductDescription(line.description)}))
+        .filter(line=>line.description.length>=3)
+        .slice(0,50);
   return inclusiveSummary?repaired.map(line=>normalizeInclusiveLine(line,inclusiveSummary)):repaired;
 }
 
 export function repairInvoiceAmounts(text:string,amounts:{subtotal:number;vat:number;total:number}){
+  const equivalence=extractEquivalenceSurchargeSummary(text);
+  if(equivalence){
+    const calculatedTotal=round(equivalence.subtotal+equivalence.vat+equivalence.equivalenceSurcharge,2);
+    if(!amounts.total||Math.abs(calculatedTotal-amounts.total)<=0.08){
+      return {subtotal:equivalence.subtotal,vat:equivalence.vat,equivalenceSurcharge:equivalence.equivalenceSurcharge,total:amounts.total||calculatedTotal};
+    }
+  }
   const summary=extractInclusiveTaxSummary(text);
   if(!summary)return amounts;
   return {subtotal:summary.subtotal,vat:summary.vat,total:summary.total};

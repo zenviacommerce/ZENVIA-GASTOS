@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { LoaderCircle, LockKeyhole, LogOut, Moon, Sun } from 'lucide-react';
 import { Sidebar, type Page, type ThemeMode } from './components/Sidebar';
 import { UploadInvoiceModal } from './components/UploadInvoiceModal';
+import { BulkInvoiceImportModal } from './components/BulkInvoiceImportModal';
 import { ProductModal } from './components/ProductModal';
 import { SupplierModal } from './components/SupplierModal';
 import { ToastHost } from './components/ToastHost';
@@ -46,6 +47,7 @@ export default function App(){
  const [error,setError]=useState('');
  const [page,setPage]=useState<Page>('dashboard');
  const [upload,setUpload]=useState(false);
+ const [bulkUpload,setBulkUpload]=useState(false);
  const [productModal,setProductModal]=useState(false);
  const [productToEdit,setProductToEdit]=useState<Product|null>(null);
  const [supplierModal,setSupplierModal]=useState(false);
@@ -113,6 +115,11 @@ export default function App(){
    if(!can('invoices'))throw new Error('No tienes permiso para crear facturas de gastos.');
    await runAction(async()=>{await createInvoice(input);await refresh()},'Factura guardada correctamente.','No se pudo guardar la factura.');
  };
+ const saveBulkInvoice=async(input:NewInvoiceInput)=>{
+   if(!can('invoices'))throw new Error('No tienes permiso para crear facturas de gastos.');
+   await createInvoice(input);
+ };
+ const finishBulkImport=async()=>{await refresh();showSuccess('Importación masiva finalizada.');};
  const changeStatus=async(id:string,status:'pending'|'reviewed'|'accounted')=>{
    if(!can('invoices'))throw new Error('No tienes permiso para modificar facturas.');
    const labels={pending:'pendiente',reviewed:'revisada',accounted:'contabilizada'} as const;
@@ -177,14 +184,15 @@ export default function App(){
    {page==='dashboard'&&can('dashboard')&&<Dashboard invoices={data.invoices} products={data.products} suppliers={data.suppliers} onUpload={can('invoices')?()=>setUpload(true):undefined} onProducts={can('products')?()=>navigate('products'):undefined}/>} 
    {page==='sales'&&can('sales')&&<SalesInvoices/>}
    {page==='orders'&&can('orders')&&<Orders/>}
-   {page==='invoices'&&can('invoices')&&<ExpenseInvoicesHub invoices={data.invoices} suppliers={data.suppliers} categories={data.categories} onUpload={()=>setUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice} onSupplierChange={changeInvoiceSupplier} onCategoryChange={changeInvoiceCategory} onImported={refresh}/>} 
+   {page==='invoices'&&can('invoices')&&<ExpenseInvoicesHub invoices={data.invoices} suppliers={data.suppliers} categories={data.categories} onUpload={()=>setUpload(true)} onBulkUpload={()=>setBulkUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice} onSupplierChange={changeInvoiceSupplier} onCategoryChange={changeInvoiceCategory} onImported={refresh}/>} 
    {page==='clients'&&can('clients')&&<Clients/>}
    {page==='products'&&can('products')&&<Products products={data.products} onAdd={openNewProduct} onEdit={openEditProduct} onDelete={removeProduct}/>} 
    {page==='suppliers'&&can('suppliers')&&<Suppliers suppliers={data.suppliers} onAdd={openNewSupplier} onEdit={openEditSupplier} onDelete={removeSupplier}/>} 
    {page==='admin'&&access.role==='admin'&&<AdminPage currentUserId={session.user.id}/>} 
  </main>
- {can('invoices')&&<UploadInvoiceModal open={upload} onClose={()=>setUpload(false)} onSave={saveInvoice} categories={data.categories}/>} 
- {can('products')&&<ProductModal open={productModal} product={productToEdit} onClose={closeProductModal} onSave={saveProduct}/>} 
+ {can('invoices')&&<UploadInvoiceModal open={upload} onClose={()=>setUpload(false)} onSave={saveInvoice} categories={data.categories} existingInvoices={data.invoices}/>} 
+ {can('invoices')&&<BulkInvoiceImportModal open={bulkUpload} onClose={()=>setBulkUpload(false)} categories={data.categories} existingInvoices={data.invoices} onSave={saveBulkInvoice} onFinished={finishBulkImport}/>} 
+ {can('products')&&<ProductModal open={productModal} product={productToEdit} suppliers={data.suppliers} onClose={closeProductModal} onSave={saveProduct}/>} 
  {can('suppliers')&&<SupplierModal open={supplierModal} supplier={supplierToEdit} onClose={closeSupplierModal} onSave={saveSupplier}/>} 
  </div>
 }

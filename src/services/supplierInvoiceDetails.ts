@@ -3,6 +3,9 @@ const normalized=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]
 
 export type SupplierInvoiceDetails={taxId?:string;address?:string;website?:string};
 
+const buyerStart=/^(?:cliente\b|customer\b|bill\s+to\b|facturar\s+a\b|zenvia\s+commerce\b|cristian\s+(?:jesus\s+)?perez\s+garrido\b)/i;
+const buyerBlockEnd=/^(?:factura\b|invoice\b|c[oó]digo(?:\s+descripci[oó]n)?\b|nif\s*\/\s*cif\b)/i;
+
 function supplierBlock(text:string,supplierName:string){
   const lines=text.split(/\r?\n/).map(compact).filter(Boolean);
   const nameKey=normalized(supplierName);
@@ -10,14 +13,33 @@ function supplierBlock(text:string,supplierName:string){
     const key=normalized(line);
     return Boolean(nameKey)&&(key.includes(nameKey)||nameKey.includes(key));
   });
-  if(supplierIndex<0)return lines.slice(0,12);
-  const result:string[]=[];
+  if(supplierIndex<0)return lines.slice(0,16);
+
+  const before=lines.slice(Math.max(0,supplierIndex-18),supplierIndex);
+  const relevantBefore:string[]=[];
+  let insideBuyerBlock=false;
+  for(const line of before){
+    if(buyerStart.test(line)){
+      insideBuyerBlock=true;
+      continue;
+    }
+    if(insideBuyerBlock){
+      if(buyerBlockEnd.test(line)){
+        insideBuyerBlock=false;
+        relevantBefore.push(line);
+      }
+      continue;
+    }
+    relevantBefore.push(line);
+  }
+
+  const after:string[]=[];
   for(let index=supplierIndex;index<Math.min(lines.length,supplierIndex+12);index+=1){
     const line=lines[index];
     if(index>supplierIndex&&/^(?:factura|invoice|cliente\b|customer\b|bill\s+to\b|facturar\s+a\b|zenvia\s+commerce\b)/i.test(line))break;
-    result.push(line);
+    after.push(line);
   }
-  return result;
+  return [...relevantBefore,...after];
 }
 
 function normalizeTaxId(value:string){return value.toUpperCase().replace(/[\s.-]/g,'').trim();}
@@ -44,7 +66,7 @@ function extractWebsite(lines:string[]){
 
 function isAddressLine(line:string){
   if(/\b\d{5}\b/.test(line))return true;
-  return /\b(?:c\/?|calle|avda\.?|avenida|ctra\.?|carretera|camino|paseo|plaza|pol[ií]gono|nave|km\.?|merc[a-záéíóúñ]+)\b/i.test(line);
+  return /(?:^|\s)(?:c\/|c\.|calle\b|avda\.?\b|avenida\b|ctra\.?\b|carretera\b|camino\b|paseo\b|plaza\b|pol[ií]gono\b|nave\b|km\.?\b|merc[a-záéíóúñ]+\b)/i.test(line);
 }
 
 function extractAddress(lines:string[],supplierName:string){

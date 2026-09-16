@@ -1,0 +1,55 @@
+.zenviaTruncatedTooltip{
+  position:fixed;
+  z-index:12000;
+  max-width:min(360px,calc(100vw - 24px));
+  padding:8px 10px;
+  border:1px solid rgba(15,23,42,.12);
+  border-radius:9px;
+  background:rgba(255,255,255,.98);
+  color:#0f172a;
+  box-shadow:0 10px 30px rgba(15,23,42,.18),0 2px 8px rgba(15,23,42,.1);
+  font-size:12.5px;
+  line-height:1.4;
+  font-weight:600;
+  white-space:normal;
+  word-break:break-word;
+  pointer-events:none;
+  opacity:0;
+  transform:translateY(2px) scale(.985);
+  transition:opacity 120ms ease,transform 120ms ease;
+}
+
+.zenviaTruncatedTooltip.visible{
+  opacity:1;
+  transform:translateY(0) scale(1);
+}
+
+.zenviaTruncatedTooltip::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  width:8px;
+  height:8px;
+  background:inherit;
+  border:inherit;
+  transform:translateX(-50%) rotate(45deg);
+}
+
+.zenviaTruncatedTooltip[data-placement="top"]::after{
+  bottom:-5px;
+  border-top:0;
+  border-left:0;
+}
+
+.zenviaTruncatedTooltip[data-placement="bottom"]::after{
+  top:-5px;
+  border-right:0;
+  border-bottom:0;
+}
+
+[data-theme="dark"] .zenviaTruncatedTooltip{
+  border-color:rgba(148,163,184,.2);
+  background:rgba(15,23,42,.98);
+  color:#f8fafc;
+  box-shadow:0 14px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.28);
+}

@@ -37,6 +37,7 @@ import './destructive-actions.css';
 import './mobile-ui-normalization.css';
 import './passkey.css';
 import './unified-list-experience.css';
+import './truncated-tooltip.css';
 import './dark-mode-consistency.css';
 
 const favicon=document.querySelector<HTMLLinkElement>("link[rel~='icon']")||document.createElement('link');

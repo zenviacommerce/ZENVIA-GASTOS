@@ -69,6 +69,7 @@ export async function loadAppData(): Promise<AppData> {
     category: categoryById.get(i.expense_category_id)?.name ?? 'Sin categoría',
     subtotal: numberOrZero(i.net_amount),
     vat: numberOrZero(i.tax_amount),
+    equivalenceSurcharge: numberOrZero(i.equivalence_surcharge_amount),
     withholding: numberOrZero(i.withholding_amount),
     total: numberOrZero(i.total_amount),
     source: i.source,
@@ -126,7 +127,7 @@ function cleanSupplierContact(contact: SupplierProfileData): SupplierProfileData
   };
 }
 
-async function ensureSupplier(name: string, contactInput: SupplierProfileData = {}, supplierTypeHint?: 'goods'): Promise<string> {
+async function ensureSupplier(name: string, contactInput: SupplierProfileData = {}, supplierTypeHint?: 'goods'): Promise<{ id: string; created: boolean }> {
   const clean = canonicalizeSupplierName(name) || name.trim().slice(0, 120);
   const cleanKey = supplierIdentityKey(clean);
   const contact = cleanSupplierContact(contactInput);
@@ -167,7 +168,7 @@ async function ensureSupplier(name: string, contactInput: SupplierProfileData = 
       const { error: updateError } = await supabase.from('suppliers').update(patch).eq('id', match.id);
       if (updateError) throw updateError;
     }
-    return match.id as string;
+    return { id: match.id as string, created: false };
   }
 
   const { data, error } = await supabase.from('suppliers').insert({
@@ -180,7 +181,21 @@ async function ensureSupplier(name: string, contactInput: SupplierProfileData = 
     supplier_type: supplierTypeHint === 'goods' ? 'goods' : 'unclassified',
   }).select('id').single();
   if (error) throw error;
-  return data.id;
+  return { id: data.id, created: true };
+}
+
+async function cleanupCreatedSupplier(supplierId: string) {
+  const { count, error } = await supabase
+    .from('invoices')
+    .select('id', { count: 'exact', head: true })
+    .eq('supplier_id', supplierId);
+  if (error) {
+    console.warn('No se pudo comprobar si el proveedor nuevo estaba huérfano.', error);
+    return;
+  }
+  if ((count ?? 0) !== 0) return;
+  const { error: deleteError } = await supabase.from('suppliers').delete().eq('id', supplierId);
+  if (deleteError) console.warn('No se pudo limpiar el proveedor huérfano creado durante la importación.', deleteError);
 }
 
 async function isMerchandiseCategory(categoryId?: string) {
@@ -317,13 +332,14 @@ export async function createInvoice(input: NewInvoiceInput) {
   const extractedContact = input.ocrText ? extractSupplierContactData(input.ocrText, input.supplierName) : {};
   const extractedDetails = input.ocrText ? extractSupplierInvoiceDetails(input.ocrText, input.supplierName) : {};
   const merchandiseSupplier = await isMerchandiseCategory(input.categoryId);
-  const supplierId = await ensureSupplier(input.supplierName, {
+  const supplierResult = await ensureSupplier(input.supplierName, {
     taxId: input.supplierTaxId || extractedContact.taxId || extractedDetails.taxId,
     email: input.supplierEmail || extractedContact.email,
     phone: input.supplierPhone || extractedContact.phone,
     address: input.supplierAddress || extractedDetails.address,
     website: input.supplierWebsite || extractedDetails.website,
   }, merchandiseSupplier ? 'goods' : undefined);
+  const supplierId = supplierResult.id;
   const year = input.invoiceDate ? new Date(`${input.invoiceDate}T12:00:00`).getFullYear() : new Date().getFullYear();
   const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-100);
   const storagePath = `${user.id}/${year}/${crypto.randomUUID()}-${safeName}`;
@@ -331,7 +347,10 @@ export async function createInvoice(input: NewInvoiceInput) {
     contentType: input.file.type || 'application/pdf',
     upsert: false,
   });
-  if (storageError) throw storageError;
+  if (storageError) {
+    if (supplierResult.created) await cleanupCreatedSupplier(supplierId);
+    throw storageError;
+  }
 
   const { data: invoice, error } = await supabase.from('invoices').insert({
     supplier_id: supplierId,
@@ -340,6 +359,7 @@ export async function createInvoice(input: NewInvoiceInput) {
     expense_category_id: input.categoryId || null,
     net_amount: preparedInput.subtotal,
     tax_amount: preparedInput.vat,
+    equivalence_surcharge_amount: preparedInput.equivalenceSurcharge ?? 0,
     withholding_amount: input.withholding,
     total_amount: preparedInput.total,
     source: input.source,
@@ -356,6 +376,7 @@ export async function createInvoice(input: NewInvoiceInput) {
       supplierPhone: input.supplierPhone || extractedContact.phone || null,
       supplierAddress: input.supplierAddress || extractedDetails.address || null,
       supplierWebsite: input.supplierWebsite || extractedDetails.website || null,
+      equivalenceSurcharge: preparedInput.equivalenceSurcharge ?? 0,
       normalizedLineCount: preparedInput.lines?.length || 0,
     },
     extraction_confidence: input.extractionConfidence ?? null,
@@ -363,6 +384,7 @@ export async function createInvoice(input: NewInvoiceInput) {
 
   if (error) {
     await supabase.storage.from(INVOICE_BUCKET).remove([storagePath]);
+    if (supplierResult.created) await cleanupCreatedSupplier(supplierId);
     throw error;
   }
 
@@ -371,6 +393,7 @@ export async function createInvoice(input: NewInvoiceInput) {
   } catch (lineError) {
     await supabase.from('invoices').delete().eq('id', invoice.id);
     await supabase.storage.from(INVOICE_BUCKET).remove([storagePath]);
+    if (supplierResult.created) await cleanupCreatedSupplier(supplierId);
     throw lineError;
   }
 }

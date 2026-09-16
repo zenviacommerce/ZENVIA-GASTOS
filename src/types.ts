@@ -1,6 +1,7 @@
 export type InvoiceStatus = 'pending' | 'reviewed' | 'accounted';
 export type InvoiceSource = 'manual' | 'camera' | 'gmail';
 export type SupplierType = 'unclassified' | 'goods' | 'service' | 'both';
+export type InvoiceImportCandidateStatus = 'analyzing' | 'ready' | 'needs_review' | 'duplicate' | 'error' | 'importing' | 'imported';
 
 export interface ExpenseCategory {
   id: string;
@@ -44,12 +45,14 @@ export interface Invoice {
   category: string;
   subtotal: number;
   vat: number;
+  equivalenceSurcharge: number;
   withholding: number;
   total: number;
   source: InvoiceSource;
   status: InvoiceStatus;
   fileName?: string | null;
   filePath?: string | null;
+  fileHash?: string | null;
   lines: InvoiceLine[];
 }
 
@@ -104,10 +107,39 @@ export interface NewInvoiceInput {
   categoryId?: string;
   subtotal: number;
   vat: number;
+  equivalenceSurcharge?: number;
   withholding: number;
   total: number;
   ocrText?: string;
   extraction?: Record<string, unknown>;
   extractionConfidence?: number;
   lines?: NewInvoiceLineInput[];
+}
+
+export interface InvoiceImportCandidate {
+  id: string;
+  file: File;
+  fileHash: string;
+  status: InvoiceImportCandidateStatus;
+  reviewReason?: string;
+  supplierName: string;
+  supplierTaxId?: string;
+  supplierEmail?: string;
+  supplierPhone?: string;
+  supplierAddress?: string;
+  supplierWebsite?: string;
+  recipientTaxId?: string;
+  recipientName?: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  categoryId?: string;
+  subtotal: number;
+  vat: number;
+  equivalenceSurcharge: number;
+  withholding: number;
+  total: number;
+  text: string;
+  confidence: number;
+  usedOcr: boolean;
+  lines: NewInvoiceLineInput[];
 }
