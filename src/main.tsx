@@ -40,6 +40,7 @@ import './unified-list-experience.css';
 import './truncated-tooltip.css';
 import './bulk-invoice-import.css';
 import './dark-mode-consistency.css';
+import './amazon.css';
 
 const favicon=document.querySelector<HTMLLinkElement>("link[rel~='icon']")||document.createElement('link');
 favicon.rel='icon';
