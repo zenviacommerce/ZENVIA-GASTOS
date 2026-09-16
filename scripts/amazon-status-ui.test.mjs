@@ -17,6 +17,12 @@ test('marketplace bootstrap uses Sellers API and upserts the configured seller w
   assert.match(marketplaces,/owner_id,amazon_account_id,marketplace_id/);
 });
 
+test('marketplace bootstrap excludes Non-Amazon sales channels returned by Sellers API',async()=>{
+  const marketplaces=await source('supabase/functions/_shared/amazon/marketplaces.ts');
+  assert.match(marketplaces,/marketplace\.name/);
+  assert.match(marketplaces,/startsWith\(['"]Amazon\.['"]\)/);
+});
+
 test('orchestrator bootstraps marketplaces before creating jobs',async()=>{
   const orchestrator=await source('supabase/functions/amazon-sync-orchestrator/index.ts');
   assert.match(orchestrator,/ensureAmazonAccountAndMarketplaces/);

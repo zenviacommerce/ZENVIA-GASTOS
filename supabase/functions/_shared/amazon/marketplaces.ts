@@ -28,7 +28,13 @@ export async function ensureAmazonAccountAndMarketplaces(admin:any,ownerId:strin
     const result=await spApiRequest<MarketplaceResponse>('/sellers/v1/marketplaceParticipations');
     const participations=(result?.payload||[]).filter(item=>{
       const marketplace=item?.marketplace;
-      return Boolean(marketplace?.id&&marketplace?.countryCode&&EUROPE_COUNTRY_CODES.has(String(marketplace.countryCode).toUpperCase()));
+      const marketplaceName=String(marketplace?.name||'').trim();
+      return Boolean(
+        marketplace?.id&&
+        marketplace?.countryCode&&
+        EUROPE_COUNTRY_CODES.has(String(marketplace.countryCode).toUpperCase())&&
+        marketplaceName.startsWith('Amazon.')
+      );
     });
 
     const inactive=await admin.from('amazon_marketplaces').update({active:false,updated_at:now})
