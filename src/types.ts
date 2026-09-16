@@ -44,6 +44,7 @@ export interface Invoice {
   category: string;
   subtotal: number;
   vat: number;
+  equivalenceSurcharge: number;
   withholding: number;
   total: number;
   source: InvoiceSource;
@@ -104,6 +105,7 @@ export interface NewInvoiceInput {
   categoryId?: string;
   subtotal: number;
   vat: number;
+  equivalenceSurcharge?: number;
   withholding: number;
   total: number;
   ocrText?: string;
