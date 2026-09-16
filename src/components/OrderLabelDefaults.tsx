@@ -49,7 +49,9 @@ function carrierCard(modal:HTMLElement,carrier:'mrw'|'correos'){
 function mrwUrgent1900(button:HTMLButtonElement){
   const value=normalized(button.textContent||'');
   const friendly=value.includes('urgent')&&value.includes('19:00')&&value.includes('expedition')&&/0\s*[-–]\s*80\s*kg/.test(value);
-  const technical=value.includes('mrw:0100')&&value.includes('timeslot=12')&&value.includes('guaranteed24service');
+  // Important: timeslot=12 is MRW Urgent 12:00, not the desired 19:00 service.
+  // Only accept a technical code as the default when it explicitly identifies the 19:00 slot.
+  const technical=value.includes('mrw:')&&(value.includes('timeslot=19')||value.includes('timeslot=19:00'))&&value.includes('expedition');
   return friendly||technical;
 }
 
@@ -58,7 +60,7 @@ function normalizeMrwServiceLabel(button:HTMLButtonElement){
   const strong=button.querySelector<HTMLElement>('strong');
   if(!strong)return;
   const current=normalized(strong.textContent||'');
-  if(current.includes('mrw:0100')||current.includes('timeslot=12')||current.includes('guaranteed24service')){
+  if(current.includes('mrw:')||current.includes('timeslot=19')){
     strong.textContent=MRW_URGENT_LABEL;
   }
   button.title=`${MRW_URGENT_LABEL} · ${button.querySelector<HTMLElement>('small')?.textContent?.trim()||'MRW'}`;
