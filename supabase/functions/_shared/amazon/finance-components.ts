@@ -47,6 +47,9 @@ export type FinanceComponentInput={
   updated_at:string;
 };
 
+const BASE_TYPE='Base';
+const TAX_TYPE='Tax';
+
 function number(value:unknown){const n=Number(value);return Number.isFinite(n)?n:0;}
 function amount(node:Breakdown){return number(node?.breakdownAmount?.currencyAmount);}
 function currency(node:Breakdown){return String(node?.breakdownAmount?.currencyCode||'EUR').toUpperCase();}
@@ -64,7 +67,7 @@ function classify(name:string):FinanceComponentCategory|null{
   if(/storage/.test(text))return 'storage_fee';
   if(/adjust|reimburse|correction/.test(text))return 'adjustment';
   if(text==='productcharges'||text==='product charges')return 'sale_audit';
-  if(text==='tax')return 'tax_audit';
+  if(text===lower(TAX_TYPE))return 'tax_audit';
   if(/amazonfees|amazon fees|fee|expense|charge/.test(text))return 'other_amazon_fee';
   return null;
 }
@@ -72,7 +75,7 @@ function classify(name:string):FinanceComponentCategory|null{
 function refundedSalesNode(node:Breakdown,path:string[]):EconomicNode{
   const nested=children(node);
   const product=nested.find(child=>/product\s*charges/i.test(type(child)));
-  const tax=nested.find(child=>lower(type(child))==='tax');
+  const tax=nested.find(child=>lower(type(child))===lower(TAX_TYPE));
   const source=product||node;
   return {
     node:source,
@@ -97,8 +100,8 @@ function economicNodes(nodes:Breakdown[],path:string[]=[]):EconomicNode[]{
       continue;
     }
 
-    const base=nested.find(child=>lower(type(child))==='base');
-    const tax=nested.find(child=>lower(type(child))==='tax');
+    const base=nested.find(child=>lower(type(child))===lower(BASE_TYPE));
+    const tax=nested.find(child=>lower(type(child))===lower(TAX_TYPE));
     const category=classify(nodeType);
 
     if(category && base){
