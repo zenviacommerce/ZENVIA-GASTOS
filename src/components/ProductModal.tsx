@@ -5,6 +5,7 @@ import { getProductSalesDetails, type ProductInput } from '../services/productEd
 import { productMarginMetrics } from '../services/productMetrics';
 import { FormGrid, FormModal, FormSection } from './forms/FormPrimitives';
 import { SearchableSelect } from './forms/SearchableSelect';
+import { SelectField } from './forms/SelectField';
 
 function parsePrice(value:string){
  const clean=value.trim().replace(',','.');
@@ -21,6 +22,13 @@ function followsDefault(cost:number|null|undefined,sale:number|null|undefined){
  if(cost==null||sale==null)return sale==null;
  return Math.abs(sale-cost*1.25)<0.00011;
 }
+
+const VAT_OPTIONS=[
+ {value:'21',label:'21 %'},
+ {value:'10',label:'10 %'},
+ {value:'4',label:'4 %'},
+ {value:'0',label:'0 %'},
+];
 
 export function ProductModal({open,product,suppliers,onClose,onSave}:{open:boolean;product?:Product|null;suppliers:Supplier[];onClose:()=>void;onSave:(v:ProductInput)=>Promise<void>}){
  const [name,setName]=useState('');
@@ -105,7 +113,7 @@ export function ProductModal({open,product,suppliers,onClose,onSave}:{open:boole
    <FormSection icon={<Store size={18}/>} title="Venta" subtitle="Precio comercial e impuestos aplicables al facturar">
      <FormGrid>
        <label>Precio de venta (€ / {unit.trim()||'ud'})<input value={salePrice} onChange={e=>{setSalePrice(e.target.value);setAutoSalePrice(false)}} inputMode="decimal" placeholder="Coste + 25 %"/><span className="fieldHint">Por defecto se calcula como coste + 25 %. Si lo modificas manualmente, se respeta tu precio.</span></label>
-       <label>IVA de venta<select value={salesTaxRate} onChange={e=>setSalesTaxRate(e.target.value)}><option value="21">21 %</option><option value="10">10 %</option><option value="4">4 %</option><option value="0">0 %</option></select></label>
+       <label>IVA de venta<SelectField value={salesTaxRate} options={VAT_OPTIONS} onChange={setSalesTaxRate} ariaLabel="IVA de venta"/></label>
        {metrics.margin!=null&&<div className="formSpan2 aiNote"><div><strong>Margen unitario</strong><span>{metrics.margin.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €{metrics.marginPct!=null?` · ${metrics.marginPct.toLocaleString('es-ES',{minimumFractionDigits:1,maximumFractionDigits:1})} % sobre coste`:''}.</span></div></div>}
      </FormGrid>
    </FormSection>
