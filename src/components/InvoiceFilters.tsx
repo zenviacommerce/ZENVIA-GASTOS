@@ -1,6 +1,7 @@
 import { CalendarDays, History, RotateCcw } from 'lucide-react';
 import type { Invoice, Supplier } from '../types';
 import { filterForPreset, quarterOptions, type InvoiceFilter, type PeriodPreset } from '../services/filters';
+import { SearchableSelect } from './forms/SearchableSelect';
 
 export function InvoiceFilters({
   filter,
@@ -16,6 +17,11 @@ export function InvoiceFilters({
   showSupplier?: boolean;
 }) {
   const quarters = quarterOptions(invoices);
+  const supplierOptions = suppliers.map(supplier=>({
+    value:supplier.id,
+    label:supplier.name,
+    searchText:[supplier.taxId,supplier.email,supplier.phone,supplier.address].filter(Boolean).join(' '),
+  }));
 
   const selectPreset = (preset: PeriodPreset) => {
     if (preset === 'custom') {
@@ -61,10 +67,15 @@ export function InvoiceFilters({
         </select>
       </label>
       {showSupplier&&<label>Proveedor
-        <select value={filter.supplierId} onChange={event => onChange({ ...filter, supplierId: event.target.value })}>
-          <option value="">Todos los proveedores</option>
-          {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
-        </select>
+        <SearchableSelect
+          value={filter.supplierId}
+          options={supplierOptions}
+          onChange={supplierId=>onChange({...filter,supplierId})}
+          allowEmpty
+          emptyLabel="Todos los proveedores"
+          searchPlaceholder="Buscar proveedor…"
+          ariaLabel="Filtrar por proveedor"
+        />
       </label>}
       <label>Desde
         <input type="date" value={filter.from} onChange={event => setDate('from', event.target.value)}/>

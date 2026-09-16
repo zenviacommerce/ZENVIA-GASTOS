@@ -16,6 +16,14 @@ test('searchable select exposes combobox/listbox keyboard contract',async()=>{
   assert.match(source,/pointerdown/);
 });
 
+test('searchable select menu is portalled and viewport-positioned so modals cannot clip it',async()=>{
+  const source=await read('../src/components/forms/SearchableSelect.tsx');
+  assert.match(source,/createPortal/);
+  assert.match(source,/getBoundingClientRect/);
+  assert.match(source,/menuRef/);
+  assert.match(source,/position:\s*['"]fixed['"]/);
+});
+
 test('shared form primitives expose modal section grid and sticky actions',async()=>{
   const source=await read('../src/components/forms/FormPrimitives.tsx');
   assert.match(source,/FormModal/);

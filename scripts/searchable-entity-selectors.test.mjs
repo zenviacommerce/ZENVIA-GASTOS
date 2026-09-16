@@ -20,6 +20,15 @@ test('expense invoice detail uses SearchableSelect for suppliers',async()=>{
   assert.doesNotMatch(source,/<select id="invoiceSupplier"/);
 });
 
+test('expense supplier filter is searchable by supplier data',async()=>{
+  const source=await read('../src/components/InvoiceFilters.tsx');
+  assert.match(source,/SearchableSelect/);
+  assert.match(source,/supplierOptions/);
+  assert.match(source,/Todos los proveedores/);
+  assert.match(source,/taxId|email/);
+  assert.doesNotMatch(source,/<select value=\{filter\.supplierId\}/);
+});
+
 test('short VAT-rate enum remains a native select',async()=>{
   const source=await read('../src/pages/SalesInvoices.tsx');
   assert.match(source,/<select value=\{line\.taxRate\}/);

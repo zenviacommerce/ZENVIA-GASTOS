@@ -33,11 +33,11 @@ test('404 returns an empty result and repeated lookup comes from cache',async()=
   }finally{globalThis.fetch=originalFetch}
 });
 
-test('places are normalized and deduplicated',async()=>{
+test('Spanish postal codes expose province rather than autonomous community',async()=>{
   const {module}=await load();
   const originalFetch=globalThis.fetch;
   globalThis.fetch=async()=>new Response(JSON.stringify({places:[{'place name':'Prado del Rey',state:'Andalucía'},{'place name':'Prado del Rey',state:'Andalucía'}]}),{status:200,headers:{'content-type':'application/json'}});
   try{
-    assert.deepEqual(await module.lookupPostalCode('ES','11660'),[{city:'Prado del Rey',region:'Andalucía',countryCode:'ES',postalCode:'11660'}]);
+    assert.deepEqual(await module.lookupPostalCode('ES','11660'),[{city:'Prado del Rey',region:'Cádiz',countryCode:'ES',postalCode:'11660'}]);
   }finally{globalThis.fetch=originalFetch}
 });
