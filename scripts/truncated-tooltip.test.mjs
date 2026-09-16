@@ -27,6 +27,12 @@ test('UnifiedListExperience manages one delegated floating tooltip',async()=>{
   assert.match(source,/removeEventListener/);
 });
 
+test('tooltip ignores its own DOM mutations so showing text does not immediately hide it',async()=>{
+  const source=await read('../src/components/UnifiedListExperience.tsx');
+  assert.match(source,/new\s+MutationObserver\(\s*mutations\s*=>/);
+  assert.match(source,/mutations\.every\([\s\S]*tooltip\.contains\(mutation\.target\)/);
+});
+
 test('tooltip CSS is global elegant themed and imported once',async()=>{
   const [css,main]=await Promise.all([read('../src/truncated-tooltip.css'),read('../src/main.tsx')]);
   assert.match(css,/\.zenviaTruncatedTooltip/);
