@@ -1,4 +1,5 @@
 import { spApiRequest } from './sp-api.ts';
+import { normalizeFinanceComponents } from './finance-components.ts';
 
 const SAFE_LAG_MS=2*60*1000;
 
@@ -123,11 +124,39 @@ async function normalizeTransaction(transaction:any,job:any){
 }
 
 async function upsertTransactions(admin:any,transactions:any[],job:any){
-  const rows=[];
-  for(const transaction of transactions)rows.push(await normalizeTransaction(transaction,job));
+  const rows:any[]=[];
+  const transactionsByKey=new Map<string,any>();
+  for(const transaction of transactions){
+    const row=await normalizeTransaction(transaction,job);
+    rows.push(row);
+    transactionsByKey.set(row.transaction_key,transaction);
+  }
   if(!rows.length)return 0;
-  const {error}=await admin.from('amazon_finance_transactions').upsert(rows,{onConflict:'owner_id,amazon_account_id,transaction_key'});
+
+  const {data:persisted,error}=await admin
+    .from('amazon_finance_transactions')
+    .upsert(rows,{onConflict:'owner_id,amazon_account_id,transaction_key'})
+    .select('id,owner_id,amazon_account_id,marketplace_id,amazon_order_id,seller_sku,asin,posted_date,transaction_key,transaction_type');
   if(error)throw error;
+
+  for(const row of persisted||[]){
+    const original=transactionsByKey.get(row.transaction_key);
+    if(!original)continue;
+    const components=await normalizeFinanceComponents(original,row,job);
+    const {error:deleteError}=await admin
+      .from('amazon_finance_components')
+      .delete()
+      .eq('owner_id',row.owner_id)
+      .eq('amazon_account_id',row.amazon_account_id)
+      .eq('finance_transaction_id',row.id);
+    if(deleteError)throw deleteError;
+    if(components.length){
+      const {error:componentError}=await admin
+        .from('amazon_finance_components')
+        .upsert(components,{onConflict:'owner_id,amazon_account_id,finance_transaction_id,component_key'});
+      if(componentError)throw componentError;
+    }
+  }
   return rows.length;
 }
 
