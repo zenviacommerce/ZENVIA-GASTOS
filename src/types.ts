@@ -83,6 +83,10 @@ export interface NewInvoiceLineInput {
   unit?: string | null;
   supplierSku?: string | null;
   unitPrice?: number | null;
+  normalizedUnitPrice?: number | null;
+  lineNet?: number | null;
+  taxRate?: number | null;
+  taxAmount?: number | null;
   lineTotal?: number | null;
 }
 
