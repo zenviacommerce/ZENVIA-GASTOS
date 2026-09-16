@@ -37,18 +37,6 @@ export interface ManagedUser {
   lastSignInAt?: string | null;
 }
 
-type ManagedUserRow = {
-  user_id: string;
-  email: string;
-  full_name: string | null;
-  role: AppRole;
-  active: boolean;
-  permissions: unknown;
-  created_at?: string | null;
-  updated_at?: string | null;
-  last_sign_in_at?: string | null;
-};
-
 function cleanPermissions(value: unknown): MenuPermission[] {
   const allowed = new Set(permissionOptions.map(option => option.id));
   return Array.isArray(value)
@@ -91,19 +79,8 @@ function validateManagedUser(email: string, fullName: string, password?: string)
 }
 
 export async function listManagedUsers(): Promise<ManagedUser[]> {
-  const { data, error } = await supabase.rpc('list_managed_users');
-  if (error) throw new Error(error.message || 'No se pudieron cargar los usuarios.');
-  return ((data || []) as ManagedUserRow[]).map(row => ({
-    userId: row.user_id,
-    email: row.email,
-    fullName: row.full_name || '',
-    role: row.role,
-    active: Boolean(row.active),
-    permissions: row.role === 'admin' ? permissionOptions.map(option => option.id) : cleanPermissions(row.permissions),
-    createdAt: row.created_at || null,
-    updatedAt: row.updated_at || null,
-    lastSignInAt: row.last_sign_in_at || null,
-  }));
+  const result = await invokeAdmin<{ users: ManagedUser[] }>({ action: 'list' });
+  return result.users || [];
 }
 
 export async function createManagedUser(input: { email: string; fullName: string; password: string; permissions: MenuPermission[] }) {
