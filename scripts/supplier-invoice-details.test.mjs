@@ -13,6 +13,8 @@ async function loadModule() {
 
 const vigatroText = `VIGATRO S.L.\nC.I.F. B90166976\nCTRA. SEVILLA MALAGA KM. 1\nMERCASEVILLA NAVE 1 MOD 1 - 2\n41020 - SEVILLA\nwww.vigatro.com\nFACTURA\nCliente: ZENVIA COMMERCE S.L.\nB26806943`;
 
+const cabaplastText=`C/MAIRENA DEL ALCOR N 20\nCRISTIAN JESUS PEREZ GARRIDO\n15436385G\n13/03/2026\nC/CAMINO DEL PILAR 8\n11660 PRADO DEL REY (CÁDIZ)\nFACTURA Nº:\nFECHA:\nCódigo: 002396\nCódigo Descripción Precio Importe\n126/4263\nNIF/CIF:\n41006 SEVILLA (SEVILLA)\nTlfno.: 658792484 / 657979844\nDISTRIBUCIONES CABAPLAST 99 S.L.\nCIF: B90163700\nPágina 1 de 1\nCRISTIAN PEREZ GARRIDO\nCajas Cantidad\ncabaplast99@hotmail.com\nTlfno.: 655154080\nRepresentante: ANTONIO LERIDA ( 617112386 ) 617112386`;
+
 test('extracts dotted Spanish CIF next to the supplier', async () => {
   const { extractSupplierInvoiceDetails } = await loadModule();
   assert.equal(extractSupplierInvoiceDetails(vigatroText, 'VIGATRO S.L').taxId, 'B90166976');
@@ -29,6 +31,14 @@ test('extracts supplier postal address without taking buyer data', async () => {
 test('extracts supplier website', async () => {
   const { extractSupplierInvoiceDetails } = await loadModule();
   assert.equal(extractSupplierInvoiceDetails(vigatroText, 'VIGATRO S.L').website, 'https://www.vigatro.com');
+});
+
+test('CABAPLAST captures address and CIF even when address is before supplier name', async()=>{
+  const {extractSupplierInvoiceDetails}=await loadModule();
+  const details=extractSupplierInvoiceDetails(cabaplastText,'DISTRIBUCIONES CABAPLAST 99 S.L.');
+  assert.equal(details.taxId,'B90163700');
+  assert.equal(details.address,'C/MAIRENA DEL ALCOR N 20, 41006 SEVILLA (SEVILLA)');
+  assert.doesNotMatch(details.address,/CAMINO DEL PILAR|11660|PRADO DEL REY/i);
 });
 
 test('supplier model and editor persist address and website', async () => {
