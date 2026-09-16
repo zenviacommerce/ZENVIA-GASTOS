@@ -28,6 +28,11 @@ test('SP-API client exchanges LWA refresh token and calls the EU endpoint', asyn
   assert.doesNotMatch(sp,/AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID|SignatureV4|SigV4/i);
 });
 
+test('SP-API client serializes Swagger query arrays as CSV', async () => {
+  const sp=await source('supabase/functions/_shared/amazon/sp-api.ts');
+  assert.match(sp,/Array\.isArray\(value\)[\s\S]*join\(['"],['"]\)/);
+});
+
 test('SP-API client retries only transient failures with a bounded attempt count', async () => {
   const sp=await source('supabase/functions/_shared/amazon/sp-api.ts');
   const http=await source('supabase/functions/_shared/amazon/http.ts');
