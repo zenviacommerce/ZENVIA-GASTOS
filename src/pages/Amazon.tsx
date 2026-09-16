@@ -48,7 +48,7 @@ export function AmazonPage({ isAdmin }: { isAdmin: boolean }) {
       ? `SP-API conectada. ${activeMarketplaces.length} marketplace${activeMarketplaces.length===1?'':'s'} europeo${activeMarketplaces.length===1?'':'s'} activo${activeMarketplaces.length===1?'':'s'}.`
       : status?.error||'Las credenciales están configuradas, pero la conexión todavía no está disponible.'
     : isAdmin
-      ? 'Falta configurar AMAZON_SPAPI_CREDENTIALS en los secretos del backend de Supabase.'
+      ? 'Falta completar la configuración segura de Amazon SP-API en el backend.'
       : 'Amazon Analytics todavía no está conectado. El administrador debe completar la configuración.';
 
   return <div className="page amazonPage">
