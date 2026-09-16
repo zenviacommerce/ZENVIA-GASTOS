@@ -1,0 +1,30 @@
+name: Apply select normalization
+
+on:
+  push:
+    branches: [feature/select-system-normalization]
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/select-system-normalization
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply migrations
+        run: node scripts/apply-select-normalization.mjs
+      - name: Remove one-off migration files
+        run: rm scripts/apply-select-normalization.mjs .github/workflows/apply-select-normalization.yml
+      - name: Commit normalized selects
+        run: |
+          git config user.name "zenviacommerce"
+          git config user.email "info@zenviacommerce.com"
+          git add -A
+          git commit -m "feat: normalize application dropdowns and order tooltips"
+          git push origin HEAD:feature/select-system-normalization
