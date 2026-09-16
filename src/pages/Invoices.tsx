@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Download, Search, Camera, FileUp, CheckCircle2, CircleDollarSign, Eye, Trash2, AlertCircle } from 'lucide-react';
+import { Download, Search, Camera, FileUp, CheckCircle2, CircleDollarSign, Eye, Trash2, AlertCircle, Files } from 'lucide-react';
 import type { ExpenseCategory, Invoice, Supplier } from '../types';
 import { exportInvoices } from '../services/exportQuarter';
 import { InvoiceDetailModal } from '../components/InvoiceDetailModal';
@@ -9,7 +9,7 @@ import { defaultInvoiceFilter, filterInvoices, periodLabel, safeExportLabel } fr
 
 const PAGE_SIZE=20;
 
-export function Invoices({invoices,suppliers,categories,onUpload,onStatusChange,onOpenFile,onDelete,onSupplierChange,onCategoryChange}:{invoices:Invoice[];suppliers:Supplier[];categories:ExpenseCategory[];onUpload:()=>void;onStatusChange:(id:string,status:'pending'|'reviewed'|'accounted')=>Promise<void>;onOpenFile:(invoice:Invoice)=>Promise<void>;onDelete:(invoice:Invoice)=>Promise<void>;onSupplierChange:(invoiceId:string,supplierId:string)=>Promise<void>;onCategoryChange:(invoiceId:string,categoryId:string)=>Promise<void>}){
+export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,onStatusChange,onOpenFile,onDelete,onSupplierChange,onCategoryChange}:{invoices:Invoice[];suppliers:Supplier[];categories:ExpenseCategory[];onUpload:()=>void;onBulkUpload:()=>void;onStatusChange:(id:string,status:'pending'|'reviewed'|'accounted')=>Promise<void>;onOpenFile:(invoice:Invoice)=>Promise<void>;onDelete:(invoice:Invoice)=>Promise<void>;onSupplierChange:(invoiceId:string,supplierId:string)=>Promise<void>;onCategoryChange:(invoiceId:string,categoryId:string)=>Promise<void>}){
  const [query,setQuery]=useState(''); const [exporting,setExporting]=useState(false);
  const [filter,setFilter]=useState(defaultInvoiceFilter);
  const [selected,setSelected]=useState<Invoice|null>(null);
@@ -36,29 +36,13 @@ export function Invoices({invoices,suppliers,categories,onUpload,onStatusChange,
  };
  const changeSupplier=async(invoice:Invoice,supplierId:string)=>{
    setActionError('');setBusyId(invoice.id);
-   try{
-     await onSupplierChange(invoice.id,supplierId);
-     const supplier=suppliers.find(s=>s.id===supplierId);
-     if(supplier)setSelected(current=>current?.id===invoice.id?{...current,supplierId,supplierName:supplier.name}:current);
-   }catch(e){
-     const text=e instanceof Error?e.message:'No se pudo cambiar el proveedor de la factura.';
-     setActionError(text);
-     throw e;
-   }finally{setBusyId(null)}
+   try{await onSupplierChange(invoice.id,supplierId);const supplier=suppliers.find(s=>s.id===supplierId);if(supplier)setSelected(current=>current?.id===invoice.id?{...current,supplierId,supplierName:supplier.name}:current)}catch(e){const text=e instanceof Error?e.message:'No se pudo cambiar el proveedor de la factura.';setActionError(text);throw e}finally{setBusyId(null)}
  };
  const changeCategory=async(invoice:Invoice,categoryId:string)=>{
    setActionError('');setBusyId(invoice.id);
-   try{
-     await onCategoryChange(invoice.id,categoryId);
-     const category=categories.find(c=>c.id===categoryId);
-     if(category)setSelected(current=>current?.id===invoice.id?{...current,categoryId,category:category.name}:current);
-   }catch(e){
-     const text=e instanceof Error?e.message:'No se pudo cambiar la categoría de la factura.';
-     setActionError(text);
-     throw e;
-   }finally{setBusyId(null)}
+   try{await onCategoryChange(invoice.id,categoryId);const category=categories.find(c=>c.id===categoryId);if(category)setSelected(current=>current?.id===invoice.id?{...current,categoryId,category:category.name}:current)}catch(e){const text=e instanceof Error?e.message:'No se pudo cambiar la categoría de la factura.';setActionError(text);throw e}finally{setBusyId(null)}
  };
- return <div className="page"><div className="pageHead"><div><div className="eyebrow">DOCUMENTACIÓN · {periodLabel(filter)}</div><h1>Facturas de gastos</h1><p>Consulta el histórico completo, filtra y exporta cualquier periodo.</p></div><div className="actions"><button className="secondary" onClick={doExport} disabled={exporting||!filtered.length}><Download size={17}/> {exporting?'Preparando…':`Exportar (${filtered.length})`}</button><button className="primary" onClick={onUpload}>+ Nueva factura</button></div></div>
+ return <div className="page"><div className="pageHead"><div><div className="eyebrow">DOCUMENTACIÓN · {periodLabel(filter)}</div><h1>Facturas de gastos</h1><p>Consulta el histórico completo, filtra y exporta cualquier periodo.</p></div><div className="actions"><button className="secondary" onClick={doExport} disabled={exporting||!filtered.length}><Download size={17}/> {exporting?'Preparando…':`Exportar (${filtered.length})`}</button><button className="secondary" onClick={onBulkUpload}><Files size={17}/> Importar facturas</button><button className="primary" onClick={onUpload}>+ Nueva factura</button></div></div>
  <InvoiceFilters filter={filter} onChange={setFilter} invoices={invoices} suppliers={suppliers}/>
  <div className="toolbar invoiceSearchToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar proveedor, nº factura, categoría…"/></div><span className="filterResultCount">{filtered.length} factura{filtered.length===1?'':'s'} · {selectionLabel}</span></div>
  {actionError&&<div className="errorBox tableError"><AlertCircle size={18}/>{actionError}</div>}
