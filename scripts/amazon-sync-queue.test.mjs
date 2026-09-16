@@ -1,0 +1,67 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+
+async function source(path){return readFile(new URL(`../${path}`,import.meta.url),'utf8');}
+
+test('service backend helper uses secret keys and internal calls require apikey',async()=>{
+  const backend=await source('supabase/functions/_shared/amazon/supabase.ts');
+  assert.match(backend,/SUPABASE_SECRET_KEYS/);
+  assert.match(backend,/SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(backend,/createClient/);
+  assert.match(backend,/apikey/i);
+  assert.match(backend,/requireInternalSecret/);
+  assert.doesNotMatch(backend,/VITE_/);
+});
+
+test('initial backfill starts at 2026-01-01 and is split into bounded windows',async()=>{
+  const sync=await source('supabase/functions/_shared/amazon/sync.ts');
+  assert.match(sync,/2026-01-01T00:00:00Z/);
+  assert.match(sync,/BACKFILL_WINDOW_DAYS\s*=\s*7/);
+  assert.match(sync,/enqueueInitialBackfill/);
+  assert.match(sync,/orders/);
+  assert.match(sync,/finances/);
+  assert.match(sync,/inventory/);
+  assert.match(sync,/job_key/);
+});
+
+test('hourly sync uses checkpoints with overlap and queue failures back off',async()=>{
+  const sync=await source('supabase/functions/_shared/amazon/sync.ts');
+  assert.match(sync,/enqueueHourlySync/);
+  assert.match(sync,/OVERLAP_HOURS\s*=\s*6/);
+  assert.match(sync,/high_water_mark/);
+  assert.match(sync,/available_at/);
+  assert.match(sync,/attempts/);
+  assert.match(sync,/max_attempts/);
+  assert.match(sync,/sanitizeAmazonError/);
+});
+
+test('orchestrator and worker are internal-only and worker claims bounded jobs atomically',async()=>{
+  const core=await source('supabase/migrations/20260916190000_amazon_analytics_phase_b.sql');
+  const wrapper=await source('supabase/migrations/20260916191000_amazon_sync_queue_rpc.sql');
+  const orchestrator=await source('supabase/functions/amazon-sync-orchestrator/index.ts');
+  const worker=await source('supabase/functions/amazon-sync-worker/index.ts');
+  assert.match(core,/function private\.amazon_claim_sync_jobs/i);
+  assert.match(core,/for update skip locked/i);
+  assert.match(wrapper,/function public\.amazon_claim_sync_jobs/i);
+  assert.match(wrapper,/private\.amazon_claim_sync_jobs/);
+  assert.match(wrapper,/revoke all on function public\.amazon_claim_sync_jobs[\s\S]*from public/i);
+  assert.match(wrapper,/grant execute on function public\.amazon_claim_sync_jobs[\s\S]*to service_role/i);
+  assert.match(orchestrator,/requireInternalSecret/);
+  assert.match(worker,/requireInternalSecret/);
+  assert.match(worker,/rpc\('amazon_claim_sync_jobs'/);
+  assert.match(worker,/limit_count:\s*3/);
+  assert.match(worker,/markJobFailed/);
+});
+
+test('manual sync authenticates a real user and requires admin role',async()=>{
+  const manual=await source('supabase/functions/amazon-sync-manual/index.ts');
+  const backend=await source('supabase/functions/_shared/amazon/supabase.ts');
+  assert.match(backend,/auth\.getUser/);
+  assert.match(backend,/app_users/);
+  assert.match(backend,/role\s*!==\s*'admin'/);
+  assert.match(manual,/authenticateAdminUser/);
+  assert.match(manual,/role\s*!==\s*'admin'/);
+  assert.match(manual,/enqueueHourlySync/);
+  assert.doesNotMatch(`${manual}\n${backend}`,/user_metadata/);
+});

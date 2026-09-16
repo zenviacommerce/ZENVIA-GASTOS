@@ -2,22 +2,43 @@
 .amazonPageHead{margin-bottom:0}
 .amazonExternalLinks{flex-wrap:wrap;justify-content:flex-end}
 .amazonExternalLink{text-decoration:none;white-space:nowrap}
+.amazonSyncButton{white-space:nowrap}
 .amazonConnectionCard{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:flex-start;padding:21px}
 .amazonConnectionIcon,.amazonPreviewIcon{width:44px;height:44px;border-radius:12px;background:#fff7ed;color:#c2410c;display:grid;place-items:center;flex:0 0 auto}
+.amazonConnectionCard.isConnected .amazonConnectionIcon{background:#ecfdf5;color:#047857}
+.amazonConnectionCard.isError .amazonConnectionIcon{background:#fef2f2;color:#dc2626}
 .amazonConnectionBody{min-width:0}
 .amazonSectionLabel,.amazonPreviewCard>span{display:block;font-size:10px;font-weight:800;letter-spacing:.09em;color:#94a3b8;text-transform:uppercase}
 .amazonStatusRow{display:flex;align-items:center;gap:8px;margin:5px 0 7px;color:#172033}
 .amazonStatusDot{width:9px;height:9px;border-radius:999px;background:#f59e0b;box-shadow:0 0 0 4px #fef3c7}
-.amazonConnectionBody p,.amazonPreviewCard p{margin:0;color:#64748b;font-size:13px;line-height:1.6}
+.amazonConnectionCard.isConnected .amazonStatusDot{background:#10b981;box-shadow:0 0 0 4px #d1fae5}
+.amazonConnectionCard.isError .amazonStatusDot{background:#ef4444;box-shadow:0 0 0 4px #fee2e2}
+.amazonConnectionBody p,.amazonPreviewCard p,.amazonEmpty{margin:0;color:#64748b;font-size:13px;line-height:1.6}
+.amazonConnectionMeta{display:flex;gap:8px 18px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:#94a3b8}
+.amazonMarketplacesCard{padding:19px}
+.amazonCardHeading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.amazonCardHeading strong{display:block;color:#172033;font-size:16px;margin-top:4px}
+.amazonCountBadge{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:11px;font-weight:800}
+.amazonMarketplaceGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.amazonMarketplaceItem{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #e5e7eb;border-radius:12px;background:#f8fafc;min-width:0}
+.amazonMarketplaceFlag{width:36px;height:28px;border-radius:8px;background:#fff;color:#334155;border:1px solid #e2e8f0;display:grid;place-items:center;font-size:10px;font-weight:900;letter-spacing:.05em;flex:0 0 auto}
+.amazonMarketplaceItem>div:last-child{min-width:0}
+.amazonMarketplaceItem strong,.amazonMarketplaceItem span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.amazonMarketplaceItem strong{color:#172033;font-size:13px}.amazonMarketplaceItem span{color:#94a3b8;font-size:10px;margin-top:2px}
 .amazonPreviewGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
 .amazonPreviewCard{padding:19px;min-width:0}
 .amazonPreviewCard .amazonPreviewIcon{margin-bottom:15px;background:#ecfdf5;color:#0f766e}
 .amazonPreviewCard>strong{display:block;margin:5px 0 7px;color:#172033;font-size:15px}
-[data-theme='dark'] .amazonConnectionCard,[data-theme='dark'] .amazonPreviewCard{background:#111827;border-color:#263449}
-[data-theme='dark'] .amazonStatusRow,[data-theme='dark'] .amazonPreviewCard>strong{color:#f8fafc}
-[data-theme='dark'] .amazonConnectionBody p,[data-theme='dark'] .amazonPreviewCard p{color:#94a3b8}
+[data-theme='dark'] .amazonConnectionCard,[data-theme='dark'] .amazonPreviewCard,[data-theme='dark'] .amazonMarketplacesCard{background:#111827;border-color:#263449}
+[data-theme='dark'] .amazonStatusRow,[data-theme='dark'] .amazonPreviewCard>strong,[data-theme='dark'] .amazonCardHeading strong,[data-theme='dark'] .amazonMarketplaceItem strong{color:#f8fafc}
+[data-theme='dark'] .amazonConnectionBody p,[data-theme='dark'] .amazonPreviewCard p,[data-theme='dark'] .amazonEmpty{color:#94a3b8}
 [data-theme='dark'] .amazonExternalLink{background:#111827;color:#e2e8f0;border-color:#334155}
 [data-theme='dark'] .amazonConnectionIcon{background:#422006;color:#fdba74}
+[data-theme='dark'] .amazonConnectionCard.isConnected .amazonConnectionIcon{background:#052e2b;color:#6ee7b7}
+[data-theme='dark'] .amazonConnectionCard.isError .amazonConnectionIcon{background:#450a0a;color:#fca5a5}
 [data-theme='dark'] .amazonPreviewCard .amazonPreviewIcon{background:#042f2e;color:#5eead4}
-@media(max-width:900px){.amazonPreviewGrid{grid-template-columns:1fr}.amazonPageHead{display:flex;flex-direction:column}.amazonExternalLinks{justify-content:flex-start;margin-top:15px}}
-@media(max-width:520px){.amazonExternalLinks{display:grid;grid-template-columns:1fr 1fr;width:100%}.amazonExternalLink{padding-inline:10px}.amazonConnectionCard{grid-template-columns:1fr}.amazonConnectionIcon{width:40px;height:40px}}
+[data-theme='dark'] .amazonMarketplaceItem{background:#0f172a;border-color:#263449}
+[data-theme='dark'] .amazonMarketplaceFlag{background:#111827;border-color:#334155;color:#cbd5e1}
+[data-theme='dark'] .amazonCountBadge{background:#052e2b;color:#6ee7b7}
+@media(max-width:900px){.amazonPreviewGrid,.amazonMarketplaceGrid{grid-template-columns:1fr}.amazonPageHead{display:flex;flex-direction:column}.amazonExternalLinks{justify-content:flex-start;margin-top:15px}}
+@media(max-width:520px){.amazonExternalLinks{display:grid;grid-template-columns:1fr 1fr;width:100%}.amazonExternalLink,.amazonSyncButton{padding-inline:10px}.amazonSyncButton{grid-column:1/-1}.amazonConnectionCard{grid-template-columns:1fr}.amazonConnectionIcon{width:40px;height:40px}.amazonCardHeading{align-items:flex-start}.amazonConnectionMeta{flex-direction:column;gap:4px}}
