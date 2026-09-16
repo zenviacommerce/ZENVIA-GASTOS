@@ -4,136 +4,112 @@ Date: 2026-09-16
 
 ## Context
 
-Phase B already connects ZENVIA COMMERCE SL to Amazon SP-API, discovers the active EU marketplaces, synchronizes Orders, Finances and FBA Inventory, and runs an initial backfill from 2026-01-01 plus recurring sync jobs.
+Phase B already connects ZENVIA COMMERCE SL to Amazon SP-API, discovers active EU marketplaces, synchronizes Orders, Finances and FBA Inventory, and runs backfill from 2026-01-01 plus recurring sync jobs.
 
-The current Amazon page is still primarily a connection/status screen. The next phase turns it into a business dashboard for sales, Amazon costs, product cost, profitability and inventory while keeping the existing SP-API sync architecture.
+The current Amazon page is still mainly a connection/status screen. This phase turns it into a business dashboard for sales, Amazon costs, product cost, profitability and inventory.
 
-Production data exposed two important implementation facts:
+Production data establishes two constraints:
 
-- Amazon seller SKUs do not currently match internal `products.sku` values automatically, so explicit SKU mapping is required from day one.
-- A Finance transaction total cannot be treated as a single fee/refund category. For example, a `Shipment` transaction contains nested `Sales`, tax and multiple Amazon fee breakdowns while its transaction total is only the net settlement effect. Analytics must therefore normalize the Finance breakdown tree and must not sum parent and child nodes together.
+- Current Amazon seller SKUs do not automatically match internal `products.sku`, so explicit SKU mapping is required from day one.
+- A Finance transaction total is not a single fee/refund value. A `Shipment` can contain nested Sales, Tax, Commission, FBA and other fee breakdowns while the transaction total is only the resulting settlement amount. Profitability must normalize the breakdown tree and must not add parent totals and their children together.
 
 ## Goals
 
-1. Provide a useful Amazon business dashboard with a default period of the current month.
-2. Calculate profitability without VAT using historical product cost valid on the order date.
-3. Keep Orders as the source of sales, units and order state, and Finances as the source of Amazon fees, refunds and financial adjustments.
-4. Support all active EU marketplaces and normalize non-EUR currencies to EUR.
-5. Support explicit Amazon SKU -> internal product mappings, including packs/bundles through a consumption factor.
-6. Make incomplete profitability visible instead of silently estimating missing cost, VAT or FX.
-7. Preserve workspace isolation, the existing `amazon` permission model and the no-buyer-PII constraint.
+1. Business dashboard with current month selected by default.
+2. Profitability without VAT using the product cost valid on the sale date.
+3. Orders as source of sales, units and state; Finances as source of fees, refunds and adjustments.
+4. All active EU marketplaces, normalized to EUR.
+5. Persistent Amazon SKU -> internal product mappings with a pack/bundle consumption factor.
+6. Explicit incomplete-profit states when mapping, historical cost, VAT or FX is missing.
+7. Preserve workspace isolation, `amazon` permission and the existing no-buyer-PII rule.
 
 ## Non-goals
 
-- Amazon Ads API integration, ACOS and TACOS are not part of this phase. Existing finance events such as `ProductAdsPayment` must not be silently folded into the pre-Ads profitability KPI. The UI will label profit as excluding Ads until the Ads phase is implemented.
-- No forecasting or replenishment recommendations in this phase.
+- Amazon Ads API, ACOS and TACOS are deferred. `ProductAdsPayment` and equivalent Ads finance events are explicitly excluded from the pre-Ads profitability KPI instead of being silently treated as Amazon fees.
+- No forecasting/replenishment recommendations.
 - No fuzzy automatic SKU matching.
-- No materialized aggregate tables initially. Parameterized SQL/RPC analytics are sufficient for the current data volume; pre-aggregation can be introduced later if measurements justify it.
+- No materialized aggregate facts initially; query-time SQL/RPC analytics are the starting point.
 
 ## Approved business rules
 
-### Period and filters
+### Filters
 
-- Default period: current month.
-- Quick filters: Today, 7 days, 30 days, Current month, Previous month, Current quarter, Current year, Custom range.
-- Global marketplace filter supports all marketplaces or one/more selected marketplaces.
+Default period is **Current month**. Quick filters: Today, 7 days, 30 days, Current month, Previous month, Current quarter, Current year and Custom range. A global marketplace filter applies across tabs.
 
-### Eligible orders
+### Orders and sales
 
-- Cancelled orders do not count toward sales, order count or units. Both `Canceled` and `Cancelled` spellings are treated as cancelled defensively.
-- Orders are dated by `purchase_date`.
+Cancelled orders do not count toward sales, orders or units. Handle both `Canceled` and `Cancelled` defensively.
 
-### Sales without VAT
-
-For eligible orders:
+Orders are dated by `purchase_date`. For eligible orders:
 
 `net_sales = gross/order total - VAT`
 
-The Orders feed remains the canonical source for sales and units so Finance shipment totals cannot double count revenue.
-
-If VAT required for a row is missing, that portion of profitability is marked incomplete rather than inferred silently.
+Orders remain canonical for sales and units so Finance shipment totals cannot double count revenue. If required VAT is unavailable, the affected profitability is incomplete rather than estimated.
 
 ### Historical product cost
 
-For each Amazon order item:
+For each order item:
 
-1. Resolve its `seller_sku` to an internal `product_id`.
-2. Read the latest `product_price_history.normalized_unit_price` whose `price_date <= order.purchase_date`.
+1. Resolve `seller_sku` to an internal product.
+2. Find the latest `product_price_history.normalized_unit_price` where `price_date <= order.purchase_date`.
 3. Calculate:
 
 `product_cost = quantity_ordered * consumption_factor * historical_unit_cost`
 
-Rules:
+`consumption_factor` defaults to 1 and must be > 0. A cost recorded after the sale is never back-used as an estimate. Missing mapping or historical cost makes the affected profitability incomplete.
 
-- `consumption_factor` defaults to `1` and must be greater than zero.
-- A changed mapping or factor recalculates historical analytics automatically because analytics resolves from source tables at query time.
-- A cost recorded after the sale is not used retroactively as an estimate for that sale.
-- If no valid mapping or historical cost exists, the affected amount is incomplete.
+Mappings are resolved at query time, so correcting a mapping/factor recalculates history automatically without rewriting source orders.
 
-### Amazon SKU mapping
+### SKU mapping
 
-Automatic matching is only allowed for exact seller SKU matches to internal product SKU. There is no fuzzy auto-linking.
+Automatic matching is allowed only when trimmed `seller_sku` equals exactly one trimmed internal `products.sku` value, preserving case. Ambiguous or non-matching SKUs remain unmapped; there is no fuzzy matching.
 
-Unmatched SKUs are surfaced in the `Sin vincular` tab. The user selects an internal product and a consumption factor once; the mapping persists and is reusable across historical and future calculations.
+Unmapped SKUs are resolved in **Sin vincular** by selecting an internal product and consumption factor. Existing mappings can be corrected later.
 
-Existing mappings can be corrected from the Products experience.
+### Finance normalization
 
-### Finance normalization and fees
+`amazon_finance_transactions.amount_original` is a settlement-level transaction total and is not authoritative as a fee value. The existing coarse `category` remains diagnostic only.
 
-`amazon_finance_transactions.amount_original` is the transaction total, not a fee amount. The existing coarse `category` remains useful for diagnostics but is not authoritative for profitability.
+Normalize selected business-level Finance breakdown components into a child table. The parser must understand nesting and never emit additive rows for both a parent aggregate and its additive children.
 
-The implementation will normalize meaningful Finance breakdown components into a dedicated relational table. The parser must understand nested breakdowns without double counting parent totals and their children.
+Representative shipment components include ProductCharges/Sales, Tax, Commission/referral-like fees, FBA fulfillment fees, Digital Services fees, Storage and other Amazon fees. Refunds include refunded product charges/tax and fee reversals.
 
-For finalized shipment-style transactions, examples include:
+When a fee exposes `Base` and `Tax`, profitability uses the Base amount; fee VAT remains available for audit but is not a business cost in the headline no-VAT KPI.
 
-- Product charges / sales components.
-- Tax components.
-- Commission / referral-like fees.
-- FBA per-unit fulfillment fees.
-- Digital services fees.
-- Storage and other Amazon fees when present.
+The normalized table preserves Amazon's signed amount. Normal fees normally reduce profit; fee reversals increase it. Refund product charges normally reduce profit.
 
-For refund transactions, examples include:
+Define signed analytical effects:
 
-- Refunded product charges.
-- Refunded tax.
-- Reversed/refunded Amazon fees.
+- `refund_sales_effect_eur`: signed refunded product-charge effect; normally negative.
+- `amazon_fee_effect_eur`: signed Amazon fee effect excluding Ads; normal fee negative, reversal positive.
 
-Profitability uses fee amounts without their VAT component when Amazon exposes a distinct `Base` and `Tax` breakdown, because the headline KPI is defined without VAT. Fee taxes remain available for audit/detail but are not treated as business cost in that KPI.
+The headline calculation is therefore unambiguous:
 
-The normalizer will preserve the signed source amount. Analytical categories describe meaning; they must not assume that every cost arrives with one particular sign.
-
-### Refunds and financial timing
-
-Refunds are sourced from Finance and reduce profitability when their Finance event is posted. Financial events are filtered by `posted_date` in period summaries. Where Amazon supplies an order ID/SKU, the event remains linked to that order/product for drill-down.
-
-Order detail may show all known linked financial events for the selected order even when those events were posted after the original purchase date.
-
-### Profitability formula
-
-The primary KPI is profitability without VAT and before Amazon Ads:
-
-`profit_before_ads = net_sales - refunds_net - amazon_fees_net - historical_product_cost`
+`profit_before_ads = net_sales + refund_sales_effect_eur + amazon_fee_effect_eur - historical_product_cost`
 
 `margin_pct = profit_before_ads / net_sales * 100`
 
-The UI must make the Ads exclusion explicit until the Ads integration is complete.
+For display, **Reembolsos** and **Tarifas Amazon** may show positive deduction magnitudes derived from those signed effects. The underlying calculation continues to use signed effects.
+
+### Financial timing
+
+Period summaries filter Orders by `purchase_date` and Finance events by `posted_date`. Thus a later refund reduces the period in which Amazon posts the refund. Where Amazon supplies order/SKU identifiers, the event remains linked for drill-down. Order detail may show all known linked events even when posted after the order date.
 
 ### FX
 
-All dashboard money is reported in EUR.
+All headline money is EUR.
 
-- EUR uses rate `1`.
-- Non-EUR amounts use a daily stored FX rate valid for the transaction/order date.
-- The initial FX provider is ECB reference data, stored in the database so analytics is reproducible and does not perform external calls during dashboard reads.
-- For weekends/holidays, use the most recent available rate on or before the event date within a bounded lookback window.
-- If no acceptable FX rate exists, the affected profitability is incomplete. Do not use an arbitrary current rate.
+- EUR rate = 1.
+- Non-EUR uses stored daily historical FX for the event/order date.
+- Initial provider: ECB reference rates stored in the database; dashboard reads never make live FX calls.
+- Weekend/holiday resolution uses the latest available rate on or before the date, with a maximum lookback of 7 calendar days.
+- Missing acceptable FX makes the affected result incomplete; never substitute today's rate.
 
 ## Data model
 
 ### `amazon_product_mappings`
 
-New workspace-scoped table:
+Workspace-scoped table:
 
 - `id uuid primary key`
 - `owner_id uuid not null`
@@ -142,89 +118,67 @@ New workspace-scoped table:
 - `product_id uuid not null`
 - `consumption_factor numeric not null default 1 check (consumption_factor > 0)`
 - `mapping_source text not null check in ('automatic','manual')`
-- `created_at timestamptz`
-- `updated_at timestamptz`
+- timestamps
 
-Unique key: `(owner_id, amazon_account_id, seller_sku)`.
-
-Foreign keys reference Amazon account and internal product. Add covering indexes for foreign keys and SKU/product lookup paths.
+Unique `(owner_id, amazon_account_id, seller_sku)`. Add foreign keys and covering indexes for account, SKU and product lookups.
 
 ### `amazon_finance_components`
 
-New normalized child table of `amazon_finance_transactions`:
+Normalized child of `amazon_finance_transactions`:
 
 - `id uuid primary key`
-- `owner_id uuid not null`
-- `amazon_account_id uuid not null`
-- `finance_transaction_id uuid not null`
-- `marketplace_id text`
-- `amazon_order_id text`
-- `seller_sku text`
-- `asin text`
-- `posted_date timestamptz`
-- `component_key text not null`
-- `component_type text not null`
-- `component_category text not null`
-- `amount_original numeric not null`
-- `currency_code text not null`
-- `tax_amount_original numeric`
-- `amount_eur numeric`
-- `tax_amount_eur numeric`
-- `fx_rate numeric`
-- `created_at timestamptz`
-- `updated_at timestamptz`
+- workspace/account/finance transaction foreign keys
+- marketplace/order/SKU/ASIN identifiers
+- `posted_date`
+- deterministic `component_key`
+- `component_type`
+- stable `component_category`
+- signed `amount_original`, `currency_code`
+- optional `tax_amount_original`
+- converted `amount_eur`, optional `tax_amount_eur`, `fx_rate`
+- timestamps
 
-Unique key: `(owner_id, amazon_account_id, finance_transaction_id, component_key)`.
+Unique `(owner_id, amazon_account_id, finance_transaction_id, component_key)`.
 
-`component_category` is a stable internal analytical vocabulary such as `refund`, `commission_fee`, `fba_fee`, `digital_services_fee`, `storage_fee`, `other_amazon_fee`, `adjustment`, `ads_payment_excluded`, and audit-only tax/revenue categories where needed.
-
-The normalizer stores only business-level components selected by parser rules. It must not create additive rows for both a parent aggregate and all of its additive children.
+Stable categories include at least `refund_sales`, `commission_fee`, `fba_fee`, `digital_services_fee`, `storage_fee`, `other_amazon_fee`, `adjustment`, `ads_payment_excluded` plus audit-only revenue/tax categories where required.
 
 ### `amazon_fx_rates`
 
-New table with reproducible daily rates:
+- `rate_date date`
+- `currency_code text`
+- `rate_to_eur numeric check > 0`
+- `source text`
+- timestamps
 
-- `rate_date date not null`
-- `currency_code text not null`
-- `rate_to_eur numeric not null check (rate_to_eur > 0)`
-- `source text not null`
-- `created_at timestamptz`
-- `updated_at timestamptz`
+Primary/unique `(rate_date, currency_code)`.
 
-Primary/unique key: `(rate_date, currency_code)`.
+## Finance ingestion
 
-Store EUR explicitly as 1 or handle it as a deterministic special case in SQL. Other currencies are populated from ECB data.
-
-## Finance ingestion changes
-
-The existing Finance sync remains restartable and idempotent. After upserting each `amazon_finance_transactions` row, the same sync flow normalizes that transaction's sanitized breakdown tree into `amazon_finance_components`.
+Keep the existing restartable/idempotent Finance sync. After upserting a transaction, normalize its sanitized breakdown tree into `amazon_finance_components`.
 
 Requirements:
 
-- Deterministic `component_key` based on transaction plus semantic breakdown path so repeated syncs upsert, not duplicate.
-- Reprocessing a Finance transaction replaces/updates its normalized components consistently.
-- Existing historical Finance rows are backfilled into the component table from the already-persisted sanitized `metadata.breakdowns`; no buyer data is needed.
-- Add parser tests using representative Shipment and Refund breakdown structures.
-
-The existing coarse transaction `category` may be improved for diagnostics, but dashboard profitability must use normalized components rather than that field.
+- deterministic component keys based on transaction + semantic breakdown path;
+- repeat syncs upsert rather than duplicate;
+- reprocessing updates/replaces normalized components consistently;
+- historical Finance rows are backfilled from already-stored sanitized `metadata.breakdowns`;
+- parser failures fail/retry the relevant job instead of silently persisting partial finance components;
+- representative Shipment and Refund parser fixtures are tested.
 
 ## FX ingestion
 
-Add a small backend sync for ECB daily reference rates.
+Add a small backend ECB sync:
 
-- Fetch only required currencies for active Amazon marketplaces plus EUR.
-- Upsert by date/currency.
-- Run daily and allow manual/backfill execution.
-- Backfill from 2026-01-01 before profitability is considered complete for historical PLN/SEK activity.
-- Analytics resolves the latest valid rate on or before each monetary event date.
+- required active-marketplace currencies plus EUR;
+- daily upsert and manual/backfill capability;
+- historical backfill from 2026-01-01 before PLN/SEK history is considered complete;
+- no secret required when using the public ECB feed.
 
-No FX secret is required if the chosen ECB endpoint is public.
+## SQL/RPC analytics layer
 
-## Analytical SQL/RPC layer
+Calculations live in PostgreSQL, not React. Private helpers/views can centralize cost and FX resolution. Public RPCs expose stable typed shapes and validate workspace/permission server-side.
 
-Profitability calculations live in PostgreSQL, not React.
-
-Create focused RPCs with workspace/permission checks and parameters for date range and marketplace list. Suggested public contract:
+Suggested contract:
 
 - `amazon_analytics_summary(from_date, to_date, marketplace_ids)`
 - `amazon_analytics_series(from_date, to_date, marketplace_ids, grain)`
@@ -234,38 +188,23 @@ Create focused RPCs with workspace/permission checks and parameters for date ran
 - `amazon_analytics_inventory(marketplace_ids, search, page, page_size)`
 - `amazon_analytics_unmapped_skus(search, page, page_size)`
 - `amazon_set_product_mapping(seller_sku, product_id, consumption_factor)`
-- `amazon_delete_product_mapping(seller_sku)` if an incorrect mapping must be removed.
+- `amazon_delete_product_mapping(seller_sku)`
 
-The exact SQL may use private helper functions/views to avoid repeating cost/FX logic. Public RPCs expose stable result shapes only.
+Summary/grouped responses include completeness metadata: unmapped SKU/units, missing historical cost/units, missing FX events, missing VAT orders, current backfill state and `adsExcluded=true`.
 
-### Completeness metadata
-
-Summary and grouped RPCs return explicit quality metadata alongside values, including at least:
-
-- unmapped SKU count / affected units.
-- missing historical cost count / affected units.
-- missing FX event count.
-- missing VAT order count.
-- historical backfill/sync state.
-- whether Ads are excluded.
-
-`profitComplete` is true only when all inputs required for the selected period/filter are complete.
-
-A partial numeric profit may be returned for the known subset for diagnostic value, but the UI must label it incomplete and must not present it as final.
+`profitComplete=true` only when all required inputs for the selected scope are complete. A partial known-subset number may be returned for diagnostics, but UI must mark it incomplete and not present it as final.
 
 ## Dashboard UI
 
-The current large connection-status experience becomes a compact status area in the Amazon header. Seller Central, Sellerboard and admin `Sincronizar ahora` remain available.
+The current large connection card becomes a compact header status. Seller Central, Sellerboard and admin **Sincronizar ahora** remain.
 
-Internal tabs:
+Tabs:
 
-`Resumen | Productos | Marketplaces | Pedidos | Inventario | Sin vincular`
+**Resumen | Productos | Marketplaces | Pedidos | Inventario | Sin vincular**
 
 ### Resumen
 
-Global filters at the top, defaulting to current month.
-
-Primary KPI cards:
+Global filters first. KPI cards:
 
 - Ventas sin IVA
 - Pedidos
@@ -276,203 +215,102 @@ Primary KPI cards:
 - Beneficio antes de Ads
 - Margen %
 
-Below the KPIs:
+Then:
 
-1. Time series combining net sales and profit before Ads. Grain is selected automatically (daily for short ranges, monthly for long ranges) while allowing a stable API contract.
-2. Cost breakdown: Amazon fees, product cost and refunds.
-3. Top products by profit.
-4. Products with the weakest margin, shown as a factual sort rather than a hidden scoring system.
-5. A visible data-quality notice when profit is incomplete or historical sync is still running.
+1. Net sales + profit time series. Use daily grain for ranges <= 90 days, monthly above 90 days.
+2. Cost breakdown: Amazon fees, product cost, refunds.
+3. Products sorted by profit.
+4. Products sorted by margin ascending for factual low-margin review.
+5. Visible data-quality/backfill notice when required.
 
 ### Productos
 
-Paginated/searchable table grouped by seller SKU / ASIN with:
-
-- linked internal product.
-- units.
-- net sales.
-- historical product cost.
-- Amazon fees.
-- refunds.
-- profit before Ads.
-- margin %.
-- mapping/completeness state.
-
-A product row can open/detail its trend and marketplace breakdown. Existing mappings can be corrected here.
+Paginated/searchable seller SKU/ASIN rows with linked internal product, units, net sales, historical cost, fees, refunds, profit before Ads, margin and completeness. Mapping can be corrected here. Product detail may show trend and marketplace breakdown.
 
 ### Marketplaces
 
-Grouped performance by marketplace/country with the same core financial metrics and units/orders. All values are EUR-normalized.
+Same core metrics grouped by marketplace/country, EUR-normalized.
 
 ### Pedidos
 
-Paginated/searchable order list containing no buyer PII:
-
-- Amazon order ID.
-- date.
-- marketplace.
-- status.
-- units.
-- net sales.
-- known Amazon costs/refunds.
-- historical product cost.
-- profit/completeness state.
+No buyer PII. Show Amazon order ID, date, marketplace, status, units, net sales, known fees/refunds, historical cost and profit/completeness.
 
 ### Inventario
 
-Current FBA stock grouped by SKU/ASIN and marketplace:
-
-- fulfillable.
-- reserved.
-- inbound.
-- unfulfillable.
-- researching.
-- total.
-- last sync.
-
-Historical daily inventory can be used for a stock trend when enough snapshots exist. Days-of-cover/replenishment forecasting is deferred.
+Current FBA fulfillable, reserved, inbound, unfulfillable, researching, total and last sync by SKU/ASIN/marketplace. Historical daily snapshots may power a stock trend. Days-of-cover is deferred.
 
 ### Sin vincular
 
-Prominent workflow because current production data has unmatched Amazon SKUs.
+Prominent workflow. For each unmapped SKU: SKU, ASIN, marketplaces seen, affected orders/units, recent sales context, internal product search/select, factor default 1 and Save. Saving refreshes analytics and historical profitability.
 
-For every unmatched seller SKU:
+## Frontend architecture
 
-- SKU and ASIN.
-- marketplaces where seen.
-- affected order/unit counts.
-- recent sales context.
-- internal product search/select.
-- consumption factor, default 1.
-- Save mapping action.
+Extend `src/services/amazon.ts` with typed analytics RPC calls; React does not query/aggregate raw Amazon tables directly.
 
-After saving, analytics refresh and historical profitability becomes calculable without rewriting source rows.
+Split the page into focused components as needed (`AmazonFilters`, `AmazonSummary`, `AmazonProducts`, `AmazonMarketplaces`, `AmazonOrders`, `AmazonInventory`, `AmazonUnmapped` plus shared KPI/table/completeness pieces).
 
-## Frontend service architecture
-
-Extend `src/services/amazon.ts` with typed analytics calls rather than querying multiple raw tables from React.
-
-Split the large Amazon page into focused components if necessary, for example:
-
-- `AmazonFilters`
-- `AmazonSummary`
-- `AmazonProducts`
-- `AmazonMarketplaces`
-- `AmazonOrders`
-- `AmazonInventory`
-- `AmazonUnmapped`
-- shared KPI/table/completeness components
-
-Reuse the project's existing Recharts dependency. Do not add another chart library.
-
-Desktop and mobile layouts must both be first-class. Tables may switch to compact cards or horizontal-scroll patterns already used by the application; filters and mapping actions must remain usable on mobile.
+Reuse existing Recharts. Add no second chart library. Desktop and mobile are first-class; filters/mapping actions must remain usable on mobile.
 
 ## Sync/backfill UX
 
-The dashboard remains usable while historical jobs are running.
-
-- Header shows connection state, last successful sync and queue/backfill status compactly.
-- If backfill is incomplete, show `Sincronización histórica en curso` with queue/failure context.
-- An admin can request sync from the existing button.
-- Analytics reads only committed source rows; no optimistic fabricated values.
+Dashboard works while history is loading. Header shows connection, last successful sync and queue/backfill state compactly. Show **Sincronización histórica en curso** while needed. Analytics uses committed rows only.
 
 ## Security
 
-All new tables use RLS and workspace ownership consistent with the existing Amazon schema.
+New tables use RLS/workspace ownership consistent with the existing Amazon schema.
 
-- Reads require authenticated workspace ownership/membership and `amazon` permission.
-- Mapping mutations require the same `amazon` permission and are workspace constrained.
-- Backend ingestion writes use the server secret/service context only.
-- No buyer/recipient PII is requested, stored or exposed.
-- RPCs derive/validate workspace ownership server-side and do not trust caller-supplied owner IDs.
+- Reads and mapping mutations require authenticated workspace access plus `amazon` permission.
+- Backend ingestion uses server-secret/service context only.
+- RPCs derive workspace ownership server-side and never trust caller-provided owner IDs.
+- No buyer/recipient PII is requested, persisted or exposed.
 
 ## Performance
 
-Initial strategy is query-time analytics with supporting indexes.
+Start with query-time SQL plus indexes on order purchase date/marketplace, item SKU/order, finance component posted date/marketplace/order/SKU/category, mapping SKU/product, product history product/date, inventory marketplace/SKU and FX currency/date.
 
-Required indexes include common paths for:
+Products, Orders, Inventory and Unmapped RPCs are paginated. Summary/series aggregate in SQL. Introduce materialized daily facts only after production measurements justify them.
 
-- order purchase date + marketplace/account.
-- order items seller SKU/order.
-- Finance component posted date + marketplace/order/SKU/category.
-- mapping account + seller SKU/product.
-- product price history product + price date.
-- inventory marketplace + SKU.
-- FX currency + rate date.
+## Error/data-quality handling
 
-RPCs are paginated for Products, Orders, Inventory and Unmapped views. Summary/series queries aggregate in SQL.
-
-Only introduce materialized daily facts after measuring production query latency and data growth.
-
-## Error handling
-
-- Missing mapping, cost, VAT or FX is a data-quality condition, not a generic application error.
-- RPC/database/network failures show the existing toast/error patterns and keep the last successfully rendered state when practical.
-- Mapping validation rejects an invalid product, non-positive factor or cross-workspace reference.
-- Finance parser failures fail/retry the relevant sync job rather than silently writing incomplete normalized components.
-- FX sync failures do not substitute current FX rates for historical transactions.
+Missing mapping, historical cost, VAT or FX is a data-quality state rather than a generic application failure. Invalid mapping/product/factor/cross-workspace references are rejected. Network/RPC failures use existing toast/error patterns. FX failures never fall back to current rates.
 
 ## Testing
 
-### SQL/data tests
+### SQL/data
 
-Cover at least:
+Cover exact/manual mapping, factor 1/>1, historical cost as-of date, no future-cost fallback, cancelled exclusion, net sales excluding VAT, missing VAT completeness, EUR=1, PLN/SEK date conversion, weekend/holiday <=7-day fallback, missing FX completeness, Shipment fee parsing without parent/child double count, Refund product-charge and fee-reversal effects, Ads exclusion, and workspace/RLS isolation.
 
-- exact SKU mapping and manual mapping.
-- factor 1 and factor > 1.
-- historical cost chooses latest cost on/before sale date.
-- later product cost is not used for an earlier sale.
-- cancelled order exclusion.
-- net sale = gross - VAT.
-- missing VAT marks completeness false.
-- EUR conversion at 1.
-- PLN/SEK conversion by event date.
-- weekend/holiday prior-rate resolution within allowed lookback.
-- missing FX marks completeness false.
-- Finance Shipment breakdown extracts fee bases without double counting parent aggregates.
-- Finance Refund breakdown reduces net result correctly and handles fee reversals.
-- Ads payment is excluded from the pre-Ads profit KPI and surfaced as excluded scope.
-- workspace/RLS separation.
+### TypeScript
 
-### TypeScript tests
+Test Finance breakdown parser and deterministic component keys using representative SP-API Shipment/Refund fixtures; test FX parsing/sync normalization.
 
-Cover Finance breakdown parser normalization and deterministic component keys with representative SP-API fixtures.
+### Frontend
 
-### Frontend tests
+Test current-month default, marketplace filters, incomplete-profit warning, mapping/factor workflow, empty/loading/error states, tabs and mobile-safe core actions.
 
-Cover:
+Existing application tests, TypeScript and Vite build must remain green.
 
-- current-month default filter.
-- marketplace filtering.
-- incomplete-profit warning.
-- unmapped mapping workflow and factor.
-- empty/loading/error states.
-- tab navigation.
-- mobile-safe rendering of core actions.
+## Rollout
 
-Existing application tests, TypeScript build and Vite build must stay green.
-
-## Rollout sequence
-
-1. **Analytics foundations**: mappings, Finance component normalization, FX storage/sync, migrations/RLS/indexes and historical Finance/FX backfill.
-2. **Analytics RPCs**: shared cost/FX helpers, summary/series/product/marketplace/order/inventory/unmapped endpoints and completeness metadata.
-3. **Frontend dashboard**: tabs, filters, KPIs, charts, tables and mapping workflow.
-4. **Production validation**: reconcile sample orders against Amazon/Seller Central, verify no double counting, test historical cost, EUR/PLN/SEK and incomplete states.
-5. **Ads phase later**: add Amazon Ads ingestion and extend the profit formula to full post-ad profitability plus ACOS/TACOS.
+1. Analytics foundations: mappings, Finance component normalization, FX storage/sync, migrations/RLS/indexes, historical Finance/FX backfill.
+2. Analytics RPCs: shared cost/FX helpers and summary/series/product/marketplace/order/inventory/unmapped endpoints.
+3. Frontend dashboard: tabs, filters, KPIs, charts, tables, mapping workflow.
+4. Production reconciliation against sample Amazon/Seller Central data, including no double counting and EUR/PLN/SEK.
+5. Later Ads phase: Amazon Ads ingestion, post-ad profit, ACOS and TACOS.
 
 ## Acceptance criteria
 
-The phase is complete when:
+Complete when:
 
-- Amazon opens on a business dashboard rather than a setup-centric screen.
-- Current month is selected by default and filters work across tabs.
+- Amazon opens on a business dashboard, current month by default.
+- Global date/marketplace filters work across relevant tabs.
 - Cancelled orders are excluded.
-- Sales and profit are displayed without VAT.
-- Product cost uses the historically valid cost and mapping factor.
-- Unmapped SKUs can be linked and the historical result updates automatically.
-- Finance fee/refund components are normalized from breakdowns without parent/child double counting.
-- All displayed monetary KPIs are normalized to EUR or clearly marked incomplete when FX is missing.
-- Profit is never presented as complete when mapping, cost, VAT or FX inputs are missing.
-- Ads exclusion is explicit until Ads integration is implemented.
-- No buyer PII is stored or displayed.
+- Sales/profit headline values are without VAT.
+- Product cost uses historical as-of cost and mapping factor.
+- Unmapped SKUs can be linked and history recalculates.
+- Finance fees/refunds are normalized from breakdowns without parent/child double counting.
+- EUR conversion is historical/reproducible and missing FX marks results incomplete.
+- Profit is never presented as complete with missing mapping/cost/VAT/FX.
+- Ads exclusion is explicit.
+- No buyer PII is stored/displayed.
 - RLS/permission tests, application tests, TypeScript and build pass.
