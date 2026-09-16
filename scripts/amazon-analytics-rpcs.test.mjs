@@ -29,3 +29,21 @@ test('Profit completeness accounts for running historical work, not only missing
   assert.match(text,/profitComplete[\s\S]{0,1000}syncQueued|syncQueued[\s\S]{0,1000}profitComplete/i);
   assert.match(text,/profitComplete[\s\S]{0,1000}syncRunning|syncRunning[\s\S]{0,1000}profitComplete/i);
 });
+
+test('Detail and mapping RPCs are present and paginated',async()=>{
+  const text=await sql();
+  for(const fn of [
+    'amazon_analytics_products','amazon_analytics_marketplaces','amazon_analytics_orders',
+    'amazon_analytics_inventory','amazon_analytics_unmapped_skus',
+    'amazon_set_product_mapping','amazon_delete_product_mapping'
+  ]) assert.match(text,new RegExp(`function public\\.${fn}`));
+  assert.match(text,/page_size/);
+  assert.match(text,/consumption_factor > 0|consumption_factor must be greater than zero/i);
+  assert.match(text,/private\.app_workspace_owner_id\(\)/);
+  assert.match(text,/private\.app_has_permission\('amazon'\)/);
+});
+
+test('Detail RPCs do not expose buyer or recipient PII',async()=>{
+  const text=(await sql()).toLowerCase();
+  for(const forbidden of ['buyer_name','buyer_email','buyer_phone','shipping_address','delivery_address'])assert.equal(text.includes(forbidden),false,forbidden);
+});
