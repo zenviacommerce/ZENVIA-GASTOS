@@ -14,7 +14,7 @@ const externalLinks=[{label:'Seller Central',href:'https://sellercentral.amazon.
 const tabs=[['summary','Resumen'],['products','Productos'],['marketplaces','Marketplaces'],['orders','Pedidos'],['inventory','Inventario'],['unmapped','Sin vincular']] as const;
 type AmazonTab=(typeof tabs)[number][0];
 
-function statusLabel(status:AmazonStatus|null,loading:boolean){if(loading)return 'Comprobando';if(!status?.configured)return 'Pendiente';if(status.connected)return 'Conectado';if(status.status==='error')return 'Error';return 'Configurado';}
+function statusLabel(status:AmazonStatus|null,loading:boolean){if(loading)return 'Comprobando';if(!status?.configured)return 'Pendiente de configurar';if(status.connected)return 'Conectado';if(status.status==='error')return 'Error';return 'Configurado';}
 
 export function AmazonPage({isAdmin}:{isAdmin:boolean}){
   const [status,setStatus]=useState<AmazonStatus|null>(null);const [loading,setLoading]=useState(true);const [syncing,setSyncing]=useState(false);const [error,setError]=useState('');
