@@ -47,6 +47,27 @@ export function extractInclusiveTaxSummary(text:string):InclusiveTaxSummary|null
   return {taxRate,subtotal,vat,total};
 }
 
+export type EquivalenceSurchargeSummary={subtotal:number;vatRate:number;vat:number;equivalenceRate:number;equivalenceSurcharge:number};
+
+export function extractEquivalenceSurchargeSummary(text:string):EquivalenceSurchargeSummary|null{
+  if(!/(?:%\s*R\.?\s*E\.?|importe\s+R\.?\s*E\.?|recargo\s+de\s+equivalencia)/i.test(text))return null;
+  const pattern=new RegExp(`^\\s*(${MONEY})\\s+(\\d{1,2}(?:[.,]\\d{1,2})?)\\s+(${MONEY})\\s+(\\d{1,2}(?:[.,]\\d{1,2})?)\\s+(${MONEY})\\s*$`,'i');
+  for(const line of text.split(/\r?\n/)){
+    const match=line.match(pattern);
+    if(!match)continue;
+    const subtotal=parseNumber(match[1]);
+    const vatRate=parseNumber(match[2]);
+    const vat=parseNumber(match[3]);
+    const equivalenceRate=parseNumber(match[4]);
+    const equivalenceSurcharge=parseNumber(match[5]);
+    if(subtotal<=0||vatRate<=0||vatRate>100||vat<0||equivalenceRate<=0||equivalenceRate>20||equivalenceSurcharge<=0)continue;
+    if(Math.abs(round(subtotal*vatRate/100,2)-vat)>0.08)continue;
+    if(Math.abs(round(subtotal*equivalenceRate/100,2)-equivalenceSurcharge)>0.08)continue;
+    return {subtotal,vatRate,vat,equivalenceRate,equivalenceSurcharge};
+  }
+  return null;
+}
+
 export type SimpleInvoiceProductRow={description:string;quantity:number;unitPrice:number;lineTotal:number;supplierSku?:string};
 export type RepairableInvoiceLine={
   description:string;
@@ -122,6 +143,13 @@ export function repairInvoiceProductLines(text:string,lines:RepairableInvoiceLin
 }
 
 export function repairInvoiceAmounts(text:string,amounts:{subtotal:number;vat:number;total:number}){
+  const equivalence=extractEquivalenceSurchargeSummary(text);
+  if(equivalence){
+    const calculatedTotal=round(equivalence.subtotal+equivalence.vat+equivalence.equivalenceSurcharge,2);
+    if(!amounts.total||Math.abs(calculatedTotal-amounts.total)<=0.08){
+      return {subtotal:equivalence.subtotal,vat:equivalence.vat,equivalenceSurcharge:equivalence.equivalenceSurcharge,total:amounts.total||calculatedTotal};
+    }
+  }
   const summary=extractInclusiveTaxSummary(text);
   if(!summary)return amounts;
   return {subtotal:summary.subtotal,vat:summary.vat,total:summary.total};
