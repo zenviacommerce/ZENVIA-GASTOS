@@ -24,7 +24,7 @@ Deno.serve(async(req:Request)=>{
       .order('updated_at',{ascending:false}).limit(1).maybeSingle();
     if(accountError)throw accountError;
 
-    if(configured&&(!account||account.status!=='connected')){
+    if(configured&&caller.role==='admin'&&(!account||account.status!=='connected')){
       try{
         const bootstrap=await ensureAmazonAccountAndMarketplaces(admin,caller.data_owner_id);
         account=bootstrap.account;
