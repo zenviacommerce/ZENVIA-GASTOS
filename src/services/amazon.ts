@@ -17,7 +17,7 @@ export type AmazonCompleteness={
 };
 export type AmazonSummary=AmazonCompleteness&{netSales:number;orders:number;units:number;amazonFees:number;refunds:number;productCost:number;profitBeforeAds:number|null;marginPct:number|null};
 export type AmazonSeriesPoint={period:string;netSales:number;profitBeforeAds:number|null;orders:number;units:number;profitComplete:boolean};
-export type AmazonProductAnalytics={sellerSku:string;asin:string|null;productId:string|null;productName:string|null;units:number;netSales:number;amazonFees:number;refunds:number;productCost:number;profitBeforeAds:number;marginPct:number|null;profitComplete:boolean};
+export type AmazonProductAnalytics={sellerSku:string;asin:string|null;productId:string|null;productName:string|null;consumptionFactor:number;units:number;netSales:number;amazonFees:number;refunds:number;productCost:number;profitBeforeAds:number;marginPct:number|null;profitComplete:boolean};
 export type AmazonMarketplaceAnalytics={marketplaceId:string;countryCode:string;name:string;orders:number;units:number;netSales:number;amazonFees:number;refunds:number;productCost:number;profitBeforeAds:number;marginPct:number|null;profitComplete:boolean};
 export type AmazonOrderAnalytics={amazonOrderId:string;purchaseDate:string;marketplaceId:string;status:string|null;units:number;netSales:number;amazonFees:number;refunds:number;productCost:number;profitBeforeAds:number;profitComplete:boolean};
 export type AmazonInventoryAnalytics={sellerSku:string;asin:string|null;marketplaceId:string;fulfillable:number;reserved:number;inbound:number;unfulfillable:number;researching:number;total:number;lastSync:string};
