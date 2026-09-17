@@ -67,6 +67,14 @@ test('job claimer prioritizes current hourly/manual work ahead of historical bac
   assert.match(migrations,/for\s+update\s+skip\s+locked/i);
 });
 
+test('job claimer coalesces stale current batches and keeps the newest current batch first',async()=>{
+  const migrations=await migrationsSource();
+  assert.match(migrations,/newer\.created_at\s*>\s*stale\.created_at/i);
+  assert.match(migrations,/jsonb_build_object\(\s*'superseded'\s*,\s*true/i);
+  assert.match(migrations,/set\s+status\s*=\s*'success'[\s\S]*rows_processed\s*=\s*0/i);
+  assert.match(migrations,/when\s+coalesce\(j\.payload\s*->>\s*'mode'[^)]*\)\s+in\s*\('hourly','manual'\)\s+then\s+j\.created_at/i);
+});
+
 test('manual sync authenticates a real user and requires admin role',async()=>{
   const manual=await source('supabase/functions/amazon-sync-manual/index.ts');
   const backend=await source('supabase/functions/_shared/amazon/supabase.ts');
