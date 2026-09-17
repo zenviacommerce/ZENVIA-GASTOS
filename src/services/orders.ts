@@ -22,6 +22,13 @@ export interface SendcloudIntegration {
   id:number; shopName:string; type:string; shopUrl?:string|null; channel:OrderChannel; isApi?:boolean;
 }
 export interface SendcloudStatus { configured:boolean; integrations:SendcloudIntegration[]; message?:string; }
+export interface OrderAddressValidation {
+  ok:boolean;
+  inputAddressIsValid:boolean|null;
+  recommendedAddress:Record<string,unknown>|null;
+  reasons:string[];
+  invalidAttributes:string[];
+}
 export interface ShippingOption {
   code:string; name:string; carrierCode:string; carrierName:string; contractId:number|null;
   price:number|null; currency:string|null; billedWeightKg?:number|null; raw:Record<string,unknown>;
@@ -115,6 +122,7 @@ export async function getShippingOptions(orderId:string){
   return {weightKg:result.weightKg,options:result.options||[],message:result.message||null};
 }
 export function updateFulfillmentOrder(orderId:string,order:OrderUpdateInput){return invokeOrderTools<{ok:true;weightKg:number}>({action:'update_order',orderId,order});}
+export function validateOrderAddress(orderId:string,carrierCode='mrw'){return invokeOrderTools<OrderAddressValidation>({action:'validate_address',orderId,carrierCode});}
 export async function createOrderLabel(orderId:string,option?:ShippingOption|null){
   const result=await invokeSendcloud<LabelResult>({action:'create_label',orderId,shippingOption:option?{code:option.code,contractId:option.contractId,carrierName:option.carrierName,name:option.name,price:option.price,currency:option.currency}:null});
   try{await invokeAmazonTracking({action:'confirm_order_tracking',orderId})}catch{/* Amazon tracking is retried on the next Sendcloud sync. */}
