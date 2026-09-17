@@ -7,13 +7,14 @@ export function AmazonCompleteness({data}:{data:AmazonCompleteness}){
   if(data.unmappedSkuCount)issues.push(`${data.unmappedSkuCount} SKU sin vincular (${data.unmappedUnits} uds.)`);
   if(data.missingHistoricalCostCount)issues.push(`${data.missingHistoricalCostCount} SKU sin coste histórico (${data.missingHistoricalCostUnits} uds.)`);
   if(data.missingFxEventCount)issues.push(`${data.missingFxEventCount} movimientos sin FX`);
-  if(data.missingVatOrderCount)issues.push(`${data.missingVatOrderCount} pedidos sin IVA`);
+  if(data.missingVatOrderCount)issues.push(`${data.missingVatOrderCount} pedidos con IVA sin confirmar`);
   if(data.missingFbmShippingCostCount)issues.push(`${data.missingFbmShippingCostCount} pedidos FBM sin coste de envío`);
   if(data.syncFailed)issues.push(`${data.syncFailed} trabajos con error`);
   return <div className={`amazonQualityBanner ${data.profitComplete?'isComplete':''}`}>
     <div className="amazonQualityIcon">{data.profitComplete?<Info size={18}/>:<AlertTriangle size={18}/>}</div>
-    <div><strong>{syncing?'Sincronización histórica en curso':data.profitComplete?'Datos completos para el periodo':'Beneficio incompleto'}</strong>
+    <div><strong>{syncing?'Sincronización histórica en curso':data.profitComplete?'Datos completos para el periodo':'Beneficio provisional'}</strong>
       {issues.length>0&&<p>{issues.join(' · ')}</p>}
+      {data.missingVatOrderCount>0&&<p>Los pedidos Amazon Business sin IVA se tratan correctamente como IVA 0; este aviso solo cuenta pedidos cuyo tratamiento fiscal aún no está confirmado.</p>}
       {syncing&&<p>{data.syncRunning} en curso · {data.syncQueued} en cola. Los importes conocidos se muestran, pero el periodo no se considera cerrado.</p>}
       {data.adsExcluded&&<p>Ads no incluido: el KPI es Beneficio antes de Ads hasta completar la integración publicitaria.</p>}
     </div>

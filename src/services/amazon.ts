@@ -16,7 +16,7 @@ export type AmazonCompleteness={
   missingFxEventCount:number;missingVatOrderCount:number;missingFbmShippingCostCount:number;syncQueued:number;syncRunning:number;syncFailed:number;adsExcluded:boolean;
 };
 export type AmazonSummary=AmazonCompleteness&{
-  grossSales:number;salesVat:number;netSales:number;orders:number;units:number;
+  grossSales:number;salesVat:number;netSales:number;orders:number;businessOrders:number;units:number;
   amazonFees:number;amazonFeeVat:number;refunds:number;adsCost:number;amazonAdjustments:number;
   productCost:number;fbmShippingCost:number;netProfit:number|null;marginPct:number|null;
 };
@@ -24,7 +24,14 @@ export type AmazonSeriesPoint={
   period:string;grossSales:number;salesVat:number;netSales:number;amazonFees:number;refunds:number;adsCost:number;
   productCost:number;fbmShippingCost:number;netProfit:number|null;orders:number;units:number;profitComplete:boolean;
 };
-export type AmazonProductAnalytics={sellerSku:string;asin:string|null;productId:string|null;productName:string|null;consumptionFactor:number;units:number;netSales:number;amazonFees:number;refunds:number;productCost:number;profitBeforeAds:number;marginPct:number|null;profitComplete:boolean};
+export type AmazonProductSort='product_name'|'orders'|'units'|'gross_sales'|'net_sales'|'product_cost'|'amazon_fees'|'refunds'|'profit_before_ads'|'margin_pct';
+export type AmazonSortDirection='asc'|'desc';
+export type AmazonProductAnalytics={
+  sellerSku:string;asin:string|null;productId:string|null;productName:string|null;consumptionFactor:number;
+  orders:number;businessOrders:number;units:number;grossSales:number;salesVat:number;netSales:number;
+  amazonFees:number;amazonFeeVat:number;refunds:number;amazonAdjustments:number;productCost:number;
+  profitBeforeAds:number;marginPct:number|null;missingVatOrders:number;profitComplete:boolean;
+};
 export type AmazonMarketplaceAnalytics={marketplaceId:string;countryCode:string;name:string;orders:number;units:number;netSales:number;amazonFees:number;refunds:number;productCost:number;profitBeforeAds:number;marginPct:number|null;profitComplete:boolean};
 export type AmazonOrderAnalytics={amazonOrderId:string;purchaseDate:string;marketplaceId:string;status:string|null;units:number;netSales:number;amazonFees:number;refunds:number;productCost:number;profitBeforeAds:number;profitComplete:boolean};
 export type AmazonInventoryAnalytics={sellerSku:string;asin:string|null;marketplaceId:string;fulfillable:number;reserved:number;inbound:number;unfulfillable:number;researching:number;total:number;lastSync:string};
@@ -55,7 +62,7 @@ export async function loadAmazonStatus():Promise<AmazonStatus>{const {data,error
 export async function requestAmazonSync(){const {data,error}=await supabase.functions.invoke('amazon-sync-manual',{body:{}});if(error||!data||data.error)throw new Error(message(data,error,'No se pudo iniciar la sincronización de Amazon.'));return data as {ok:true;accounts:number;jobs:number};}
 export function loadAmazonSummary(filters:AmazonAnalyticsFilters){return rpc<AmazonSummary>('amazon_analytics_summary',rpcParams(filters),'No se pudo cargar el resumen de Amazon.');}
 export function loadAmazonSeries(filters:AmazonAnalyticsFilters,grain:'day'|'month'='day'){return rpc<AmazonSeriesPoint[]>('amazon_analytics_series',{...rpcParams(filters),grain},'No se pudo cargar la evolución de Amazon.');}
-export function loadAmazonProducts(filters:AmazonAnalyticsFilters,search='',page=1,pageSize=25){return rpc<AmazonPageResult<AmazonProductAnalytics>>('amazon_analytics_products',{...rpcParams(filters),search:search||null,page,page_size:pageSize},'No se pudieron cargar los productos de Amazon.');}
+export function loadAmazonProducts(filters:AmazonAnalyticsFilters,search='',page=1,pageSize=50,sortBy:AmazonProductSort='profit_before_ads',sortDir:AmazonSortDirection='desc'){return rpc<AmazonPageResult<AmazonProductAnalytics>>('amazon_analytics_products',{...rpcParams(filters),search:search||null,page,page_size:pageSize,sort_by:sortBy,sort_dir:sortDir},'No se pudieron cargar los productos de Amazon.');}
 export function loadAmazonMarketplaces(filters:AmazonAnalyticsFilters){return rpc<{items:AmazonMarketplaceAnalytics[]}>('amazon_analytics_marketplaces',rpcParams(filters),'No se pudieron cargar los marketplaces de Amazon.');}
 export function loadAmazonOrders(filters:AmazonAnalyticsFilters,search='',page=1,pageSize=25){return rpc<AmazonPageResult<AmazonOrderAnalytics>>('amazon_analytics_orders',{...rpcParams(filters),search:search||null,page,page_size:pageSize},'No se pudieron cargar los pedidos de Amazon.');}
 export function loadAmazonInventory(filters:Pick<AmazonAnalyticsFilters,'marketplaceIds'>,search='',page=1,pageSize=25){return rpc<AmazonPageResult<AmazonInventoryAnalytics>>('amazon_analytics_inventory',{marketplace_ids:filters.marketplaceIds.length?filters.marketplaceIds:null,search:search||null,page,page_size:pageSize},'No se pudo cargar el inventario de Amazon.');}

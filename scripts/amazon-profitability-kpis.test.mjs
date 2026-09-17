@@ -34,3 +34,14 @@ test('Amazon series trends net profit rather than pre-Ads profit',async()=>{
   assert.match(summary,/dataKey="netProfit"/);
   assert.doesNotMatch(summary,/dataKey="profitBeforeAds"/);
 });
+
+
+test('Amazon Business orders treat missing tax as explicit zero while unknown B2C VAT stays provisional',async()=>{
+  const migration=await source('supabase/migrations/20260918005500_amazon_business_orders_and_product_profitability.sql');
+  assert.match(migration,/is_business_order/);
+  assert.match(migration,/case when coalesce\(o\.is_business_order,false\) then 0::numeric end/i);
+  assert.match(migration,/missing_vat_orders/);
+  assert.match(migration,/businessOrders/);
+  assert.match(migration,/sort_by/);
+  assert.match(migration,/profit_before_ads/);
+});
