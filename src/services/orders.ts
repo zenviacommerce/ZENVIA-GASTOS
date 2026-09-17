@@ -92,6 +92,7 @@ async function invokeFunction<T>(functionName:string,body:Record<string,unknown>
 }
 function invokeSendcloud<T>(body:Record<string,unknown>){return invokeFunction<T>('sendcloud-orders',body);}
 function invokeOrderTools<T>(body:Record<string,unknown>){return invokeFunction<T>('sendcloud-order-tools',body);}
+function invokeAmazonTracking<T>(body:Record<string,unknown>){return invokeFunction<T>('amazon-confirm-shipment',body);}
 
 export async function listFulfillmentOrders():Promise<FulfillmentOrder[]>{
   const {data,error}=await supabase.from('fulfillment_orders').select('*').order('order_created_at',{ascending:false,nullsFirst:false}).limit(10000);
@@ -99,14 +100,22 @@ export async function listFulfillmentOrders():Promise<FulfillmentOrder[]>{
   return (data||[]).map(mapRow);
 }
 export function getSendcloudStatus(){return invokeSendcloud<SendcloudStatus>({action:'status'});}
-export function syncSendcloudOrders(history=false){return invokeSendcloud<{ok:true;synced:number;enriched?:number;history?:boolean;integrations:SendcloudIntegration[]}>({action:'sync',history});}
+export async function syncSendcloudOrders(history=false){
+  const result=await invokeSendcloud<{ok:true;synced:number;enriched?:number;history?:boolean;integrations:SendcloudIntegration[]}>({action:'sync',history});
+  try{await invokeAmazonTracking({action:'retry_pending',limit:10})}catch{/* Amazon tracking is retried on the next Sendcloud sync. */}
+  return result;
+}
 export function createManualOrder(order:ManualOrderInput){return invokeSendcloud<{ok:true;id:string;sendcloudId:string;orderNumber:string}>({action:'create_manual_order',order});}
 export async function getShippingOptions(orderId:string){
   const result=await invokeOrderTools<{weightKg:number;options:ShippingOption[];message?:string|null}>({action:'shipping_options',orderId});
   return {weightKg:result.weightKg,options:result.options||[],message:result.message||null};
 }
 export function updateFulfillmentOrder(orderId:string,order:OrderUpdateInput){return invokeOrderTools<{ok:true;weightKg:number}>({action:'update_order',orderId,order});}
-export function createOrderLabel(orderId:string,option?:ShippingOption|null){return invokeSendcloud<LabelResult>({action:'create_label',orderId,shippingOption:option?{code:option.code,contractId:option.contractId,carrierName:option.carrierName,name:option.name}:null});}
+export async function createOrderLabel(orderId:string,option?:ShippingOption|null){
+  const result=await invokeSendcloud<LabelResult>({action:'create_label',orderId,shippingOption:option?{code:option.code,contractId:option.contractId,carrierName:option.carrierName,name:option.name}:null});
+  try{await invokeAmazonTracking({action:'confirm_order_tracking',orderId})}catch{/* Amazon tracking is retried on the next Sendcloud sync. */}
+  return result;
+}
 export function fetchOrderLabel(orderId:string){return invokeSendcloud<LabelResult>({action:'fetch_label',orderId});}
 
 export function shouldRunHistorySync(){
