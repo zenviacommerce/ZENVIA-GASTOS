@@ -73,6 +73,30 @@ function normalizeOption(option:any){
 async function senderAddress(){
   try{const {data}=await sendcloudJson('/addresses/sender-addresses');return Array.isArray(data?.data)?data.data[0]||null:null}catch{return null}
 }
+function validationAddress(address:any){
+  const result:any={
+    address_line_1:clean(address?.address_line_1)||undefined,
+    house_number:clean(address?.house_number)||undefined,
+    address_line_2:clean(address?.address_line_2)||undefined,
+    postal_code:clean(address?.postal_code)||undefined,
+    city:clean(address?.city)||undefined,
+    country_code:clean(address?.country_code).toUpperCase()||undefined,
+  };
+  const state=normalizeStateProvince(address?.country_code,address?.state_province_code);if(state)result.state_province_code=state;
+  return result;
+}
+function normalizeValidation(data:any,carrierCode:string){
+  const payload=data?.data||data||{};
+  const results=Array.isArray(payload?.results)?payload.results:[];
+  const recommended=results.find((item:any)=>item?.recommended)||results[0]||null;
+  const validation_result=recommended?.analysis?.validation_result||recommended?.analysis||payload?.validation_result||{};
+  const reasons=Array.isArray(validation_result?.reasons)?validation_result.reasons.map((item:any)=>clean(item?.message||item?.reason||item)).filter(Boolean):[];
+  const changed=Array.isArray(validation_result?.changed_attributes)?validation_result.changed_attributes.map(clean).filter(Boolean):[];
+  const invalid=Array.isArray(validation_result?.invalid_attributes)?validation_result.invalid_attributes.map(clean).filter(Boolean):[];
+  const input=payload?.input_address_is_valid;
+  const valid=typeof validation_result?.is_valid==='boolean'?validation_result.is_valid:typeof input==='boolean'?input:null;
+  return {carrierCode,inputAddressIsValid:typeof input==='boolean'?input:valid,isValid:valid,reasons,changedAttributes:changed,invalidAttributes:invalid,recommendedAddress:recommended?.address||null,validation_result:{is_valid:valid,reasons,changed_attributes:changed,invalid_attributes:invalid}};
+}
 
 Deno.serve(async(req:Request)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders});if(req.method!=='POST')return fail('Método no permitido.',405);
@@ -83,6 +107,14 @@ Deno.serve(async(req:Request)=>{
     if(!credentials().configured)return fail('Sendcloud todavía no está conectado.',503);
     const orderId=clean(body?.orderId);if(!orderId)return fail('Falta el pedido.');
     const {data:order,error}=await admin.from('fulfillment_orders').select('*').eq('id',orderId).eq('owner_id',caller.data_owner_id).maybeSingle();if(error)throw error;if(!order)return fail('Pedido no encontrado.',404);
+
+    if(action==='validate_order'){
+      if(!canEdit(order.source_status)||order.sendcloud_parcel_id)return fail('Este pedido ya no admite validación previa de etiqueta.',409);
+      const address=order.shipping_address||{};
+      const carrierCode=clean(body?.carrierCode)||(isBalearicAddress(address)?'correos':'mrw');
+      const {data}=await sendcloudJson('/addresses/validate',{method:'POST',body:JSON.stringify({address:validationAddress(address),carrier_code:carrierCode})});
+      return response({ok:true,...normalizeValidation(data,carrierCode)});
+    }
 
     if(action==='shipping_options'){
       if(!canEdit(order.source_status)||order.sendcloud_parcel_id)return fail('Este pedido ya no admite una nueva etiqueta.',409);
