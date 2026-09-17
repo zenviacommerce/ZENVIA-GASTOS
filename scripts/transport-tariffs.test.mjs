@@ -64,19 +64,20 @@ test('Orders exposes transport tariff configuration',async()=>{
 });
 
 
-test('active tariff can be corrected in place and fuel can vary by period',async()=>{
+test('active tariff keeps one visible document while any field can change by effective date',async()=>{
   const service=await source('src/services/transportTariffs.ts');
   const panel=await source('src/components/TransportTariffsPanel.tsx');
   const shipping=await source('src/services/orderShipping.ts');
-  const migration=await source('supabase/migrations/20260918022000_editable_active_tariff_and_fuel_periods.sql');
+  const migration=await source('supabase/migrations/20260918024000_general_transport_tariff_effective_revisions.sql');
 
-  assert.match(service,/\['draft','active'\]\.includes\(document\.status\)/,'active tariff must be editable');
-  assert.match(service,/transport_tariff_replace_fuel_periods/,'fuel periods must be persisted');
-  assert.match(service,/transport_tariff_reprice_estimates/,'estimated shipping costs must be recalculated after an active correction');
-  assert.match(panel,/Combustible por periodos/i);
-  assert.match(panel,/Tarifa activa · editable directamente/i);
-  assert.doesNotMatch(panel,/Editar desde esta fecha|createTransportTariffVersion/,'editing an active tariff must not require cloning it');
-  assert.match(shipping,/fuelPeriods/,'shipping estimate must pick the fuel period valid for the order date');
-  assert.match(migration,/transport_tariff_fuel_periods/);
-  assert.match(migration,/drop function if exists public\.transport_tariff_clone_version/i);
+  assert.match(service,/saveActiveTransportTariff/,'active tariff changes need a dedicated dated save');
+  assert.match(service,/transport_tariff_save_active/,'active changes must persist through the effective-date RPC');
+  assert.match(service,/transport_tariff_reprice_estimates/,'estimated shipping costs must be recalculated after an active change');
+  assert.match(panel,/Aplicar cambios desde/i);
+  assert.match(panel,/Todos los campos que cambies se aplicarán desde la fecha indicada/i);
+  assert.doesNotMatch(panel,/Combustible por periodos|createTransportTariffVersion/,'effective dating must be generic, not fuel-specific or a visible clone');
+  assert.match(shipping,/document\.revisions/,'shipping estimate must resolve the full tariff revision valid for the order date');
+  assert.match(migration,/transport_tariff_revisions/);
+  assert.match(migration,/snapshot jsonb/i);
+  assert.match(migration,/drop table if exists public\.transport_tariff_fuel_periods/i);
 });
