@@ -3,6 +3,7 @@ import { sanitizeAmazonError } from './http.ts';
 export const INITIAL_SYNC_FROM='2026-01-01T00:00:00Z';
 export const BACKFILL_WINDOW_DAYS=7;
 export const OVERLAP_HOURS=6;
+export const CURRENT_SYNC_MAX_LOOKBACK_HOURS=7*24;
 
 type Mode='initial'|'hourly'|'manual'|'reconcile';
 type Source='orders'|'finances'|'inventory';
@@ -61,7 +62,10 @@ export async function enqueueHourlySync(admin:any,account:Account,marketplaces:M
     for(const source of ['orders','finances'] as const){
       const state:any=stateMap.get(`${source}:${marketplaceId}`);
       const baseline=state?.high_water_mark?new Date(state.high_water_mark):minusHours(now,OVERLAP_HOURS);
-      const from=iso(minusHours(baseline,OVERLAP_HOURS)),to=iso(now);
+      const overlapStart=minusHours(baseline,OVERLAP_HOURS);
+      const freshnessFloor=minusHours(now,CURRENT_SYNC_MAX_LOOKBACK_HOURS);
+      const boundedStart=overlapStart<freshnessFloor?freshnessFloor:overlapStart;
+      const from=iso(boundedStart),to=iso(now);
       rows.push({owner_id:account.owner_id,amazon_account_id:account.id,job_key:jobKey(source,marketplaceId,from,to,mode),source,marketplace_id:marketplaceId,scope_key:marketplaceId,window_from:from,window_to:to,status:'queued',attempts:0,max_attempts:5,available_at:new Date().toISOString(),payload:{mode,high_water_mark:state?.high_water_mark||null}});
     }
     rows.push({owner_id:account.owner_id,amazon_account_id:account.id,job_key:jobKey('inventory',marketplaceId,null,hourKey(now),mode),source:'inventory',marketplace_id:marketplaceId,scope_key:marketplaceId,status:'queued',attempts:0,max_attempts:5,available_at:new Date().toISOString(),payload:{mode,snapshot:'current'}});
