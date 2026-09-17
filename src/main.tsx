@@ -32,6 +32,7 @@ import './orders-tracking-filter.css';
 import './orders-label-default.css';
 import './dashboard-summary.css';
 import './amazon.css';
+import './amazon-mapping.css';
 import './interface-normalization.css';
 import './modern-forms.css';
 import './destructive-actions.css';
