@@ -30,6 +30,12 @@ export interface TransportTariffServiceDraft{
   sortOrder?:number;
   bands:TransportTariffBandDraft[];
 }
+export interface TransportTariffFuelPeriod{
+  id?:string;
+  effectiveFrom:string;
+  effectiveTo:string|null;
+  fuelSurchargePct:number;
+}
 export interface TransportTariffProposal{
   carrierCode:string;
   carrierName:string;
@@ -54,6 +60,7 @@ export interface TransportTariffDocument extends TransportTariffProposal{
   createdAt:string;
   reviewedAt:string|null;
   activatedAt:string|null;
+  fuelPeriods:TransportTariffFuelPeriod[];
 }
 
 const BUCKET='transport-tariffs';
@@ -189,8 +196,9 @@ export async function parseTransportTariffDocument(file:File):Promise<TransportT
 }
 
 function mapDocument(row:any):TransportTariffDocument{
+  const fuelPeriods=(row.transport_tariff_fuel_periods||[]).sort((a:any,b:any)=>String(a.effective_from||'').localeCompare(String(b.effective_from||''))).map((item:any)=>({id:item.id,effectiveFrom:item.effective_from,effectiveTo:item.effective_to||null,fuelSurchargePct:Number(item.fuel_surcharge_pct)}));
   const services=(row.transport_tariff_services||[]).sort((a:any,b:any)=>(a.sort_order||0)-(b.sort_order||0)).map((service:any)=>({id:service.id,serviceName:service.service_name,canonicalServiceKey:service.canonical_service_key,externalProvider:service.external_provider||'',externalServiceCode:service.external_service_code||'',mappingStatus:service.mapping_status,sortOrder:service.sort_order,bands:(service.transport_tariff_bands||[]).sort((a:any,b:any)=>(a.sort_order||0)-(b.sort_order||0)).map((band:any)=>({id:band.id,countryCode:band.country_code,zoneCode:band.zone_code,zoneName:band.zone_name,minWeightKg:Number(band.min_weight_kg),maxWeightKg:band.max_weight_kg==null?null:Number(band.max_weight_kg),basePrice:band.base_price==null?null:Number(band.base_price),extraKgPrice:band.extra_kg_price==null?null:Number(band.extra_kg_price),notes:band.notes||null,sortOrder:band.sort_order}))}));
-  return {id:row.id,status:row.status,carrierCode:row.carrier_code,carrierName:row.carrier_name,effectiveFrom:row.effective_from||null,effectiveTo:row.effective_to||null,currencyCode:row.currency_code,pricesIncludeVat:Boolean(row.prices_include_vat),fuelSurchargePct:row.fuel_surcharge_pct==null?null:Number(row.fuel_surcharge_pct),fuelSurchargeIncluded:Boolean(row.fuel_surcharge_included),parserProvider:row.parser_provider||'unknown',parserModel:row.parser_model||null,parserConfidence:Number(row.parser_confidence||0),parserNotes:Array.isArray(row.parser_notes?.notes)?row.parser_notes.notes:[],services,sourceFileName:row.source_file_name||null,sourceFilePath:row.source_file_path||null,sourceMimeType:row.source_mime_type||null,createdAt:row.created_at,reviewedAt:row.reviewed_at||null,activatedAt:row.activated_at||null};
+  return {id:row.id,status:row.status,carrierCode:row.carrier_code,carrierName:row.carrier_name,effectiveFrom:row.effective_from||null,effectiveTo:row.effective_to||null,currencyCode:row.currency_code,pricesIncludeVat:Boolean(row.prices_include_vat),fuelSurchargePct:row.fuel_surcharge_pct==null?null:Number(row.fuel_surcharge_pct),fuelSurchargeIncluded:Boolean(row.fuel_surcharge_included),parserProvider:row.parser_provider||'unknown',parserModel:row.parser_model||null,parserConfidence:Number(row.parser_confidence||0),parserNotes:Array.isArray(row.parser_notes?.notes)?row.parser_notes.notes:[],services,fuelPeriods,sourceFileName:row.source_file_name||null,sourceFilePath:row.source_file_path||null,sourceMimeType:row.source_mime_type||null,createdAt:row.created_at,reviewedAt:row.reviewed_at||null,activatedAt:row.activated_at||null};
 }
 
 async function insertServices(documentId:string,ownerId:string,carrierCode:string,services:TransportTariffServiceDraft[]){
@@ -217,18 +225,20 @@ export async function createTransportTariffDraft(file:File,proposal:TransportTar
 }
 
 export async function listTransportTariffs():Promise<TransportTariffDocument[]>{
-  const {data,error}=await supabase.from('transport_tariff_documents').select('*,transport_tariff_services(*,transport_tariff_bands(*))').order('created_at',{ascending:false});if(error)throw error;return (data||[]).map(mapDocument);
+  const {data,error}=await supabase.from('transport_tariff_documents').select('*,transport_tariff_fuel_periods(*),transport_tariff_services(*,transport_tariff_bands(*))').order('created_at',{ascending:false});if(error)throw error;return (data||[]).map(mapDocument);
 }
 
 export async function saveTransportTariffReview(document:TransportTariffDocument){
-  if(document.status!=='draft')throw new Error('Solo se pueden modificar tarifas en borrador.');
+  if(!['draft','active'].includes(document.status))throw new Error('Solo se pueden modificar tarifas en borrador o activas.');
   const {data:ownerRow,error:ownerError}=await supabase.from('transport_tariff_documents').select('owner_id').eq('id',document.id).single();if(ownerError)throw ownerError;
   const {error}=await supabase.from('transport_tariff_documents').update({carrier_code:document.carrierCode,carrier_name:document.carrierName,effective_from:document.effectiveFrom,effective_to:document.effectiveTo,currency_code:document.currencyCode,prices_include_vat:document.pricesIncludeVat,fuel_surcharge_pct:document.fuelSurchargePct,fuel_surcharge_included:document.fuelSurchargeIncluded,updated_at:new Date().toISOString()}).eq('id',document.id);if(error)throw error;
   const {error:deleteError}=await supabase.from('transport_tariff_services').delete().eq('document_id',document.id);if(deleteError)throw deleteError;
   await insertServices(document.id,ownerRow.owner_id,document.carrierCode,document.services);
+  const {error:fuelError}=await supabase.rpc('transport_tariff_replace_fuel_periods',{document_id:document.id,periods:document.fuelPeriods.map(item=>({effectiveFrom:item.effectiveFrom,effectiveTo:item.effectiveTo,fuelSurchargePct:item.fuelSurchargePct}))});if(fuelError)throw fuelError;
+  if(document.status==='active'){
+    const {error:repriceError}=await supabase.rpc('transport_tariff_reprice_estimates',{document_id:document.id});if(repriceError)throw repriceError;
+  }
 }
-
-export async function createTransportTariffVersion(documentId:string,effectiveFrom:string){const {data,error}=await supabase.rpc('transport_tariff_clone_version',{document_id:documentId,new_effective_from:effectiveFrom});if(error)throw error;return String(data)}
 export async function markTransportTariffReviewed(documentId:string){const {data,error}=await supabase.rpc('transport_tariff_mark_reviewed',{document_id:documentId});if(error)throw error;return data}
 export async function activateTransportTariff(documentId:string){const {data,error}=await supabase.rpc('transport_tariff_activate',{document_id:documentId});if(error)throw error;return data}
 export async function deleteTransportTariffDraft(document:TransportTariffDocument){if(!['draft','reviewed'].includes(document.status))throw new Error('Una tarifa activa no se puede eliminar.');const {error}=await supabase.from('transport_tariff_documents').delete().eq('id',document.id);if(error)throw error;if(document.sourceFilePath)await supabase.storage.from(BUCKET).remove([document.sourceFilePath]).catch(()=>undefined)}
