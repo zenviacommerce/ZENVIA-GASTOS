@@ -25,10 +25,5 @@ export function isLabelledOrder(order:FulfillmentOrder){
 }
 
 export function isPendingOrder(order:FulfillmentOrder){
-  const status=orderStatusCode(order);
-  if(order.sourceChannel==='amazon'){
-    if(status==='pending'||status==='pending_availability')return false;
-    if(status==='unshipped')return !order.sendcloudParcelId&&!isCancelledOrder(order)&&!isProcessedOrder(order);
-  }
   return !order.sendcloudParcelId&&!isCancelledOrder(order)&&!isProcessedOrder(order);
 }
