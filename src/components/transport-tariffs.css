@@ -10,3 +10,12 @@
 .transportActiveVersioning label input{width:100%;box-sizing:border-box;min-height:38px}
 .transportActiveVersioning>small{grid-column:1/-1;color:var(--muted);line-height:1.4}
 @media(max-width:760px){.transportActiveVersioning{grid-template-columns:1fr;width:100%}.transportActiveVersioning>small{grid-column:auto}.transportActiveVersioning .transportActiveNote{justify-self:start}}
+
+.transportFuelSection{margin:0 0 22px;padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--surface-soft,#f8fafc)}
+.transportFuelPeriods{display:grid;gap:6px}
+.transportFuelHeader,.transportFuelRow{display:grid;grid-template-columns:minmax(145px,1fr) minmax(145px,1fr) minmax(120px,.7fr) 38px;gap:8px;align-items:center}
+.transportFuelHeader{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:0 2px 4px}
+.transportFuelRow input{width:100%;box-sizing:border-box}
+.transportFuelEmpty{padding:12px;border:1px dashed var(--border);border-radius:10px;color:var(--muted);font-size:12px}
+.transportActiveEditHint{display:block;margin-top:10px;color:var(--muted);line-height:1.45}
+@media(max-width:760px){.transportFuelHeader{display:none}.transportFuelRow{grid-template-columns:1fr 1fr}.transportFuelRow .dangerIcon{justify-self:end}.transportFuelRow input:nth-child(3){grid-column:1/2}}
