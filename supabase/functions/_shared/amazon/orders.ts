@@ -7,6 +7,7 @@ type Money={amount?:string|number|null;currencyCode?:string|null}|null|undefined
 function money(value:Money){const n=Number(value?.amount);return Number.isFinite(n)?n:null;}
 function currency(value:Money){return value?.currencyCode?String(value.currencyCode):null;}
 function minIso(value:string|undefined|null,limit:Date){if(!value)return limit.toISOString();const date=new Date(value);return (date<limit?date:limit).toISOString();}
+function programs(order:any){return (Array.isArray(order?.programs)?order.programs:[]).map((value:any)=>String(value||'').trim().toUpperCase()).filter(Boolean);}
 
 function proceedsBreakdown(proceeds:any,matcher:(type:string)=>boolean){
   const item=(proceeds?.breakdowns||[]).find((entry:any)=>matcher(String(entry?.type||'').toUpperCase()));
@@ -22,6 +23,7 @@ export function normalizeAmazonOrder(order:any,job:any){
   const tax=taxMoney(order?.proceeds);
   const shipping=shippingMoney(order?.proceeds);
   const discount=discountMoney(order?.proceeds);
+  const orderPrograms=programs(order);
   return {
     owner_id:job.owner_id,
     amazon_account_id:job.amazon_account_id,
@@ -38,6 +40,8 @@ export function normalizeAmazonOrder(order:any,job:any){
     shipping_amount:money(shipping),
     promotion_discount:money(discount),
     order_total:money(grandTotal),
+    programs:orderPrograms,
+    is_business_order:orderPrograms.includes('AMAZON_BUSINESS'),
     synced_at:new Date().toISOString(),
     updated_at:new Date().toISOString(),
   };
