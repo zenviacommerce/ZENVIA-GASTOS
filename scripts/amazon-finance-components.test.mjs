@@ -17,6 +17,17 @@ test('Finance component normalizer classifies fee/refund leaves without additive
   assert.match(parser,/Refunded Sales/i);
 });
 
+test('Finance component normalizer falls back to persisted economic category when a non-zero transaction has no classified leaf', async()=>{
+  const parser = await source('supabase/functions/_shared/amazon/finance-components.ts');
+  const finances = await source('supabase/functions/_shared/amazon/finances.ts');
+  const backfill = await source('supabase/functions/amazon-backfill-finance-components/index.ts');
+  assert.match(parser,/persistedCategory|persisted_category|fallback/i);
+  for (const token of ['referral_fee','other_fee','sale','tax','adjustment']) assert.match(parser,new RegExp(token));
+  assert.match(parser,/amount_original/);
+  assert.match(finances,/category/);
+  assert.match(backfill,/category/);
+});
+
 test('Finances sync persists normalized components after transaction upsert', async()=>{
   const finances = await source('supabase/functions/_shared/amazon/finances.ts');
   assert.match(finances,/normalizeFinanceComponents/);
