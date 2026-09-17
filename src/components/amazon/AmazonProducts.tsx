@@ -11,7 +11,7 @@ type SortableHeader={key:AmazonProductSort;label:string};
 const sortableHeaders:SortableHeader[]=[
   {key:'product_name',label:'Producto'},
   {key:'orders',label:'Pedidos'},
-  {key:'units',label:'Uds.'},
+  {key:'units',label:'Unidades'},
   {key:'gross_sales',label:'Ventas'},
   {key:'net_sales',label:'Venta neta'},
   {key:'product_cost',label:'Coste producto'},
