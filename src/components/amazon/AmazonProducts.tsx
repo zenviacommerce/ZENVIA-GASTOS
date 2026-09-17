@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, Link2, Search } from 'lucide-react';
-import { loadAmazonProducts, type AmazonAnalyticsFilters, type AmazonPageResult, type AmazonProductAnalytics, type AmazonProductSort, type AmazonSortDirection } from '../../services/amazon';
+import { ArrowDown, ArrowUp, ArrowUpDown, ImageOff, Link2, Search } from 'lucide-react';
+import { loadAmazonProductImages, loadAmazonProducts, type AmazonAnalyticsFilters, type AmazonPageResult, type AmazonProductAnalytics, type AmazonProductSort, type AmazonSortDirection } from '../../services/amazon';
 import { errorMessage } from '../../services/toast';
 import { AmazonMappingEditor } from './AmazonMappingEditor';
 
@@ -34,10 +34,12 @@ export function AmazonProducts({filters,embedded=false}:{filters:AmazonAnalytics
   const [error,setError]=useState('');
   const [sortBy,setSortBy]=useState<AmazonProductSort>('profit_before_ads');
   const [sortDir,setSortDir]=useState<AmazonSortDirection>('desc');
+  const [images,setImages]=useState<Record<string,string>>({});
   const pageSize=50;
 
   const refresh=()=>loadAmazonProducts(filters,search,page,pageSize,sortBy,sortDir).then(setData).catch(e=>setError(errorMessage(e,'No se pudieron cargar los productos.')));
   useEffect(()=>{void refresh();},[filters.from,filters.to,filters.marketplaceIds.join(','),search,page,sortBy,sortDir]);
+  useEffect(()=>{const asins=data.items.map(row=>row.asin).filter((value):value is string=>Boolean(value));if(!asins.length){setImages({});return}void loadAmazonProductImages(asins).then(setImages).catch(()=>setImages({}));},[data.items]);
   const editingRow=editing?data.items.find(row=>row.sellerSku===editing):undefined;
 
   const changeSort=(key:AmazonProductSort)=>{
@@ -74,7 +76,7 @@ export function AmazonProducts({filters,embedded=false}:{filters:AmazonAnalytics
         <tbody>
           {data.items.map(row=><tr key={`${row.sellerSku}-${row.asin}`}>
             <td className="amazonSkuCell"><strong>{row.sellerSku}</strong><small>{row.asin||'—'}</small>{row.businessOrders>0&&<span className="amazonB2bBadge">{row.businessOrders} B2B</span>}</td>
-            <td>{row.productName||<span className="amazonIncomplete">Sin vincular</span>}</td>
+            <td className="amazonProductNameCell"><div className="amazonProductIdentity">{row.asin&&images[row.asin]?<img className="amazonProductThumb" src={images[row.asin]} alt="" loading="lazy" referrerPolicy="no-referrer"/>:<span className="amazonProductThumb amazonProductThumbPlaceholder"><ImageOff size={18}/></span>}<div><strong>{row.productName||row.sellerSku}</strong>{!row.productName&&<small className="amazonIncomplete">Sin vincular</small>}</div></div></td>
             <td>{integer.format(row.orders)}</td>
             <td>{integer.format(row.units)}</td>
             <td>{money.format(row.grossSales)}</td>
