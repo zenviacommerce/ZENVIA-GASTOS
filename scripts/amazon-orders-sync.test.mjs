@@ -26,6 +26,9 @@ test('Orders sync upserts orders and line items with stable conflict keys',async
   assert.match(orders,/seller_sku/);
   assert.match(orders,/asin/);
   assert.match(orders,/quantity_ordered/);
+  assert.match(orders,/AMAZON_BUSINESS/);
+  assert.match(orders,/is_business_order/);
+  assert.match(orders,/programs/);
 });
 
 test('Orders normalization is defensive and persists no buyer PII',async()=>{
