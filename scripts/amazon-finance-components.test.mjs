@@ -28,6 +28,17 @@ test('Finance component normalizer falls back to persisted economic category whe
   assert.match(backfill,/category/);
 });
 
+test('Finance component normalizer excludes reserve cash movements and handles observed Amazon adjustment leaves explicitly', async()=>{
+  const parser = await source('supabase/functions/_shared/amazon/finance-components.ts');
+  for (const token of ['ReserveDebit','ReserveCredit','MicroDeposit','CLAWBACK','ReturnPostageBilling_Postage','ReturnPostageBilling_VAT']) {
+    assert.match(parser,new RegExp(token,'i'));
+  }
+  assert.match(parser,/reservedebit[^\n]*reservecredit[^\n]*microdeposit[^\n]*sale_audit/i);
+  assert.match(parser,/clawback[^\n]*adjustment/i);
+  assert.match(parser,/returnpostagebilling_postage[^\n]*other_amazon_fee/i);
+  assert.match(parser,/returnpostagebilling_vat[^\n]*tax_audit/i);
+});
+
 test('Finances sync persists normalized components after transaction upsert', async()=>{
   const finances = await source('supabase/functions/_shared/amazon/finances.ts');
   assert.match(finances,/normalizeFinanceComponents/);
