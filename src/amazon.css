@@ -3,3 +3,16 @@
 @media(max-width:1000px){.amazonKpiGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.amazonBreakdownGrid{grid-template-columns:1fr}.amazonMappingEditor{grid-template-columns:1fr 1fr}.amazonMappingActions{grid-column:1/-1}}
 @media(max-width:900px){.amazonPageHead{display:flex;flex-direction:column}.amazonExternalLinks{justify-content:flex-start;margin-top:15px}.amazonCompactStatus{align-items:flex-start;flex-direction:column}.amazonTableToolbar{align-items:flex-start;flex-direction:column}.amazonSearch{width:100%}.amazonSearch input{width:100%;min-width:0}}
 @media(max-width:520px){.amazonExternalLinks{display:grid;grid-template-columns:1fr 1fr;width:100%}.amazonExternalLink,.amazonSyncButton{padding-inline:10px}.amazonSyncButton{grid-column:1/-1}.amazonKpiGrid{grid-template-columns:1fr}.amazonChart{height:240px}.amazonFilterPresets{flex-wrap:nowrap;overflow:auto;padding-bottom:4px}.amazonDateRange{align-items:stretch;flex-direction:column}.amazonMarketplaceFilter{overflow:auto;flex-wrap:nowrap}.amazonMappingEditor{grid-template-columns:1fr}.amazonMappingActions{grid-column:auto}.amazonPagination{align-items:flex-start;flex-direction:column}.amazonTabs{margin-inline:-2px}.amazonTableCard{padding:13px}.amazonKpiCard strong{font-size:18px}}
+
+.amazonEmbeddedProducts{margin-top:0}
+.amazonProductTable{min-width:1500px}
+.amazonSortHeader{appearance:none;border:0;background:transparent;color:inherit;padding:0;display:inline-flex;align-items:center;gap:5px;font:inherit;font-weight:800;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
+.amazonSortHeader svg{opacity:.45}.amazonSortHeader.isActive{color:#c2410c}.amazonSortHeader.isActive svg{opacity:1}
+.amazonSkuCell{min-width:145px}.amazonB2bBadge{display:inline-flex!important;width:max-content;margin-top:5px!important;padding:2px 6px;border-radius:999px;background:#eff6ff;color:#1d4ed8!important;font-size:9px!important;font-weight:800}
+.amazonPositive{color:#047857!important;font-weight:800}.amazonNegative{color:#b91c1c!important;font-weight:800}
+.amazonCostBreakdownWide{padding:17px}.amazonCostRowsGrid{grid-template-columns:repeat(4,minmax(0,1fr));gap:0 18px}
+[data-theme='dark'] .amazonSortHeader.isActive{color:#fdba74}
+[data-theme='dark'] .amazonB2bBadge{background:#172554;color:#93c5fd!important}
+[data-theme='dark'] .amazonPositive{color:#6ee7b7!important}[data-theme='dark'] .amazonNegative{color:#fca5a5!important}
+@media(max-width:1000px){.amazonCostRowsGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.amazonCostRowsGrid{grid-template-columns:1fr}}
