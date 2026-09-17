@@ -1,17 +1,16 @@
 import { sanitizeAmazonError } from './http.ts';
 import { spApiRequest } from './sp-api.ts';
 
-const TRACKING_BACKFILL_DAYS=7;
-
 type FulfillmentOrderRow={
   id:string;owner_id:string;order_id?:string|null;order_number?:string|null;source_channel?:string|null;
   tracking_number?:string|null;sendcloud_parcel_id?:number|string|null;carrier_code?:string|null;carrier_name?:string|null;
   shipping_service_name?:string|null;label_created_at?:string|null;fulfilled_at?:string|null;tracking_updated_at?:string|null;
-  order_updated_at?:string|null;amazon_tracking_sync_attempts?:number|null;amazon_tracking_last_attempt_at?:string|null;
+  order_updated_at?:string|null;amazon_tracking_synced_at?:string|null;amazon_tracking_sync_error?:string|null;
+  amazon_tracking_sync_attempts?:number|null;amazon_tracking_last_attempt_at?:string|null;
 };
 
 type AmazonOrderContext={amazonOrderId:string;marketplaceId:string;orderItems:Array<{orderItemId:string;quantity:number}>};
-export type AmazonTrackingSyncResult={orderId:string;amazonOrderId:string;status:'confirmed'|'already_synced';trackingNumber:string;packageReferenceId:string};
+export type AmazonTrackingSyncResult={orderId:string;amazonOrderId:string;status:'confirmed'|'already_synced';trackingNumber:string;packageReferenceId:string|null};
 
 function clean(value:unknown){return String(value??'').trim();}
 function amazonOrderId(order:FulfillmentOrderRow){
@@ -21,7 +20,6 @@ function amazonOrderId(order:FulfillmentOrderRow){
   return found;
 }
 function positivePackageReference(value:unknown){const text=clean(value);return /^\d+$/.test(text)&&Number(text)>0?text:null;}
-function attempts(order:FulfillmentOrderRow){return Math.max(0,Number(order.amazon_tracking_sync_attempts)||0)+1;}
 function attemptDue(order:FulfillmentOrderRow,now=Date.now()){
   if(!order.amazon_tracking_last_attempt_at)return true;
   const last=new Date(order.amazon_tracking_last_attempt_at).getTime();if(!Number.isFinite(last))return true;
@@ -41,14 +39,36 @@ function carrier(order:FulfillmentOrderRow){
   const name=clean(order.carrier_name)||clean(order.carrier_code)||'Transportista';
   return {carrierCode:'Other',carrierName:name};
 }
+async function claimAmazonTrackingAttempt(admin:any,order:FulfillmentOrderRow){
+  const previous=Math.max(0,Number(order.amazon_tracking_sync_attempts)||0),now=new Date().toISOString();
+  const {data,error}=await admin.from('fulfillment_orders')
+    .update({amazon_tracking_last_attempt_at:now,amazon_tracking_sync_error:null,amazon_tracking_sync_attempts:previous+1})
+    .eq('id',order.id)
+    .eq('owner_id',order.owner_id)
+    .is('amazon_tracking_synced_at',null)
+    .eq('amazon_tracking_sync_attempts',previous)
+    .select('*')
+    .maybeSingle();
+  if(error)throw error;
+  return data as FulfillmentOrderRow|null;
+}
+async function currentTrackingState(admin:any,order:FulfillmentOrderRow){
+  const {data,error}=await admin.from('fulfillment_orders')
+    .select('amazon_tracking_synced_at,sendcloud_parcel_id')
+    .eq('id',order.id)
+    .eq('owner_id',order.owner_id)
+    .maybeSingle();
+  if(error)throw error;
+  return data;
+}
 async function markSuccess(admin:any,order:FulfillmentOrderRow){
   const now=new Date().toISOString();
-  const {error}=await admin.from('fulfillment_orders').update({amazon_tracking_synced_at:now,amazon_tracking_last_attempt_at:now,amazon_tracking_sync_error:null,amazon_tracking_sync_attempts:attempts(order)}).eq('id',order.id).eq('owner_id',order.owner_id);
+  const {error}=await admin.from('fulfillment_orders').update({amazon_tracking_synced_at:now,amazon_tracking_last_attempt_at:now,amazon_tracking_sync_error:null}).eq('id',order.id).eq('owner_id',order.owner_id);
   if(error)throw error;
 }
 async function markFailure(admin:any,order:FulfillmentOrderRow,errorValue:unknown){
   const now=new Date().toISOString(),message=sanitizeAmazonError(errorValue instanceof Error?errorValue.message:errorValue);
-  const {error}=await admin.from('fulfillment_orders').update({amazon_tracking_last_attempt_at:now,amazon_tracking_sync_error:message,amazon_tracking_sync_attempts:attempts(order)}).eq('id',order.id).eq('owner_id',order.owner_id);
+  const {error}=await admin.from('fulfillment_orders').update({amazon_tracking_last_attempt_at:now,amazon_tracking_sync_error:message}).eq('id',order.id).eq('owner_id',order.owner_id).is('amazon_tracking_synced_at',null);
   if(error)throw error;
 }
 async function loadContext(admin:any,order:FulfillmentOrderRow):Promise<AmazonOrderContext>{
@@ -89,20 +109,26 @@ function packageReference(packages:any[],trackingNumber:string,parcelId:unknown)
 
 export async function syncAmazonTracking(admin:any,order:FulfillmentOrderRow):Promise<AmazonTrackingSyncResult>{
   const trackingNumber=clean(order.tracking_number);if(order.source_channel!=='amazon')throw new Error('El pedido no procede de Amazon.');if(!trackingNumber)throw new Error('El pedido todavía no tiene número de seguimiento.');
+  const claimed=await claimAmazonTrackingAttempt(admin,order);
+  if(!claimed){
+    const state=await currentTrackingState(admin,order);
+    if(state?.amazon_tracking_synced_at)return {orderId:order.id,amazonOrderId:amazonOrderId(order),status:'already_synced',trackingNumber,packageReferenceId:positivePackageReference(state.sendcloud_parcel_id)};
+    throw new Error('La confirmación del tracking de Amazon ya está en curso.');
+  }
   let context:AmazonOrderContext|undefined;
   try{
-    context=await loadContext(admin,order);
+    context=await loadContext(admin,claimed);
     const packages=await currentPackages(context.amazonOrderId);
-    const selectedPackage=packageReference(packages,trackingNumber,order.sendcloud_parcel_id);
-    if(selectedPackage.alreadySynced){await markSuccess(admin,order);return {orderId:order.id,amazonOrderId:context.amazonOrderId,status:'already_synced',trackingNumber,packageReferenceId:selectedPackage.packageReferenceId};}
-    const carrierData=carrier(order),shipDate=order.label_created_at||order.fulfilled_at||order.tracking_updated_at||order.order_updated_at||new Date().toISOString();
+    const selectedPackage=packageReference(packages,trackingNumber,claimed.sendcloud_parcel_id);
+    if(selectedPackage.alreadySynced){await markSuccess(admin,claimed);return {orderId:claimed.id,amazonOrderId:context.amazonOrderId,status:'already_synced',trackingNumber,packageReferenceId:selectedPackage.packageReferenceId};}
+    const carrierData=carrier(claimed),shipDate=claimed.label_created_at||claimed.fulfilled_at||claimed.tracking_updated_at||claimed.order_updated_at||new Date().toISOString();
     const packageDetail:any={packageReferenceId:selectedPackage.packageReferenceId,carrierCode:carrierData.carrierCode,carrierName:carrierData.carrierName,trackingNumber,shipDate:new Date(shipDate).toISOString(),orderItems:context.orderItems};
-    const shippingMethod=clean(order.shipping_service_name);if(shippingMethod)packageDetail.shippingMethod=shippingMethod;
+    const shippingMethod=clean(claimed.shipping_service_name);if(shippingMethod)packageDetail.shippingMethod=shippingMethod;
     await spApiRequest(`/orders/v0/orders/${encodeURIComponent(context.amazonOrderId)}/shipmentConfirmation`,{method:'POST',body:{marketplaceId:context.marketplaceId,packageDetail}});
-    await markSuccess(admin,order);
-    return {orderId:order.id,amazonOrderId:context.amazonOrderId,status:'confirmed',trackingNumber,packageReferenceId:selectedPackage.packageReferenceId};
+    await markSuccess(admin,claimed);
+    return {orderId:claimed.id,amazonOrderId:context.amazonOrderId,status:'confirmed',trackingNumber,packageReferenceId:selectedPackage.packageReferenceId};
   }catch(error){
-    try{await markFailure(admin,order,error)}catch{/* preserve original Amazon error */}
+    try{await markFailure(admin,claimed,error)}catch{/* preserve original Amazon error */}
     throw error;
   }
 }
@@ -110,8 +136,8 @@ export async function syncAmazonTracking(admin:any,order:FulfillmentOrderRow):Pr
 export async function retryPendingAmazonTracking(admin:any,ownerId:string,limit=5,force=false){
   const safeLimit=Math.max(1,Math.min(25,Math.trunc(Number(limit)||5)));
   let query=admin.from('fulfillment_orders').select('*').eq('owner_id',ownerId).eq('source_channel','amazon').not('tracking_number','is',null).is('amazon_tracking_synced_at',null);
-  if(!force){const cutoff=new Date(Date.now()-TRACKING_BACKFILL_DAYS*86400000).toISOString();query=query.gte('tracking_updated_at',cutoff);}
-  const {data,error}=await query.order('tracking_updated_at',{ascending:false,nullsFirst:false}).limit(Math.max(safeLimit*4,20));
+  if(!force)query=query.gt('amazon_tracking_sync_attempts',0);
+  const {data,error}=await query.order('amazon_tracking_last_attempt_at',{ascending:true,nullsFirst:false}).limit(Math.max(safeLimit*4,20));
   if(error)throw error;
   const results:any[]=[];
   for(const order of data||[]){

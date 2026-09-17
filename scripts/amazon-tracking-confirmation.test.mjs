@@ -25,10 +25,10 @@ test('Amazon tracking helper inspects packages and confirms shipment with the Or
   assert.match(helper,/quantity/i);
 });
 
-test('automatic retry only backfills recently updated Amazon shipments',async()=>{
+test('automatic retry only reprocesses confirmations previously attempted by this integration',async()=>{
   const helper=await source('supabase/functions/_shared/amazon/shipment-confirmation.ts');
-  assert.match(helper,/TRACKING_BACKFILL_DAYS\s*=\s*7/);
-  assert.match(helper,/tracking_updated_at[^\n]*gte|\.gte\(['"]tracking_updated_at['"]/i);
+  assert.match(helper,/\.gt\(['"]amazon_tracking_sync_attempts['"],\s*0\)/i);
+  assert.doesNotMatch(helper,/TRACKING_BACKFILL_DAYS/);
 });
 
 test('Amazon tracking edge function supports one-order confirmation and retries',async()=>{
