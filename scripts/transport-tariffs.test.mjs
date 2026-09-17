@@ -35,6 +35,15 @@ test('transport tariff service keeps parsing, review and activation as separate 
   assert.match(service,/JSZip|xlsx/i,'Excel/XLSX extraction must be supported');
 });
 
+test('transport tariff parser can use AI but safely falls back without auto-activation',async()=>{
+  const edge=await source('supabase/functions/transport-tariff-parser/index.ts');
+  assert.match(edge,/OPENAI_API_KEY/,'AI parser must use a server-side key only');
+  assert.match(edge,/\/v1\/responses/,'AI parser must use the Responses API');
+  assert.match(edge,/fallback/,'AI parser must preserve a deterministic fallback');
+  assert.match(edge,/json_schema|schema/i,'AI parser must request structured output');
+  assert.doesNotMatch(edge,/transport_tariff_activate|status\s*:\s*['"]active['"]/i,'parser must never activate a tariff');
+});
+
 test('transport tariff UI always reviews an import before activation',async()=>{
   const panel=await source('src/components/TransportTariffsPanel.tsx');
   assert.match(panel,/Tarifas de transporte/i);
@@ -48,7 +57,8 @@ test('transport tariff UI always reviews an import before activation',async()=>{
 });
 
 test('Orders exposes transport tariff configuration',async()=>{
-  const orders=await source('src/pages/Orders.tsx');
-  assert.match(orders,/TransportTariffsPanel/,'Orders must render the tariff manager');
-  assert.match(orders,/Tarifas de transporte/i,'Orders must expose a tariff configuration entry point');
+  const bridge=await source('src/components/OrderLabelDefaults.tsx');
+  assert.match(bridge,/TransportTariffsPanel/,'Orders enhancement must render the tariff manager');
+  assert.match(bridge,/Tarifas de transporte/i,'Orders must expose a tariff configuration entry point');
+  assert.match(bridge,/ordersPage \.pageHead \.actions/,'tariff button must be scoped to Orders');
 });
