@@ -84,6 +84,30 @@ Deno.serve(async(req:Request)=>{
     const orderId=clean(body?.orderId);if(!orderId)return fail('Falta el pedido.');
     const {data:order,error}=await admin.from('fulfillment_orders').select('*').eq('id',orderId).eq('owner_id',caller.data_owner_id).maybeSingle();if(error)throw error;if(!order)return fail('Pedido no encontrado.',404);
 
+    if(action==='validate_address'){
+      const address=order.shipping_address||{},carrierCode=clean(body?.carrierCode||'mrw').toLowerCase();
+      const normalizedState=normalizeStateProvince(address.country_code,address.state_province_code);
+      const payloadAddress:any={
+        address_line_1:address.address_line_1||undefined,
+        house_number:address.house_number||undefined,
+        address_line_2:address.address_line_2||undefined,
+        postal_code:address.postal_code||undefined,
+        city:address.city||undefined,
+        country_code:address.country_code||undefined,
+      };
+      if(normalizedState)payloadAddress.state_province_code=normalizedState;
+      try{
+        const {data}=await sendcloudJson('/addresses/validate',{method:'POST',body:JSON.stringify({address:payloadAddress,carrier_code:carrierCode})});
+        const results=Array.isArray(data?.results)?data.results:[];
+        const recommended=results.find((item:any)=>item?.recommended)||results[0]||null;
+        const reasons=results.flatMap((item:any)=>Array.isArray(item?.analysis?.validation_result?.reasons)?item.analysis.validation_result.reasons:[]).map(clean).filter(Boolean);
+        const invalidAttributes=results.flatMap((item:any)=>Array.isArray(item?.analysis?.invalid_attributes)?item.analysis.invalid_attributes:[]).map(clean).filter(Boolean);
+        return response({ok:true,inputAddressIsValid:data?.input_address_is_valid??null,recommendedAddress:recommended?.address||null,reasons,invalidAttributes});
+      }catch(validationError){
+        return response({ok:true,inputAddressIsValid:false,recommendedAddress:null,reasons:[validationError instanceof Error?validationError.message:String(validationError)],invalidAttributes:[]});
+      }
+    }
+
     if(action==='shipping_options'){
       if(!canEdit(order.source_status)||order.sendcloud_parcel_id)return fail('Este pedido ya no admite una nueva etiqueta.',409);
       let address=order.shipping_address||{};const sender=await senderAddress(),weightKg=orderWeightKg(order),balearic=isBalearicAddress(address);
