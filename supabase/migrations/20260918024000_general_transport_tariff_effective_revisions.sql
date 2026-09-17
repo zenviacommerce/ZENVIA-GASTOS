@@ -158,36 +158,60 @@ security definer
 set search_path=''
 as $$
 declare
-  v_owner uuid; v_document public.transport_tariff_documents%rowtype; v_baseline date;
-  v_service jsonb; v_band jsonb; v_service_id uuid; v_service_index integer:=0; v_band_index integer;
+  v_owner uuid;
+  v_document public.transport_tariff_documents%rowtype;
+  v_baseline date;
+  v_effective_from date;
+  v_effective_to date;
+  v_service jsonb;
+  v_band jsonb;
+  v_service_id uuid;
+  v_service_index integer:=0;
+  v_band_index integer;
 begin
   v_owner:=private.app_workspace_owner_id();
   if v_owner is null or not private.app_has_permission('orders') then raise exception 'Forbidden'; end if;
   if apply_from is null then raise exception 'Indica desde qué fecha se aplican los cambios'; end if;
   if snapshot is null or jsonb_typeof(snapshot)<>'object' then raise exception 'Configuración de tarifa no válida'; end if;
 
-  select * into v_document from public.transport_tariff_documents d
-  where d.id=document_id and d.owner_id=v_owner for update;
+  select * into v_document
+  from public.transport_tariff_documents d
+  where d.id=document_id and d.owner_id=v_owner
+  for update;
+
   if not found then raise exception 'Tarifa no encontrada'; end if;
   if v_document.status<>'active' then raise exception 'La tarifa no está activa'; end if;
-  if v_document.effective_from is not null and apply_from<v_document.effective_from then raise exception 'La fecha de aplicación no puede ser anterior al inicio de la tarifa'; end if;
-  if v_document.effective_to is not null and apply_from>v_document.effective_to then raise exception 'La fecha de aplicación no puede ser posterior al fin de la tarifa'; end if;
+
+  v_effective_from:=coalesce(nullif(snapshot->>'effectiveFrom','')::date,v_document.effective_from);
+  v_effective_to:=case when snapshot ? 'effectiveTo' then nullif(snapshot->>'effectiveTo','')::date else v_document.effective_to end;
+
+  if v_effective_from is not null and apply_from<v_effective_from then
+    raise exception 'La fecha de aplicación no puede ser anterior al inicio de vigencia';
+  end if;
+  if v_effective_to is not null and apply_from>v_effective_to then
+    raise exception 'La fecha de aplicación no puede ser posterior al fin de vigencia';
+  end if;
 
   v_baseline:=coalesce(v_document.effective_from,apply_from);
-  if not exists(select 1 from public.transport_tariff_revisions r where r.owner_id=v_owner and r.document_id=document_id and r.effective_from=v_baseline) then
+
+  if not exists(
+    select 1 from public.transport_tariff_revisions r
+    where r.owner_id=v_owner and r.document_id=document_id and r.effective_from=v_baseline
+  ) then
     insert into public.transport_tariff_revisions(owner_id,document_id,effective_from,snapshot,created_by)
     values(v_owner,document_id,v_baseline,private.transport_tariff_snapshot(v_owner,document_id),auth.uid());
   end if;
 
   insert into public.transport_tariff_revisions(owner_id,document_id,effective_from,snapshot,created_by,updated_at)
   values(v_owner,document_id,apply_from,snapshot,auth.uid(),now())
-  on conflict(owner_id,document_id,effective_from) do update set snapshot=excluded.snapshot,updated_at=now();
+  on conflict(owner_id,document_id,effective_from) do update
+  set snapshot=excluded.snapshot,updated_at=now();
 
   update public.transport_tariff_documents d
   set carrier_code=coalesce(nullif(snapshot->>'carrierCode',''),d.carrier_code),
       carrier_name=coalesce(nullif(snapshot->>'carrierName',''),d.carrier_name),
-      effective_from=coalesce(nullif(snapshot->>'effectiveFrom','')::date,d.effective_from),
-      effective_to=case when snapshot ? 'effectiveTo' then nullif(snapshot->>'effectiveTo','')::date else d.effective_to end,
+      effective_from=v_effective_from,
+      effective_to=v_effective_to,
       currency_code=coalesce(nullif(snapshot->>'currencyCode',''),d.currency_code),
       prices_include_vat=coalesce(nullif(snapshot->>'pricesIncludeVat','')::boolean,d.prices_include_vat),
       vat_rate_pct=coalesce(nullif(snapshot->>'vatRatePct','')::numeric,d.vat_rate_pct),
@@ -196,23 +220,69 @@ begin
       updated_at=now()
   where d.id=document_id and d.owner_id=v_owner;
 
-  delete from public.transport_tariff_services s where s.owner_id=v_owner and s.document_id=document_id;
+  delete from public.transport_tariff_services s
+  where s.owner_id=v_owner and s.document_id=document_id;
 
-  for v_service in select value from jsonb_array_elements(coalesce(snapshot->'services','[]'::jsonb)) loop
-    insert into public.transport_tariff_services(owner_id,document_id,service_name,canonical_service_key,external_provider,external_service_code,mapping_status,sort_order)
-    values(v_owner,document_id,coalesce(nullif(v_service->>'serviceName',''),'Servicio'),coalesce(nullif(v_service->>'canonicalServiceKey',''),'service-'||v_service_index),
-      nullif(v_service->>'externalProvider',''),nullif(v_service->>'externalServiceCode',''),
+  for v_service in
+    select value from jsonb_array_elements(coalesce(snapshot->'services','[]'::jsonb))
+  loop
+    insert into public.transport_tariff_services(
+      owner_id,document_id,service_name,canonical_service_key,external_provider,
+      external_service_code,mapping_status,sort_order
+    )
+    values(
+      v_owner,document_id,
+      coalesce(nullif(v_service->>'serviceName',''),'Servicio'),
+      coalesce(nullif(v_service->>'canonicalServiceKey',''),'service-'||v_service_index),
+      nullif(v_service->>'externalProvider',''),
+      nullif(v_service->>'externalServiceCode',''),
       case when v_service->>'mappingStatus' in ('suggested','confirmed','unmapped') then v_service->>'mappingStatus' else 'confirmed' end,
-      coalesce(nullif(v_service->>'sortOrder','')::integer,v_service_index))
+      coalesce(nullif(v_service->>'sortOrder','')::integer,v_service_index)
+    )
     returning id into v_service_id;
 
+    if (v_service->>'mappingStatus')='confirmed'
+       and nullif(v_service->>'externalProvider','') is not null
+       and nullif(v_service->>'externalServiceCode','') is not null then
+      insert into public.transport_service_mappings(
+        owner_id,carrier_code,canonical_service_key,external_provider,external_service_code,
+        confirmed_by,confirmed_at,updated_at
+      )
+      values(
+        v_owner,
+        coalesce(nullif(snapshot->>'carrierCode',''),v_document.carrier_code),
+        coalesce(nullif(v_service->>'canonicalServiceKey',''),'service-'||v_service_index),
+        v_service->>'externalProvider',v_service->>'externalServiceCode',
+        auth.uid(),now(),now()
+      )
+      on conflict(owner_id,carrier_code,canonical_service_key) do update
+      set external_provider=excluded.external_provider,
+          external_service_code=excluded.external_service_code,
+          confirmed_by=excluded.confirmed_by,
+          confirmed_at=excluded.confirmed_at,
+          updated_at=excluded.updated_at;
+    end if;
+
     v_band_index:=0;
-    for v_band in select value from jsonb_array_elements(coalesce(v_service->'bands','[]'::jsonb)) loop
-      insert into public.transport_tariff_bands(owner_id,service_id,country_code,zone_code,zone_name,min_weight_kg,max_weight_kg,base_price,extra_kg_price,notes,sort_order)
-      values(v_owner,v_service_id,upper(coalesce(nullif(v_band->>'countryCode',''),'ES')),coalesce(nullif(v_band->>'zoneCode',''),'peninsular'),
-        coalesce(nullif(v_band->>'zoneName',''),'Zona'),coalesce(nullif(v_band->>'minWeightKg','')::numeric,0),nullif(v_band->>'maxWeightKg','')::numeric,
-        nullif(v_band->>'basePrice','')::numeric,nullif(v_band->>'extraKgPrice','')::numeric,nullif(v_band->>'notes',''),
-        coalesce(nullif(v_band->>'sortOrder','')::integer,v_band_index));
+    for v_band in
+      select value from jsonb_array_elements(coalesce(v_service->'bands','[]'::jsonb))
+    loop
+      insert into public.transport_tariff_bands(
+        owner_id,service_id,country_code,zone_code,zone_name,min_weight_kg,max_weight_kg,
+        base_price,extra_kg_price,notes,sort_order
+      )
+      values(
+        v_owner,v_service_id,
+        upper(coalesce(nullif(v_band->>'countryCode',''),'ES')),
+        coalesce(nullif(v_band->>'zoneCode',''),'peninsular'),
+        coalesce(nullif(v_band->>'zoneName',''),'Zona'),
+        coalesce(nullif(v_band->>'minWeightKg','')::numeric,0),
+        nullif(v_band->>'maxWeightKg','')::numeric,
+        nullif(v_band->>'basePrice','')::numeric,
+        nullif(v_band->>'extraKgPrice','')::numeric,
+        nullif(v_band->>'notes',''),
+        coalesce(nullif(v_band->>'sortOrder','')::integer,v_band_index)
+      );
       v_band_index:=v_band_index+1;
     end loop;
     v_service_index:=v_service_index+1;
