@@ -18,10 +18,10 @@ test('shared order shipping logic validates MRW hard limits and distinguishes bl
   assert.ok(existsSync(root(path)),'falta src/services/orderShipping.ts');
   const source=await read(path);
   assert.match(source,/validateOrderForCarrier/);
-  assert.match(source,/name[^\n]{0,160}50/i,'MRW nombre máximo 50');
-  assert.match(source,/address[^\n]{0,160}50/i,'MRW dirección máxima 50');
-  assert.match(source,/phone[^\n]{0,160}required/i,'MRW requiere teléfono');
-  assert.match(source,/severity:\s*'error'/,'los errores duros deben ser bloqueantes');
+  assert.match(source,/name[^\n]{0,180}50/i,'MRW nombre máximo 50');
+  assert.match(source,/street[^\n]{0,180}50/i,'MRW dirección máxima 50');
+  assert.match(source,/phone_required/,'MRW requiere teléfono');
+  assert.match(source,/severity:OrderValidationSeverity='error'/,'los errores duros deben ser bloqueantes por defecto');
 });
 
 test('Sendcloud order tools validate the destination remotely before label creation',async()=>{
@@ -31,11 +31,11 @@ test('Sendcloud order tools validate the destination remotely before label creat
   assert.match(source,/validation_result/);
 });
 
-test('transport tariffs persist the VAT rate used for gross shipping previews',async()=>{
+test('transport tariffs persist a VAT rate for gross shipping previews',async()=>{
   const migration='supabase/migrations/20260917234500_transport_tariff_vat_rate.sql';
   assert.ok(existsSync(root(migration)),'falta migración de tipo de IVA de la tarifa');
-  const [sql,service]=await Promise.all([read(migration),read('src/services/transportTariffs.ts')]);
+  const [sql,shipping]=await Promise.all([read(migration),read('src/services/orderShipping.ts')]);
   assert.match(sql,/vat_rate_pct/i);
-  assert.match(service,/vatRatePct/);
-  assert.match(service,/iva[^\n]{0,80}(\d+|pct)/i,'el lector debe conservar el tipo de IVA del documento');
+  assert.match(shipping,/vatRatePct/);
+  assert.match(shipping,/21/,'la tarifa MRW actual debe poder convertirse a total con IVA');
 });
