@@ -62,3 +62,21 @@ test('Orders exposes transport tariff configuration',async()=>{
   assert.match(bridge,/Tarifas de transporte/i,'Orders must expose a tariff configuration entry point');
   assert.match(bridge,/ordersPage \.pageHead \.actions/,'tariff button must be scoped to Orders');
 });
+
+
+test('active tariff can be corrected in place and fuel can vary by period',async()=>{
+  const service=await source('src/services/transportTariffs.ts');
+  const panel=await source('src/components/TransportTariffsPanel.tsx');
+  const shipping=await source('src/services/orderShipping.ts');
+  const migration=await source('supabase/migrations/20260918022000_editable_active_tariff_and_fuel_periods.sql');
+
+  assert.match(service,/\['draft','active'\]\.includes\(document\.status\)/,'active tariff must be editable');
+  assert.match(service,/transport_tariff_replace_fuel_periods/,'fuel periods must be persisted');
+  assert.match(service,/transport_tariff_reprice_estimates/,'estimated shipping costs must be recalculated after an active correction');
+  assert.match(panel,/Combustible por periodos/i);
+  assert.match(panel,/Tarifa activa · editable directamente/i);
+  assert.doesNotMatch(panel,/Editar desde esta fecha|createTransportTariffVersion/,'editing an active tariff must not require cloning it');
+  assert.match(shipping,/fuelPeriods/,'shipping estimate must pick the fuel period valid for the order date');
+  assert.match(migration,/transport_tariff_fuel_periods/);
+  assert.match(migration,/drop function if exists public\.transport_tariff_clone_version/i);
+});
