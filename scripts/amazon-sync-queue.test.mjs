@@ -41,6 +41,13 @@ test('hourly sync uses checkpoints with overlap and queue failures back off',asy
   assert.match(sync,/sanitizeAmazonError/);
 });
 
+test('current sync caps stale checkpoints to a seven-day freshness window',async()=>{
+  const sync=await source('supabase/functions/_shared/amazon/sync.ts');
+  assert.match(sync,/CURRENT_SYNC_MAX_LOOKBACK_HOURS\s*=\s*7\s*\*\s*24/);
+  assert.match(sync,/freshnessFloor\s*=\s*minusHours\(now,CURRENT_SYNC_MAX_LOOKBACK_HOURS\)/);
+  assert.match(sync,/overlapStart\s*<\s*freshnessFloor\s*\?\s*freshnessFloor\s*:\s*overlapStart/);
+});
+
 test('orchestrator and worker are internal-only and worker claims bounded jobs atomically',async()=>{
   const core=await source('supabase/migrations/20260916190000_amazon_analytics_phase_b.sql');
   const wrapper=await source('supabase/migrations/20260916191000_amazon_sync_queue_rpc.sql');
@@ -73,6 +80,11 @@ test('job claimer coalesces stale current batches and keeps the newest current b
   assert.match(migrations,/jsonb_build_object\(\s*'superseded'\s*,\s*true/i);
   assert.match(migrations,/set\s+status\s*=\s*'success'[\s\S]*rows_processed\s*=\s*0/i);
   assert.match(migrations,/when\s+coalesce\(j\.payload\s*->>\s*'mode'[^)]*\)\s+in\s*\('hourly','manual'\)\s+then\s+j\.created_at/i);
+});
+
+test('newest current batch claims orders before finances and inventory',async()=>{
+  const migrations=await migrationsSource();
+  assert.match(migrations,/case\s+j\.source\s+when\s+'orders'\s+then\s+0\s+when\s+'finances'\s+then\s+1\s+when\s+'inventory'\s+then\s+2/i);
 });
 
 test('manual sync authenticates a real user and requires admin role',async()=>{
