@@ -28,6 +28,10 @@ Deno.serve(async(req:Request)=>{
     const {data:account,error:accountError}=await admin.from('amazon_accounts').select('id,owner_id').limit(1).maybeSingle();
     if(accountError)throw accountError;if(!account)throw new Error('No hay cuenta Amazon configurada.');
 
+    const {data:markets,error:marketError}=await admin.from('amazon_marketplaces').select('marketplace_id,country_code').eq('amazon_account_id',account.id).eq('owner_id',account.owner_id).eq('active',true).order('country_code');
+    if(marketError)throw marketError;
+    const activeMarketplaceIds=(markets||[]).map((m:any)=>String(m.marketplace_id||'')).filter(Boolean);
+    const esMarketplaceId=String((markets||[]).find((m:any)=>m.country_code==='ES')?.marketplace_id||'');
     const {data:cached,error:cacheError}=await admin.from('amazon_product_images').select('asin').eq('owner_id',account.owner_id).eq('amazon_account_id',account.id);
     if(cacheError)throw cacheError;
     const cachedAsins=new Set((cached||[]).map((row:any)=>String(row.asin||'')));
@@ -60,17 +64,25 @@ Deno.serve(async(req:Request)=>{
 
     const now=new Date().toISOString();const rows:any[]=[];const failed:any[]=[];
     for(const product of products){
-      try{
-        const data:any=await spApiRequest(`/listings/2021-08-01/items/${encodeURIComponent(credentials.sellerId)}/${encodeURIComponent(product.sellerSku)}`,{
-          query:{marketplaceIds:[product.marketplaceId],includedData:['attributes','summaries']}
-        });
-        const image=fromListing(data);
+      const marketplaceCandidates=Array.from(new Set([product.marketplaceId,esMarketplaceId,...activeMarketplaceIds].filter(Boolean)));
+      let image:any=null;let usedMarketplace='';let lastError='';
+      for(const marketplaceId of marketplaceCandidates){
+        try{
+          const data:any=await spApiRequest(`/listings/2021-08-01/items/${encodeURIComponent(credentials.sellerId)}/${encodeURIComponent(product.sellerSku)}`,{
+            query:{marketplaceIds:[marketplaceId],includedData:['attributes','summaries']}
+          });
+          image=fromListing(data);usedMarketplace=marketplaceId;
+          if(image)break;
+        }catch(error){lastError=error instanceof Error?error.message:'Error';}
+      }
+      if(image){
         rows.push({
-          owner_id:account.owner_id,amazon_account_id:account.id,asin:product.asin,marketplace_id:product.marketplaceId,
-          image_url:image?.url||null,image_width:null,image_height:null,fetched_at:now,updated_at:now
+          owner_id:account.owner_id,amazon_account_id:account.id,asin:product.asin,marketplace_id:usedMarketplace||product.marketplaceId,
+          image_url:image.url,image_width:null,image_height:null,fetched_at:now,updated_at:now
         });
-        if(!image)failed.push({asin:product.asin,sellerSku:product.sellerSku,error:'Listing sin imagen principal'});
-      }catch(error){failed.push({asin:product.asin,sellerSku:product.sellerSku,error:error instanceof Error?error.message:'Error'});}
+      }else{
+        failed.push({asin:product.asin,sellerSku:product.sellerSku,error:lastError||'Listing sin imagen principal'});
+      }
     }
     if(rows.length){const {error}=await admin.from('amazon_product_images').upsert(rows,{onConflict:'owner_id,amazon_account_id,asin,marketplace_id'});if(error)throw error;}
     return response({ok:true,processed:rows.length,withImage:rows.filter(r=>r.image_url).length,failed:failed.length,failures:failed.slice(0,10)});
