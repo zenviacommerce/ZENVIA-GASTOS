@@ -61,7 +61,7 @@ export function calculateDefaultShippingPreview(order:FulfillmentOrder,tariffs:T
   const candidates=service.bands.filter(band=>band.countryCode===country&&band.zoneCode===zoneCode).sort((a,b)=>a.minWeightKg-b.minWeightKg);
   const weight=order.weightKg;
   let band=candidates.find(item=>weight>item.minWeightKg&&(item.maxWeightKg==null||weight<=item.maxWeightKg));
-  if(!band)band=candidates.find(item=>weight===0&&item.minWeightKg===0)||null;
+  if(!band)band=candidates.find(item=>weight===0&&item.minWeightKg===0);
   if(!band||band.basePrice==null)return null;
   let base=band.basePrice;
   if(band.maxWeightKg==null&&band.extraKgPrice!=null&&weight>band.minWeightKg){
