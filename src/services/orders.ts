@@ -26,6 +26,16 @@ export interface ShippingOption {
   code:string; name:string; carrierCode:string; carrierName:string; contractId:number|null;
   price:number|null; currency:string|null; billedWeightKg?:number|null; raw:Record<string,unknown>;
 }
+export interface RemoteOrderValidation {
+  carrierCode:string;
+  inputAddressIsValid:boolean|null;
+  isValid:boolean|null;
+  reasons:string[];
+  changedAttributes:string[];
+  invalidAttributes:string[];
+  recommendedAddress:Record<string,unknown>|null;
+  unavailable?:boolean;
+}
 export interface LabelResult {
   parcelId:number; shipmentId:string|null; trackingNumber:string|null; trackingUrl:string|null;
   shippingOptionCode:string|null; contractId:number|null; carrierCode?:string|null; carrierName?:string|null;
@@ -113,6 +123,10 @@ export function createManualOrder(order:ManualOrderInput){return invokeSendcloud
 export async function getShippingOptions(orderId:string){
   const result=await invokeOrderTools<{weightKg:number;options:ShippingOption[];message?:string|null}>({action:'shipping_options',orderId});
   return {weightKg:result.weightKg,options:result.options||[],message:result.message||null};
+}
+export async function validateFulfillmentOrder(orderId:string,carrierCode:string){
+  const result=await invokeOrderTools<RemoteOrderValidation>({action:'validate_order',orderId,carrierCode});
+  return {...result,reasons:result.reasons||[],changedAttributes:result.changedAttributes||[],invalidAttributes:result.invalidAttributes||[],recommendedAddress:result.recommendedAddress||null};
 }
 export function updateFulfillmentOrder(orderId:string,order:OrderUpdateInput){return invokeOrderTools<{ok:true;weightKg:number}>({action:'update_order',orderId,order});}
 export async function createOrderLabel(orderId:string,option?:ShippingOption|null){

@@ -1,11 +1,12 @@
-import { LoaderCircle, Save, X } from 'lucide-react';
+import { AlertCircle, LoaderCircle, Save, X } from 'lucide-react';
 import { useState } from 'react';
 import type { FulfillmentOrder, OrderUpdateInput } from '../services/orders';
+import type { OrderValidationIssue } from '../services/orderShipping';
 
 const text=(value:unknown)=>typeof value==='string'?value:'';
 
-export function OrderEditModal({order,saving,onClose,onSave}:{
-  order:FulfillmentOrder; saving:boolean; onClose:()=>void; onSave:(value:OrderUpdateInput)=>void;
+export function OrderEditModal({order,saving,issues=[],onClose,onSave}:{
+  order:FulfillmentOrder; saving:boolean; issues?:OrderValidationIssue[]; onClose:()=>void; onSave:(value:OrderUpdateInput)=>void;
 }){
   const address=order.shippingAddress||{};
   const [customerName,setCustomerName]=useState(order.customerName||text(address.name));
@@ -31,6 +32,7 @@ export function OrderEditModal({order,saving,onClose,onSave}:{
       <div className="modalHead"><div><h3>Editar pedido · {order.orderNumber||order.orderId}</h3><p>Corrige los datos de envío antes de generar la etiqueta. Los cambios se guardan también en Sendcloud.</p></div><button onClick={onClose}><X size={18}/></button></div>
       <div className="ordersEditBody">
         <div className="ordersEditHint">MRW suele validar estrictamente nombre, teléfono, dirección, código postal, provincia y peso. Revisa estos campos si una etiqueta da error.</div>
+        {issues.length>0&&<div className="ordersValidationPanel">{issues.map(item=><div className={`ordersValidationIssue ${item.severity}`} key={item.code}><AlertCircle size={16}/><span><strong>{item.label}</strong><small>{item.message}</small></span></div>)}</div>}
         <div className="ordersManualGrid">
           <label><span>Cliente *</span><input value={customerName} onChange={e=>setCustomerName(e.target.value)}/></label>
           <label><span>Teléfono</span><input value={phone} onChange={e=>setPhone(e.target.value)}/></label>
