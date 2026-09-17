@@ -7,6 +7,7 @@ import { loadCompanyBranding, type CompanyBranding } from '../services/companyBr
 import { exportSalesInvoices } from '../services/salesInvoiceExport';
 import { errorMessage, showError, showSuccess } from '../services/toast';
 import { SelectField } from '../components/forms/SelectField';
+import '../sales-transfer.css';
 
 const downloadBlob=(blob:Blob,filename:string)=>{const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1500);};
 const compactDate=(value:string)=>value||'sin-fecha';
