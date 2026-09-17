@@ -3,3 +3,10 @@
 @media(max-width:900px){.modal.transportTariffModal{width:calc(100vw - 24px);height:calc(100dvh - 24px)}.transportMetaGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.transportServiceHeader{display:grid}.transportServiceFields{grid-template-columns:repeat(2,minmax(0,1fr))}.transportMappingActions{justify-content:flex-start}.transportTariffFooter{align-items:stretch;flex-direction:column}.transportFooterMain{width:100%;margin:0;justify-content:flex-end}}
 @media(max-width:620px){.modal.transportTariffModal{width:100vw;height:100dvh;max-height:none;border-radius:0}.transportTariffHead{padding:16px}.transportTariffActions{padding:10px 16px}.transportTariffReview{padding:16px 14px 0}.transportMetaGrid,.transportServiceFields{grid-template-columns:1fr}.transportTariffFooter{margin-left:-14px;margin-right:-14px;padding:12px 14px}.transportFooterMain button{flex:1}.transportTariffVersions{padding:10px 14px}.transportVersion{min-width:200px}}
 [data-theme='dark'] .transportTariffActions,[data-theme='dark'] .transportTariffVersions,[data-theme='dark'] .transportParserNotes span{background:color-mix(in srgb,var(--surface) 82%,#000)}
+
+.transportActiveVersioning{display:grid;grid-template-columns:auto minmax(190px,230px) auto;align-items:end;gap:8px 10px;max-width:760px}
+.transportActiveVersioning .transportActiveNote{align-self:center}
+.transportActiveVersioning label{display:grid;gap:5px;font-size:11px;font-weight:750;color:var(--muted)}
+.transportActiveVersioning label input{width:100%;box-sizing:border-box;min-height:38px}
+.transportActiveVersioning>small{grid-column:1/-1;color:var(--muted);line-height:1.4}
+@media(max-width:760px){.transportActiveVersioning{grid-template-columns:1fr;width:100%}.transportActiveVersioning>small{grid-column:auto}.transportActiveVersioning .transportActiveNote{justify-self:start}}
