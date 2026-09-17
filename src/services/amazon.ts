@@ -69,6 +69,16 @@ export function loadAmazonInventory(filters:Pick<AmazonAnalyticsFilters,'marketp
 export function loadAmazonUnmapped(search='',page=1,pageSize=25){return rpc<AmazonPageResult<AmazonUnmappedSku>>('amazon_analytics_unmapped_skus',{search:search||null,page,page_size:pageSize},'No se pudieron cargar los SKU sin vincular.');}
 export function setAmazonProductMapping(input:{sellerSku:string;productId:string;consumptionFactor:number}){return rpc<{ok:true}>('amazon_set_product_mapping',{seller_sku:input.sellerSku,product_id:input.productId,consumption_factor:input.consumptionFactor},'No se pudo guardar el vínculo del producto.');}
 export function deleteAmazonProductMapping(sellerSku:string){return rpc<{ok:true;deleted:number}>('amazon_delete_product_mapping',{seller_sku:sellerSku},'No se pudo eliminar el vínculo del producto.');}
+export async function loadAmazonProductImages(asins:string[]):Promise<Record<string,string>>{
+  const unique=Array.from(new Set(asins.map(value=>String(value||'').trim()).filter(Boolean)));
+  if(!unique.length)return {};
+  const {data,error}=await supabase.from('amazon_product_images').select('asin,image_url,fetched_at').in('asin',unique).not('image_url','is',null).order('fetched_at',{ascending:false});
+  if(error)throw error;
+  const result:Record<string,string>={};
+  for(const row of data||[]){const asin=String((row as any).asin||'');const url=String((row as any).image_url||'');if(asin&&url&&!result[asin])result[asin]=url;}
+  return result;
+}
+
 export async function loadAmazonProductOptions(search=''):Promise<AmazonProductOption[]>{
   let query=supabase.from('products').select('id,name,sku').eq('active',true).order('name').limit(100);
   const term=search.trim();if(term)query=query.or(`name.ilike.%${term.replace(/[,%()]/g,'')}%,sku.ilike.%${term.replace(/[,%()]/g,'')}%`);
