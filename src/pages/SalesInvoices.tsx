@@ -11,6 +11,7 @@ import {
   type BusinessSettings, type Client, type SalesInvoice, type SalesInvoiceDraftInput,
   type SalesInvoiceLine, type SalesInvoiceSeries,
 } from '../services/sales';
+import { updateSalesInvoiceNumber } from '../services/salesInvoiceNumber';
 import { loadBillableProducts, type BillableProduct } from '../services/billableProducts';
 import { createRectifyingInvoice } from '../services/salesRectifying';
 import { deleteSalesInvoiceDraftSafe } from '../services/salesDraftDelete';
@@ -38,6 +39,7 @@ const calcLine=(line:SalesInvoiceLine)=>{const gross=line.quantity*line.unitPric
 function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:boolean;invoice:SalesInvoice|null;clients:Client[];products:BillableProduct[];onClose:()=>void;onSaved:()=>Promise<void>}){
   const [clientId,setClientId]=useState('');
   const [seriesId,setSeriesId]=useState('');
+  const [invoiceNumber,setInvoiceNumber]=useState('');
   const [taxRegistrationId,setTaxRegistrationId]=useState('');
   const [taxRegistrations,setTaxRegistrations]=useState<TaxRegistration[]>([]);
   const [series,setSeries]=useState<SalesInvoiceSeries[]>([]);
@@ -59,12 +61,12 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
   useEffect(()=>{
     if(!open)return;
     if(invoice){
-      setClientId(invoice.clientId);setSeriesId(invoice.seriesId);setTaxRegistrationId(invoice.taxRegistrationId||'');setIssueDate(invoice.issueDate);
+      setClientId(invoice.clientId);setSeriesId(invoice.seriesId);setInvoiceNumber(invoice.invoiceNumber||'');setTaxRegistrationId(invoice.taxRegistrationId||'');setIssueDate(invoice.issueDate);
       setOperationDate(invoice.operationDate||'');setDueDate(invoice.dueDate||'');setPaymentMethod(invoice.paymentMethod||'');
       setNotes(invoice.notes||'');setLines(invoice.lines.length?invoice.lines.map((line,index)=>({...line,position:index+1})):[emptyLine()]);
     }else{
       const firstClient=clients[0];
-      setClientId(firstClient?.id||'');setSeriesId('');setTaxRegistrationId('');setIssueDate(today());setOperationDate('');setPaymentMethod('Transferencia bancaria');setNotes('');setLines([emptyLine()]);
+      setClientId(firstClient?.id||'');setSeriesId('');setInvoiceNumber('');setTaxRegistrationId('');setIssueDate(today());setOperationDate('');setPaymentMethod('Transferencia bancaria');setNotes('');setLines([emptyLine()]);
       if(firstClient?.paymentTermsDays){const d=new Date();d.setDate(d.getDate()+firstClient.paymentTermsDays);setDueDate(d.toISOString().slice(0,10));}else setDueDate('');
     }
     setError('');
@@ -84,10 +86,19 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
     return()=>{cancelled=true};
   },[open,issueDate,invoice?.invoiceType]);
 
+  useEffect(()=>{
+    if(!open||!seriesId)return;
+    const selected=series.find(item=>item.id===seriesId);
+    if(!selected)return;
+    if(invoice?.invoiceNumber&&invoice.seriesId===seriesId){setInvoiceNumber(invoice.invoiceNumber);return;}
+    setInvoiceNumber(`${selected.prefix}${String(selected.nextNumber).padStart(selected.padding,'0')}`);
+  },[open,seriesId,series,invoice?.id,invoice?.invoiceNumber,invoice?.seriesId]);
+
   if(!open)return null;
   const editing=Boolean(invoice);
   const invoiceKind=invoice?.invoiceType||'standard';
   const selectableSeries=series.filter(item=>item.kind===invoiceKind);
+  const selectedSeries=selectableSeries.find(item=>item.id===seriesId);
   const seriesOptions=selectableSeries.map(s=>({value:s.id,label:`${s.name} · próximo ${s.prefix}${String(s.nextNumber).padStart(s.padding,'0')}`,searchText:`${s.name} ${s.code||''} ${s.prefix}`}));
   const taxRegistrationOptions=taxRegistrations.map(item=>({value:item.id,label:`${item.label} · ${item.vatNumber}${item.isDefault?' · predeterminado':''}`,searchText:`${item.label} ${item.vatNumber} ${item.countryCode}`}));
   const updateLine=(index:number,patch:Partial<SalesInvoiceLine>)=>setLines(current=>current.map((line,i)=>i===index?{...line,...patch}:line));
@@ -107,6 +118,8 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
   const save=async()=>{
     if(!clientId){setError('Selecciona un cliente.');return;}
     if(!seriesId){setError('Selecciona una serie.');return;}
+    if(!invoiceNumber.trim()){setError('Indica el número de factura.');return;}
+    if(selectedSeries&&!invoiceNumber.trim().startsWith(selectedSeries.prefix)){setError(`El número debe comenzar por ${selectedSeries.prefix}.`);return;}
     if(taxRegistrations.length&&!taxRegistrationId){setError('Selecciona el registro IVA del emisor.');return;}
     const cleanLines=lines.filter(line=>line.description.trim());
     if(!cleanLines.length){setError('Añade al menos una línea a la factura.');return;}
@@ -114,19 +127,24 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
     if(invoiceKind==='standard'&&cleanLines.some(line=>line.unitPrice<0)){setError('Una factura ordinaria no puede tener precios negativos.');return;}
     setBusy(true);setError('');
     const payload:SalesInvoiceDraftInput={clientId,seriesId,taxRegistrationId:taxRegistrationId||null,issueDate,operationDate:operationDate||undefined,dueDate:dueDate||undefined,paymentMethod:paymentMethod||undefined,notes:notes||undefined,lines:cleanLines};
+    let createdId='';
     try{
-      if(invoice)await updateSalesInvoiceDraft(invoice.id,payload);else await createSalesInvoiceDraft(payload);
-      await onSaved();showSuccess(invoice?'Borrador actualizado correctamente.':'Borrador creado correctamente.');onClose();
+      const targetId=invoice?.id||(createdId=await createSalesInvoiceDraft(payload));
+      if(invoice)await updateSalesInvoiceDraft(invoice.id,payload);
+      try{await updateSalesInvoiceNumber(targetId,invoiceNumber.trim());}
+      catch(numberError){if(createdId)await deleteSalesInvoiceDraftSafe(createdId).catch(()=>{});throw numberError;}
+      await onSaved();showSuccess(invoice?'Borrador actualizado correctamente.':`Borrador ${invoiceNumber.trim()} creado correctamente.`);onClose();
     }catch(e){const message=errorMessage(e,'No se pudo guardar la factura.');setError(message);showError(message);}finally{setBusy(false);}
   };
 
   return <div className="modalBackdrop"><div className="modal salesInvoiceModal polishedModal">
-    <div className="modalHead salesModalHead"><div><div className="eyebrow">{invoiceKind==='rectifying'?'RECTIFICATIVA':'FACTURA DE VENTA'}</div><h3>{invoiceKind==='rectifying'?'Rectificativa en borrador':editing?'Editar borrador':'Nueva factura'}</h3><p>{invoiceKind==='rectifying'?'Revisa la corrección antes de emitirla. La serie R es independiente.':'Prepara la factura con cliente, serie y registro IVA. El número se asigna al emitir.'}</p></div><button onClick={onClose}><X/></button></div>
+    <div className="modalHead salesModalHead"><div><div className="eyebrow">{invoiceKind==='rectifying'?'RECTIFICATIVA':'FACTURA DE VENTA'}</div><h3>{invoiceKind==='rectifying'?'Rectificativa en borrador':editing?'Editar borrador':'Nueva factura'}</h3><p>{invoiceKind==='rectifying'?'Revisa la corrección antes de emitirla. La serie R es independiente.':'Te proponemos el siguiente número de la serie; puedes modificarlo antes de guardar.'}</p></div><button onClick={onClose}><X/></button></div>
     <section className="salesFormSection">
-      <div className="salesSectionTitle"><UserRound size={18}/><div><strong>Cliente, serie e IVA emisor</strong><span>Quién recibe la factura, cómo se numera y desde qué registro IVA se emite</span></div></div>
-      <div className="salesInvoiceMeta salesInvoiceMetaTriple">
+      <div className="salesSectionTitle"><UserRound size={18}/><div><strong>Cliente, serie, número e IVA emisor</strong><span>Quién recibe la factura, cómo se numera y desde qué registro IVA se emite</span></div></div>
+      <div className="salesInvoiceMeta salesInvoiceMetaDates">
         <label>Cliente *<SearchableSelect value={clientId} options={clientOptions} onChange={chooseClient} placeholder="Selecciona cliente" searchPlaceholder="Buscar cliente, CIF, email…" ariaLabel="Cliente de la factura"/></label>
         <label>Serie<SearchableSelect value={seriesId} options={seriesOptions} onChange={setSeriesId} placeholder="Selecciona serie" searchPlaceholder="Buscar serie…" ariaLabel="Serie de facturación"/></label>
+        <label>Número de factura *<input value={invoiceNumber} onChange={e=>setInvoiceNumber(e.target.value)} placeholder={selectedSeries?`${selectedSeries.prefix}${String(selectedSeries.nextNumber).padStart(selectedSeries.padding,'0')}`:'Número de factura'}/><small>{selectedSeries?`Propuesto según la serie ${selectedSeries.name}. Puedes modificarlo.`:'Selecciona una serie para obtener el siguiente número.'}</small></label>
         <label>Registro IVA<SearchableSelect value={taxRegistrationId} options={taxRegistrationOptions} onChange={setTaxRegistrationId} allowEmpty emptyLabel={taxRegistrations.length?'Selecciona registro IVA':'Sin registros IVA'} searchPlaceholder="Buscar registro IVA…" ariaLabel="Registro IVA del emisor"/></label>
       </div>
     </section>
@@ -190,14 +208,14 @@ export function SalesInvoices(){
   const totals=useMemo(()=>({issued:invoices.filter(i=>i.status!=='draft').reduce((s,i)=>s+i.totalAmount,0),pending:invoices.filter(i=>i.invoiceType==='standard'&&!['draft','paid','rectified'].includes(i.status)).reduce((s,i)=>s+Math.max(0,i.totalAmount-i.paidAmount),0),drafts:invoices.filter(i=>i.status==='draft').length}),[invoices]);
   const openNew=()=>{if(!clients.length){const message='Crea al menos un cliente antes de preparar una factura.';setError(message);showError(message);return;}setEditing(null);setModal(true);};
   const edit=(invoice:SalesInvoice)=>{setDetail(null);setEditing(invoice);setModal(true);};
-  const reopenForEdit=async(invoice:SalesInvoice)=>{if(invoice.status!=='issued')return;if(!window.confirm(`¿Editar ${invoice.invoiceNumber}? Volverá a borrador y su número quedará reservado para esta misma factura cuando la vuelvas a emitir.`))return;setBusyId(invoice.id);setError('');try{await reopenSalesInvoice(invoice.id);const next=await loadSalesInvoices();setInvoices(next);const draft=next.find(item=>item.id===invoice.id)||null;setDetail(null);if(draft){setEditing(draft);setModal(true);}showSuccess('Factura reabierta. Puedes corregirla y volver a emitirla con el mismo número.');}catch(e){const message=errorMessage(e,'No se pudo reabrir la factura.');setError(message);showError(message);}finally{setBusyId(null);}};
-  const emit=async(invoice:SalesInvoice)=>{if(!window.confirm(`¿Emitir ${invoice.invoiceType==='rectifying'?'esta rectificativa':'esta factura'}? Se asignará el número. Mientras siga solo como emitida podrás reabrirla o eliminarla.`))return;setBusyId(invoice.id);setError('');try{await issueSalesInvoice(invoice.id);await refresh();showSuccess(invoice.invoiceType==='rectifying'?'Rectificativa emitida correctamente.':'Factura emitida correctamente.');}catch(e){const message=errorMessage(e,'No se pudo emitir la factura.');setError(message);showError(message);}finally{setBusyId(null);}};
+  const reopenForEdit=async(invoice:SalesInvoice)=>{if(invoice.status!=='issued')return;if(!window.confirm(`¿Editar ${invoice.invoiceNumber}? Volverá a borrador y conservará su número mientras la corriges.`))return;setBusyId(invoice.id);setError('');try{await reopenSalesInvoice(invoice.id);const next=await loadSalesInvoices();setInvoices(next);const draft=next.find(item=>item.id===invoice.id)||null;setDetail(null);if(draft){setEditing(draft);setModal(true);}showSuccess('Factura reabierta. Puedes corregirla, incluido su número, y volver a emitirla.');}catch(e){const message=errorMessage(e,'No se pudo reabrir la factura.');setError(message);showError(message);}finally{setBusyId(null);}};
+  const emit=async(invoice:SalesInvoice)=>{if(!window.confirm(`¿Emitir ${invoice.invoiceType==='rectifying'?'esta rectificativa':'esta factura'}${invoice.invoiceNumber?` con el número ${invoice.invoiceNumber}`:''}? Mientras siga solo como emitida podrás reabrirla o eliminarla.`))return;setBusyId(invoice.id);setError('');try{await issueSalesInvoice(invoice.id);await refresh();showSuccess(invoice.invoiceType==='rectifying'?'Rectificativa emitida correctamente.':'Factura emitida correctamente.');}catch(e){const message=errorMessage(e,'No se pudo emitir la factura.');setError(message);showError(message);}finally{setBusyId(null);}};
   const remove=async(invoice:SalesInvoice)=>{const issued=invoice.status==='issued';const message=issued?`¿Eliminar completamente ${invoice.invoiceNumber}? Su número quedará libre para reutilizarse.`:'¿Eliminar este borrador? Esta acción no se puede deshacer.';if(!window.confirm(message))return;setBusyId(invoice.id);setError('');try{if(issued)await deleteReversibleSalesInvoice(invoice.id);else await deleteSalesInvoiceDraftSafe(invoice.id);if(detail?.id===invoice.id)setDetail(null);await refresh();showSuccess(issued?'Factura eliminada. Su número queda disponible para reutilizarse.':'Borrador eliminado correctamente.');}catch(e){const text=errorMessage(e,issued?'No se pudo eliminar la factura.':'No se pudo eliminar el borrador.');setError(text);showError(text);}finally{setBusyId(null);}};
   const pdf=(invoice:SalesInvoice)=>{try{downloadSalesInvoicePdf(invoice,settings,branding);showSuccess('PDF generado correctamente.');}catch(e){const message=errorMessage(e,'No se pudo generar el PDF.');setError(message);showError(message);}};
   const printPdf=(invoice:SalesInvoice)=>{try{printSalesInvoicePdf(invoice,settings,branding);showSuccess('PDF preparado para imprimir.');}catch(e){const message=errorMessage(e,'No se pudo abrir la impresión del PDF.');setError(message);showError(message);}};
   const rectify=async(invoice:SalesInvoice)=>{if(!window.confirm(`Se creará una rectificativa en borrador que anula ${invoice.invoiceNumber}. ¿Continuar?`))return;setBusyId(invoice.id);setError('');try{const id=await createRectifyingInvoice(invoice.id);const next=await loadSalesInvoices();setInvoices(next);const draft=next.find(item=>item.id===id)||null;setDetail(null);showSuccess('Rectificativa creada en borrador.');if(draft){setEditing(draft);setModal(true);}}catch(e){const message=errorMessage(e,'No se pudo crear la rectificativa.');setError(message);showError(message);}finally{setBusyId(null);}};
   return <div className="page"><div className="pageHead"><div><div className="eyebrow">VENTAS</div><h1>Facturación</h1><p>Borradores, series, registros IVA, emisión, envío por Gmail, cobros y rectificativas desde un único sitio.</p></div><div className="actions"><button className="secondary" onClick={()=>setSeriesModal(true)}><ListOrdered size={17}/> Series</button><button className="secondary" onClick={()=>setBusinessModal(true)}><Settings2 size={17}/> Datos fiscales</button><button className="primary" onClick={openNew}>+ Nueva factura</button></div></div>
-    <div className="stats salesStats"><div className="stat"><div className="statIcon"><ReceiptText/></div><div><span>Facturado</span><strong>{money(totals.issued)}</strong><small>Incluye rectificativas</small></div></div><div className="stat"><div className="statIcon"><Banknote/></div><div><span>Pendiente de cobro</span><strong>{money(totals.pending)}</strong><small>Facturas ordinarias vivas</small></div></div><div className="stat"><div className="statIcon"><FilePenLine/></div><div><span>Borradores</span><strong>{totals.drafts}</strong><small>Sin numerar</small></div></div></div>
+    <div className="stats salesStats"><div className="stat"><div className="statIcon"><ReceiptText/></div><div><span>Facturado</span><strong>{money(totals.issued)}</strong><small>Incluye rectificativas</small></div></div><div className="stat"><div className="statIcon"><Banknote/></div><div><span>Pendiente de cobro</span><strong>{money(totals.pending)}</strong><small>Facturas ordinarias vivas</small></div></div><div className="stat"><div className="statIcon"><FilePenLine/></div><div><span>Borradores</span><strong>{totals.drafts}</strong><small>Pendientes de emitir</small></div></div></div>
     <div className="toolbar salesToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente, CIF, VAT o nº factura…"/></div><SelectField value={status} onChange={setStatus} ariaLabel="Estado de factura" options={[{value:'all',label:'Todos los estados'},{value:'draft',label:'Borradores'},{value:'issued',label:'Emitidas'},{value:'sent',label:'Enviadas'},{value:'partially_paid',label:'Cobro parcial'},{value:'paid',label:'Cobradas'},{value:'rectified',label:'Rectificadas'}]}/></div>{error&&<div className="errorBox">{error}</div>}
     <section className="card tableCard">{loading?<div className="emptyState large">Cargando facturación…</div>:filtered.length?<table><thead><tr><th>Fecha</th><th>Número</th><th>Cliente</th><th>Tipo</th><th>Estado</th><th className="right">Base</th><th className="right">IVA</th><th className="right">Total</th><th className="right">Pendiente</th><th className="right">Acciones</th></tr></thead><tbody>{filtered.map(invoice=>{const pending=Math.max(0,invoice.totalAmount-invoice.paidAmount);return <tr key={invoice.id} className="clickableRow" onClick={()=>setDetail(invoice)}><td>{dateLabel(invoice.issueDate)}</td><td><strong>{invoice.invoiceNumber||'Borrador'}</strong></td><td>{invoice.clientName}</td><td>{invoice.invoiceType==='rectifying'?<span className="tag">Rectificativa</span>:'Ordinaria'}</td><td><span className={statusClass(invoice.status)}>{statusLabel(invoice.status)}</span></td><td className="right">{money(invoice.subtotal)}</td><td className="right">{money(invoice.taxAmount)}</td><td className="right"><strong>{money(invoice.totalAmount)}</strong></td><td className="right">{invoice.status==='draft'||invoice.invoiceType==='rectifying'?'—':money(pending)}</td><td className="right"><div className="invoiceActions" onClick={e=>e.stopPropagation()}><button className="iconBtn" title="Ver detalle" onClick={()=>setDetail(invoice)}><Eye size={16}/></button>{invoice.status==='draft'?<><button className="iconBtn" title="Editar borrador" onClick={()=>edit(invoice)}><Pencil size={16}/></button><button className="iconBtn" title="Descargar PDF borrador" onClick={()=>pdf(invoice)}><Download size={16}/></button><button className="iconBtn" title="Imprimir PDF borrador" onClick={()=>printPdf(invoice)}><Printer size={16}/></button><button className="iconBtn accountBtn" title="Emitir" disabled={busyId===invoice.id} onClick={()=>emit(invoice)}><FileCheck2 size={16}/></button><button className="iconBtn dangerIcon" title="Eliminar borrador" disabled={busyId===invoice.id} onClick={()=>remove(invoice)}><Trash2 size={16}/></button></>:<><button className="iconBtn" title="Descargar PDF" onClick={()=>pdf(invoice)}><Download size={16}/></button><button className="iconBtn" title="Imprimir PDF" onClick={()=>printPdf(invoice)}><Printer size={16}/></button>{invoice.status==='issued'&&<><button className="iconBtn" title="Editar factura emitida" disabled={busyId===invoice.id} onClick={()=>reopenForEdit(invoice)}><Pencil size={16}/></button><button className="iconBtn dangerIcon" title="Eliminar factura emitida" disabled={busyId===invoice.id} onClick={()=>remove(invoice)}><Trash2 size={16}/></button></>}{invoice.status!=='rectified'&&<button className="iconBtn" title="Enviar por Gmail" onClick={()=>setSendInvoice(invoice)}><Mail size={16}/></button>}{invoice.invoiceType==='standard'&&!['paid','rectified'].includes(invoice.status)&&<button className="iconBtn accountBtn" title="Registrar cobro" onClick={()=>setPaymentInvoice(invoice)}><CheckCircle2 size={16}/></button>}{invoice.invoiceType==='standard'&&invoice.status!=='rectified'&&<button className="iconBtn" title="Crear rectificativa" disabled={busyId===invoice.id} onClick={()=>rectify(invoice)}><RotateCcw size={16}/></button>}</>}</div></td></tr>;})}</tbody></table>:<div className="emptyState large">No hay facturas de venta para los filtros seleccionados.</div>}</section>
     {!products.length&&clients.length>0&&<div className="card alertCard"><div className="trendIcon"><PackageSearch/></div><div><h3>Catálogo comercial</h3><p>Puedes crear facturas con conceptos libres. Cuando tengas productos activos aparecerán en el buscador del editor de factura.</p></div></div>}
