@@ -53,7 +53,7 @@ export function calculateDefaultShippingPreview(order:FulfillmentOrder,tariffs:T
   if(defaultCarrierCode(order)!=='mrw'||order.weightKg==null)return null;
   const country=clean(order.shippingAddress?.country_code).toUpperCase();
   if(!['ES','PT'].includes(country))return null;
-  const document=tariffs.find(item=>item.status==='active'&&item.carrierCode==='mrw'&&inDateRange(item,order));
+  const document=tariffs.filter(item=>(item.status==='active'||item.status==='superseded')&&item.carrierCode==='mrw'&&inDateRange(item,order)).sort((a,b)=>(b.effectiveFrom||'').localeCompare(a.effectiveFrom||''))[0];
   if(!document)return null;
   const service=document.services.find(item=>item.canonicalServiceKey==='manana-19h'||/19\s*h/i.test(item.serviceName));
   if(!service)return null;
