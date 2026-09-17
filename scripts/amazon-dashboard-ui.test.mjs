@@ -27,9 +27,9 @@ test('Amazon page is a tabbed analytics dashboard with all approved tabs',async(
   assert.match(page,/amazonQuickRange\('current_month'/);
 });
 
-test('Amazon Summary renders approved KPI hierarchy and Recharts trend',async()=>{
+test('Amazon Summary renders VAT-aware net-profit KPI hierarchy and Recharts trend',async()=>{
   const summary=await source('src/components/amazon/AmazonSummary.tsx');
-  for(const label of ['Ventas sin IVA','Pedidos','Unidades vendidas','Tarifas Amazon','Reembolsos','Coste producto','Beneficio antes de Ads','Margen'])assert.match(summary,new RegExp(label));
+  for(const label of ['Ventas','IVA ventas','Ventas sin IVA','Pedidos','Unidades vendidas','Tarifas Amazon sin IVA','Publicidad','Reembolsos','Coste producto','Coste envíos FBM','Ganancia neta','Margen neto'])assert.match(summary,new RegExp(label));
   assert.match(summary,/recharts/);
   assert.match(summary,/ResponsiveContainer/);
   assert.match(summary,/loadAmazonSummary/);
