@@ -7,7 +7,7 @@ const root=process.cwd();
 const read=(file)=>fs.readFileSync(path.join(root,file),'utf8');
 
 test('invoice number is proposed and editable inside the create/edit invoice modal',()=>{
-  const page=read('src/pages/SalesInvoices.tsx');
+  const page=read('src/pages/SalesInvoicesCore.tsx');
   const main=read('src/main.tsx');
   assert.match(page,/updateSalesInvoiceNumber/,'invoice modal must use the invoice-number update service');
   assert.match(page,/\[invoiceNumber,setInvoiceNumber\]/,'invoice modal must keep the editable number in modal state');
@@ -18,7 +18,7 @@ test('invoice number is proposed and editable inside the create/edit invoice mod
 });
 
 test('saving a draft persists the chosen number and issuance preserves it',()=>{
-  const page=read('src/pages/SalesInvoices.tsx');
+  const page=read('src/pages/SalesInvoicesCore.tsx');
   const migrations=fs.readdirSync(path.join(root,'supabase/migrations')).filter(name=>/invoice_number/i.test(name));
   assert.ok(migrations.length>0,'an invoice-number migration must exist');
   const sql=migrations.map(name=>read(`supabase/migrations/${name}`)).join('\n');
