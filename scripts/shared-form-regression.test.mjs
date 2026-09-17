@@ -27,7 +27,7 @@ test('client and product forms use the shared modal primitives',async()=>{
 });
 
 test('business fiscal settings reuse shared country and postal controls',async()=>{
-  const source=await read('../src/pages/SalesInvoices.tsx');
+  const source=await read('../src/pages/SalesInvoicesCore.tsx');
   assert.match(source,/PostalAddressFields/);
   assert.doesNotMatch(source,/País<input\s+maxLength=\{2\}/);
 });
@@ -49,13 +49,15 @@ test('postal lookup sends no client or company personal fields',async()=>{
 });
 
 test('short closed enums use SelectField instead of native selects',async()=>{
-  const [sales,config]=await Promise.all([
+  const [salesShell,salesCore,config]=await Promise.all([
     read('../src/pages/SalesInvoices.tsx'),
+    read('../src/pages/SalesInvoicesCore.tsx'),
     read('../src/components/SalesConfigurationModals.tsx'),
   ]);
-  assert.match(sales,/SelectField/);
-  assert.doesNotMatch(sales,/<select value=\{line\.taxRate\}/);
-  assert.doesNotMatch(sales,/<select value=\{status\}/);
+  assert.match(salesShell,/SelectField/);
+  assert.match(salesCore,/SelectField/);
+  assert.doesNotMatch(salesCore,/<select value=\{line\.taxRate\}/);
+  assert.doesNotMatch(salesShell,/<select value=\{status\}/);
   assert.match(config,/SelectField/);
   assert.doesNotMatch(config,/<select value=\{form\.kind\}/);
 });
