@@ -17,7 +17,7 @@ test('fulfillment orders persist Amazon tracking confirmation state',async()=>{
 
 test('Amazon tracking helper inspects packages and confirms shipment with the Orders API',async()=>{
   const helper=await source('supabase/functions/_shared/amazon/shipment-confirmation.ts');
-  assert.match(helper,/includedData\s*:\s*\[?['"]PACKAGES['"]\]?/i);
+  assert.match(helper,/includedData\s*:\s*\[['"]PACKAGES['"]\]/i);
   assert.match(helper,/packageReferenceId/i);
   assert.match(helper,/shipmentConfirmation/i);
   assert.match(helper,/trackingNumber/i);
@@ -25,15 +25,18 @@ test('Amazon tracking helper inspects packages and confirms shipment with the Or
   assert.match(helper,/quantity/i);
 });
 
-test('label creation sends Amazon tracking without invalidating an already-created label on Amazon failure',async()=>{
-  const fn=await source('supabase/functions/sendcloud-orders/index.ts');
+test('Amazon tracking edge function supports one-order confirmation and retries',async()=>{
+  const fn=await source('supabase/functions/amazon-confirm-shipment/index.ts');
   assert.match(fn,/syncAmazonTracking/i);
-  assert.match(fn,/amazonTracking/i);
-  assert.match(fn,/catch\s*\([^)]*\)\s*\{[\s\S]{0,1500}amazon_tracking_sync_error/i);
+  assert.match(fn,/retryPendingAmazonTracking/i);
+  assert.match(fn,/confirm_order_tracking/i);
+  assert.match(fn,/retry_pending/i);
 });
 
-test('regular Sendcloud sync retries pending Amazon tracking confirmations',async()=>{
-  const fn=await source('supabase/functions/sendcloud-orders/index.ts');
-  assert.match(fn,/retryPendingAmazonTracking/i);
-  assert.match(fn,/amazon_tracking_synced_at/i);
+test('label creation keeps the label even if Amazon confirmation fails and regular sync retries it',async()=>{
+  const orders=await source('src/services/orders.ts');
+  assert.match(orders,/amazon-confirm-shipment/i);
+  assert.match(orders,/createOrderLabel[\s\S]{0,700}invokeAmazonTracking/i);
+  assert.match(orders,/syncSendcloudOrders[\s\S]{0,700}retry_pending/i);
+  assert.match(orders,/catch\s*\{\s*\/\*\s*Amazon tracking is retried/i);
 });
