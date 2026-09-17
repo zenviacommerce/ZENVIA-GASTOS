@@ -23,6 +23,7 @@ export interface OrderShippingCostDisplay{
   estimated:boolean;
   detail:string;
 }
+type VatAwareTariff=TransportTariffDocument&{vatRatePct?:number|null};
 
 const text=(value:unknown)=>typeof value==='string'?value.trim():'';
 const numeric=(value:unknown)=>{const n=Number(value);return Number.isFinite(n)?n:null};
@@ -106,7 +107,9 @@ function estimateFromTariff(order:FulfillmentOrder,tariffs:TransportTariffDocume
   if(base==null)return null;
   if(band.maxWeightKg==null&&band.extraKgPrice!=null&&weight>band.minWeightKg){base+=Math.ceil(weight-band.minWeightKg)*band.extraKgPrice}
   if(!doc.fuelSurchargeIncluded&&doc.fuelSurchargePct!=null)base*=1+doc.fuelSurchargePct/100;
-  const vat=doc.vatRatePct;
+  // MRW factura este contrato con IVA 21 %. La columna existe en BBDD para poder parametrizarlo;
+  // mientras el mapper antiguo no la expone, 21 % mantiene compatible la tarifa actual importada.
+  const vat=(doc as VatAwareTariff).vatRatePct??(doc.carrierCode.toLowerCase().includes('mrw')?21:null);
   let net:number|null=null,tax:number|null=null,gross:number|null=null;
   if(doc.pricesIncludeVat){
     gross=base;
