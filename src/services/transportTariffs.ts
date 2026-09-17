@@ -228,6 +228,7 @@ export async function saveTransportTariffReview(document:TransportTariffDocument
   await insertServices(document.id,ownerRow.owner_id,document.carrierCode,document.services);
 }
 
+export async function createTransportTariffVersion(documentId:string,effectiveFrom:string){const {data,error}=await supabase.rpc('transport_tariff_clone_version',{document_id:documentId,new_effective_from:effectiveFrom});if(error)throw error;return String(data)}
 export async function markTransportTariffReviewed(documentId:string){const {data,error}=await supabase.rpc('transport_tariff_mark_reviewed',{document_id:documentId});if(error)throw error;return data}
 export async function activateTransportTariff(documentId:string){const {data,error}=await supabase.rpc('transport_tariff_activate',{document_id:documentId});if(error)throw error;return data}
 export async function deleteTransportTariffDraft(document:TransportTariffDocument){if(!['draft','reviewed'].includes(document.status))throw new Error('Una tarifa activa no se puede eliminar.');const {error}=await supabase.from('transport_tariff_documents').delete().eq('id',document.id);if(error)throw error;if(document.sourceFilePath)await supabase.storage.from(BUCKET).remove([document.sourceFilePath]).catch(()=>undefined)}
