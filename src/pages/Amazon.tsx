@@ -40,8 +40,8 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
       {activeTab==='summary'&&<AmazonSummary filters={filters} onLoaded={handleSummary}/>} 
       {activeTab==='products'&&<AmazonProducts filters={filters}/>} 
       {activeTab==='marketplaces'&&<AmazonMarketplaces filters={filters}/>} 
-      {activeTab==='orders'&&<AmazonOrders filters={filters}/>} 
-      {activeTab==='inventory'&&<AmazonInventory filters={filters}/>} 
+      {activeTab==='orders'&&<AmazonOrders filters={filters} marketplaces={marketplaces}/>} 
+      {activeTab==='inventory'&&<AmazonInventory filters={filters} marketplaces={marketplaces}/>} 
       {activeTab==='unmapped'&&<AmazonUnmapped onChanged={()=>setSummaryMeta(null)}/>} 
     </>:<section className="card amazonDisconnected"><strong>Amazon Analytics todavía no está disponible.</strong><p>{loading?'Comprobando la conexión segura con Amazon SP-API…':status?.configured?'Las credenciales están configuradas, pero la conexión no está operativa.':isAdmin?'Completa la configuración segura de Amazon SP-API en el backend.':'El administrador debe completar la conexión con Amazon.'}</p></section>}
   </div>;
