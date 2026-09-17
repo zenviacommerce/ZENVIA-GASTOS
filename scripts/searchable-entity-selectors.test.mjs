@@ -5,7 +5,7 @@ import test from 'node:test';
 const read=(path)=>readFile(new URL(path,import.meta.url),'utf8');
 
 test('new sales invoice uses SearchableSelect for the growing client list',async()=>{
-  const source=await read('../src/pages/SalesInvoices.tsx');
+  const source=await read('../src/pages/SalesInvoicesCore.tsx');
   assert.match(source,/SearchableSelect/);
   assert.match(source,/clientOptions/);
   assert.match(source,/ariaLabel="Cliente de la factura"/);
@@ -30,7 +30,7 @@ test('expense supplier filter is searchable by supplier data',async()=>{
 });
 
 test('short VAT-rate enum uses SelectField without native select',async()=>{
-  const source=await read('../src/pages/SalesInvoices.tsx');
+  const source=await read('../src/pages/SalesInvoicesCore.tsx');
   assert.match(source,/SelectField/);
   assert.doesNotMatch(source,/<select value=\{line\.taxRate\}/);
 });
