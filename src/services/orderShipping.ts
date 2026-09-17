@@ -55,7 +55,10 @@ export function calculateDefaultShippingPreview(order:FulfillmentOrder,tariffs:T
   if(!['ES','PT'].includes(country))return null;
   const document=tariffs.filter(item=>(item.status==='active'||item.status==='superseded')&&item.carrierCode==='mrw'&&inDateRange(item,order)).sort((a,b)=>(b.effectiveFrom||'').localeCompare(a.effectiveFrom||''))[0];
   if(!document)return null;
-  const service=document.services.find(item=>item.canonicalServiceKey==='manana-19h'||/19\s*h/i.test(item.serviceName));
+  const orderDate=(order.orderCreatedAt||new Date().toISOString()).slice(0,10);
+  const revision=(document.revisions||[]).filter(item=>item.effectiveFrom<=orderDate).sort((a,b)=>b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
+  const config=revision?.snapshot||document;
+  const service=config.services.find(item=>item.canonicalServiceKey==='manana-19h'||/19\s*h/i.test(item.serviceName));
   if(!service)return null;
   const zoneCode='peninsular';
   const candidates=service.bands.filter(band=>band.countryCode===country&&band.zoneCode===zoneCode).sort((a,b)=>a.minWeightKg-b.minWeightKg);
@@ -67,21 +70,19 @@ export function calculateDefaultShippingPreview(order:FulfillmentOrder,tariffs:T
   if(band.maxWeightKg==null&&band.extraKgPrice!=null&&weight>band.minWeightKg){
     base+=Math.ceil(weight-band.minWeightKg)*band.extraKgPrice;
   }
-  const orderDate=(order.orderCreatedAt||new Date().toISOString()).slice(0,10);
-  const fuelPeriod=(document.fuelPeriods||[]).filter(item=>orderDate>=item.effectiveFrom&&(!item.effectiveTo||orderDate<=item.effectiveTo)).sort((a,b)=>b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
-  const fuelPct=document.fuelSurchargeIncluded?0:(fuelPeriod?.fuelSurchargePct??document.fuelSurchargePct??0);
+  const fuelPct=config.fuelSurchargeIncluded?0:(config.fuelSurchargePct??0);
   const priced=base*(1+fuelPct/100);
   let netAmount:number,totalAmount:number,taxAmount:number;
-  if(document.pricesIncludeVat){
+  if(config.pricesIncludeVat){
     totalAmount=priced;netAmount=priced/(1+vatRate/100);taxAmount=totalAmount-netAmount;
   }else{
     netAmount=priced;taxAmount=netAmount*(vatRate/100);totalAmount=netAmount+taxAmount;
   }
   const round=(value:number)=>Math.round((value+Number.EPSILON)*100)/100;
   return {
-    totalAmount:round(totalAmount),netAmount:round(netAmount),taxAmount:round(taxAmount),currency:document.currencyCode||'EUR',
+    totalAmount:round(totalAmount),netAmount:round(netAmount),taxAmount:round(taxAmount),currency:config.currencyCode||'EUR',
     carrierName:'MRW',serviceName:service.serviceName,source:'tariff_estimate',
-    note:document.fuelSurchargeIncluded||fuelPeriod||document.fuelSurchargePct!=null?null:'Combustible pendiente de configurar',
+    note:config.fuelSurchargeIncluded||config.fuelSurchargePct!=null?null:'Combustible pendiente de configurar',
   };
 }
 
