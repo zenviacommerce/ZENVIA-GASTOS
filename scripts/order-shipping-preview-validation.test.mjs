@@ -13,22 +13,33 @@ test('orders expose a visible shipping-cost column using the shared preview help
   assert.match(source,/ordersShippingCost/,'el coste debe usar el patrón visual de la tabla');
 });
 
-test('shared order shipping logic validates MRW hard limits and distinguishes blocking issues',async()=>{
+test('shared order shipping logic follows current MRW hard limits',async()=>{
   const path='src/services/orderShipping.ts';
   assert.ok(existsSync(root(path)),'falta src/services/orderShipping.ts');
   const source=await read(path);
   assert.match(source,/validateOrderForCarrier/);
   assert.match(source,/name[^\n]{0,180}50/i,'MRW nombre máximo 50');
-  assert.match(source,/street[^\n]{0,180}50/i,'MRW dirección máxima 50');
+  assert.match(source,/street[^\n]{0,180}50/i,'MRW dirección máximo 50');
+  assert.match(source,/address2[^\n]{0,180}50/i,'MRW dirección 2 máximo 50');
   assert.match(source,/phone_required/,'MRW requiere teléfono');
+  assert.doesNotMatch(source,/house_too_long/,'Sendcloud no publica máximo MRW para house_number');
   assert.match(source,/severity:OrderValidationSeverity='error'/,'los errores duros deben ser bloqueantes por defecto');
 });
 
-test('Sendcloud order tools validate the destination remotely before label creation',async()=>{
+test('Sendcloud order tools validate remotely and read analysis-level corrections',async()=>{
   const source=await read('supabase/functions/sendcloud-order-tools/index.ts');
   assert.match(source,/action==='validate_order'/);
   assert.match(source,/\/addresses\/validate/);
-  assert.match(source,/validation_result/);
+  assert.match(source,/analysis\?\.changed_attributes/);
+  assert.match(source,/analysis\?\.invalid_attributes/);
+});
+
+test('selected shipping cost snapshot is sent to label creation and persisted without inventing net VAT',async()=>{
+  const [page,orders,backend]=await Promise.all([read('src/pages/Orders.tsx'),read('src/services/orders.ts'),read('supabase/functions/sendcloud-orders/index.ts')]);
+  assert.match(page,/shippingCost:\s*selectedCost/,'la selección debe enviar el coste calculado');
+  assert.match(orders,/shippingCost\?:/,'createOrderLabel debe aceptar el snapshot');
+  assert.match(backend,/selectedCostSnapshot/,'backend debe priorizar el snapshot validado');
+  assert.match(backend,/shipping_cost_net_amount:[^\n]*snapshot[^\n]*net/,'el neto debe venir del desglose, no copiar el total');
 });
 
 test('transport tariffs persist a VAT rate for gross shipping previews',async()=>{
