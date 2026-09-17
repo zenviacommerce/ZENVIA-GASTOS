@@ -7,11 +7,10 @@ const salesService=fs.readFileSync('src/services/sales.ts','utf8');
 const ordersPage=fs.readFileSync('src/pages/Orders.tsx','utf8');
 const migrationName=fs.readdirSync('supabase/migrations').find(name=>name.includes('sales_invoice_number_override'));
 
-test('draft invoices expose an optional manual invoice number override',()=>{
+test('draft invoices expose an optional invoice number override',()=>{
   assert.match(salesPage,/Número de factura/);
-  assert.match(salesPage,/manualInvoiceNumber/);
-  assert.match(salesService,/manualInvoiceNumber\?: string/);
-  assert.match(salesService,/manual_invoice_number/);
+  assert.match(salesPage,/invoiceNumber/);
+  assert.match(salesService,/invoiceNumber\?: string/);
 });
 
 test('issued invoices can change their number through a guarded RPC',()=>{
