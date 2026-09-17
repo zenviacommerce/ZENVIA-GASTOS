@@ -5,7 +5,7 @@ import test from 'node:test';
 const read=(path)=>readFile(new URL(path,import.meta.url),'utf8');
 
 test('BusinessModal uses the reusable postal address fields for issuer address',async()=>{
-  const source=await read('../src/pages/SalesInvoices.tsx');
+  const source=await read('../src/pages/SalesInvoicesCore.tsx');
   assert.match(source,/PostalAddressFields/);
   assert.match(source,/countryCode=\{form\.countryCode/);
   assert.match(source,/postalCode=\{form\.postalCode/);
