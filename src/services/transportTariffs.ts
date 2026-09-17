@@ -147,7 +147,7 @@ function parseMrwServices(text:string):TransportTariffServiceDraft[]{
       }
     }
     const key=`manana-${hour}h`;
-    return {serviceName:`Mañana ${hour} h`,canonicalServiceKey:key,externalProvider:'mrw',externalServiceCode:key,mappingStatus:'suggested',sortOrder:serviceIndex,bands};
+    return {serviceName:`Mañana ${hour} h`,canonicalServiceKey:key,externalProvider:'mrw',externalServiceCode:key,mappingStatus:'suggested' as TransportMappingStatus,sortOrder:serviceIndex,bands};
   }).filter(service=>service.bands.length>0);
 }
 
@@ -172,7 +172,7 @@ function normalizeProposal(value:any,fallback:TransportTariffProposal):Transport
   const services=Array.isArray(value.services)?value.services.map((service:any,index:number)=>({
     serviceName:clean(service.serviceName)||`Servicio ${index+1}`,canonicalServiceKey:slug(service.canonicalServiceKey||service.serviceName||`service-${index+1}`),
     externalProvider:clean(service.externalProvider)||fallback.carrierCode,externalServiceCode:clean(service.externalServiceCode)||slug(service.serviceName||`service-${index+1}`),
-    mappingStatus:['suggested','confirmed','unmapped'].includes(service.mappingStatus)?service.mappingStatus:'suggested',sortOrder:index,
+    mappingStatus:(['suggested','confirmed','unmapped'].includes(service.mappingStatus)?service.mappingStatus:'suggested') as TransportMappingStatus,sortOrder:index,
     bands:Array.isArray(service.bands)?service.bands.map((band:any,bandIndex:number)=>({countryCode:clean(band.countryCode).toUpperCase().slice(0,2),zoneCode:slug(band.zoneCode||band.zoneName||'zone'),zoneName:clean(band.zoneName)||clean(band.zoneCode)||'Zona',minWeightKg:Number(band.minWeightKg||0),maxWeightKg:band.maxWeightKg==null?null:Number(band.maxWeightKg),basePrice:band.basePrice==null?null:Number(band.basePrice),extraKgPrice:band.extraKgPrice==null?null:Number(band.extraKgPrice),notes:clean(band.notes)||null,sortOrder:bandIndex})).filter((band:any)=>band.countryCode.length===2&&(band.basePrice!=null||band.extraKgPrice!=null)):[],
   })).filter((service:any)=>service.serviceName):fallback.services;
   return {...fallback,...value,carrierCode:slug(value.carrierCode||fallback.carrierCode),carrierName:clean(value.carrierName)||fallback.carrierName,effectiveFrom:value.effectiveFrom||null,effectiveTo:value.effectiveTo||null,currencyCode:clean(value.currencyCode||fallback.currencyCode).toUpperCase(),fuelSurchargePct:value.fuelSurchargePct==null?null:Number(value.fuelSurchargePct),parserConfidence:Number(value.parserConfidence??fallback.parserConfidence),parserNotes:Array.isArray(value.parserNotes)?value.parserNotes.map(clean).filter(Boolean):fallback.parserNotes,services};
