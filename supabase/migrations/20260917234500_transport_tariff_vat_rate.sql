@@ -1,8 +1,8 @@
 alter table public.transport_tariff_documents
-  add column if not exists vat_rate_pct numeric(6,3);
+  add column if not exists vat_rate_pct numeric(6,3) default 21;
 
 comment on column public.transport_tariff_documents.vat_rate_pct is
-  'VAT percentage used to derive gross shipping cost from tariff prices when the source tariff excludes VAT.';
+  'VAT percentage used to derive gross shipping cost from tariff prices when the source tariff excludes VAT. Default 21 for the current Spanish transport contracts.';
 
 update public.transport_tariff_documents
 set vat_rate_pct = 21
