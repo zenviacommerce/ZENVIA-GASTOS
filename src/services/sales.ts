@@ -118,6 +118,7 @@ export type SalesInvoiceDraftInput = {
   clientId: string;
   seriesId: string;
   taxRegistrationId?: string | null;
+  invoiceNumber?: string;
   issueDate: string;
   operationDate?: string;
   dueDate?: string;
@@ -195,8 +196,30 @@ export async function loadSalesInvoices():Promise<SalesInvoice[]>{
 function invoiceRow(input:SalesInvoiceDraftInput){return {client_id:input.clientId,series_id:input.seriesId,tax_registration_id:input.taxRegistrationId||null,issue_date:input.issueDate,operation_date:nullable(input.operationDate),due_date:nullable(input.dueDate),payment_method:nullable(input.paymentMethod),notes:nullable(input.notes)};}
 function lineRows(invoiceId:string,lines:SalesInvoiceLine[]){return lines.map((line,index)=>({invoice_id:invoiceId,product_id:line.productId||null,position:index+1,description:line.description.trim(),quantity:line.quantity,unit:line.unit.trim()||'ud',unit_price:line.unitPrice,discount_percent:line.discountPercent||0,tax_rate:line.taxRate}));}
 
-export async function createSalesInvoiceDraft(input:SalesInvoiceDraftInput){const {data:invoice,error}=await supabase.from('sales_invoices').insert(invoiceRow(input)).select('id').single();if(error)throw error;const rows=lineRows(invoice.id,input.lines).filter(row=>row.description);if(rows.length){const {error:lineError}=await supabase.from('sales_invoice_lines').insert(rows);if(lineError){await supabase.from('sales_invoices').delete().eq('id',invoice.id);throw lineError;}}return invoice.id as string;}
-export async function updateSalesInvoiceDraft(id:string,input:SalesInvoiceDraftInput){const {error}=await supabase.from('sales_invoices').update(invoiceRow(input)).eq('id',id).eq('status','draft');if(error)throw error;const {error:deleteError}=await supabase.from('sales_invoice_lines').delete().eq('invoice_id',id);if(deleteError)throw deleteError;const rows=lineRows(id,input.lines).filter(row=>row.description);if(rows.length){const {error:lineError}=await supabase.from('sales_invoice_lines').insert(rows);if(lineError)throw lineError;}}
+export async function updateSalesInvoiceNumber(id:string,invoiceNumber:string|null|undefined){
+  const value=invoiceNumber?.trim()||null;
+  const {data,error}=await supabase.rpc('sales_update_invoice_number',{p_invoice_id:id,p_invoice_number:value});
+  if(error){
+    if(error.code==='23505'||/duplicate|unique|ya existe/i.test(error.message||''))throw new Error('Ya existe una factura con ese número.');
+    throw error;
+  }
+  return data;
+}
+
+export async function createSalesInvoiceDraft(input:SalesInvoiceDraftInput){
+  const {data:invoice,error}=await supabase.from('sales_invoices').insert(invoiceRow(input)).select('id').single();if(error)throw error;
+  try{
+    const rows=lineRows(invoice.id,input.lines).filter(row=>row.description);if(rows.length){const {error:lineError}=await supabase.from('sales_invoice_lines').insert(rows);if(lineError)throw lineError;}
+    if(input.invoiceNumber?.trim())await updateSalesInvoiceNumber(invoice.id,input.invoiceNumber);
+    return invoice.id as string;
+  }catch(e){await supabase.from('sales_invoices').delete().eq('id',invoice.id).eq('status','draft');throw e;}
+}
+export async function updateSalesInvoiceDraft(id:string,input:SalesInvoiceDraftInput){
+  const {error}=await supabase.from('sales_invoices').update(invoiceRow(input)).eq('id',id).eq('status','draft');if(error)throw error;
+  const {error:deleteError}=await supabase.from('sales_invoice_lines').delete().eq('invoice_id',id);if(deleteError)throw deleteError;
+  const rows=lineRows(id,input.lines).filter(row=>row.description);if(rows.length){const {error:lineError}=await supabase.from('sales_invoice_lines').insert(rows);if(lineError)throw lineError;}
+  if(input.invoiceNumber!==undefined)await updateSalesInvoiceNumber(id,input.invoiceNumber);
+}
 export async function deleteSalesInvoiceDraft(id:string){const {error}=await supabase.from('sales_invoices').delete().eq('id',id).eq('status','draft');if(error)throw error;}
 export async function issueSalesInvoice(id:string){const {data,error}=await supabase.rpc('issue_sales_invoice',{p_invoice_id:id});if(error)throw error;return data;}
 export async function markSalesInvoiceSent(id:string){const {error}=await supabase.from('sales_invoices').update({status:'sent',sent_at:new Date().toISOString()}).eq('id',id).in('status',['issued','sent']);if(error)throw error;}
