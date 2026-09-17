@@ -1,6 +1,8 @@
 import { sanitizeAmazonError } from './http.ts';
 import { spApiRequest } from './sp-api.ts';
 
+const TRACKING_BACKFILL_DAYS=7;
+
 type FulfillmentOrderRow={
   id:string;owner_id:string;order_id?:string|null;order_number?:string|null;source_channel?:string|null;
   tracking_number?:string|null;sendcloud_parcel_id?:number|string|null;carrier_code?:string|null;carrier_name?:string|null;
@@ -107,7 +109,9 @@ export async function syncAmazonTracking(admin:any,order:FulfillmentOrderRow):Pr
 
 export async function retryPendingAmazonTracking(admin:any,ownerId:string,limit=5,force=false){
   const safeLimit=Math.max(1,Math.min(25,Math.trunc(Number(limit)||5)));
-  const {data,error}=await admin.from('fulfillment_orders').select('*').eq('owner_id',ownerId).eq('source_channel','amazon').not('tracking_number','is',null).is('amazon_tracking_synced_at',null).order('tracking_updated_at',{ascending:false,nullsFirst:false}).limit(Math.max(safeLimit*4,20));
+  let query=admin.from('fulfillment_orders').select('*').eq('owner_id',ownerId).eq('source_channel','amazon').not('tracking_number','is',null).is('amazon_tracking_synced_at',null);
+  if(!force){const cutoff=new Date(Date.now()-TRACKING_BACKFILL_DAYS*86400000).toISOString();query=query.gte('tracking_updated_at',cutoff);}
+  const {data,error}=await query.order('tracking_updated_at',{ascending:false,nullsFirst:false}).limit(Math.max(safeLimit*4,20));
   if(error)throw error;
   const results:any[]=[];
   for(const order of data||[]){
