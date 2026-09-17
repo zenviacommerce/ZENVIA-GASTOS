@@ -8,6 +8,7 @@ export function AmazonCompleteness({data}:{data:AmazonCompleteness}){
   if(data.missingHistoricalCostCount)issues.push(`${data.missingHistoricalCostCount} SKU sin coste histórico (${data.missingHistoricalCostUnits} uds.)`);
   if(data.missingFxEventCount)issues.push(`${data.missingFxEventCount} movimientos sin FX`);
   if(data.missingVatOrderCount)issues.push(`${data.missingVatOrderCount} pedidos sin IVA`);
+  if(data.missingFbmShippingCostCount)issues.push(`${data.missingFbmShippingCostCount} pedidos FBM sin coste de envío`);
   if(data.syncFailed)issues.push(`${data.syncFailed} trabajos con error`);
   return <div className={`amazonQualityBanner ${data.profitComplete?'isComplete':''}`}>
     <div className="amazonQualityIcon">{data.profitComplete?<Info size={18}/>:<AlertTriangle size={18}/>}</div>

@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { TransportTariffsPanel } from './TransportTariffsPanel';
 
 const ENHANCED='zenviaLabelDefaultsReady';
 const SELECTED='zenvia-default-selected';
@@ -87,7 +88,6 @@ function enhanceModal(modal:HTMLElement){
   const correosCard=carrierCard(modal,'correos');
   const mrwButtons=mrwCard?Array.from(mrwCard.querySelectorAll<HTMLButtonElement>('.ordersOptionList button')):[];
   const correosButtons=correosCard?Array.from(correosCard.querySelectorAll<HTMLButtonElement>('.ordersOptionList button')):[];
-
   mrwButtons.forEach(normalizeMrwServiceLabel);
 
   if(balearic){
@@ -142,10 +142,25 @@ function enhanceModal(modal:HTMLElement){
 }
 
 export function OrderLabelDefaults(){
+  const [tariffsOpen,setTariffsOpen]=useState(false);
   useEffect(()=>{
+    const ensureTariffsButton=()=>{
+      const actions=document.querySelector<HTMLElement>('.ordersPage .pageHead .actions');
+      if(!actions)return;
+      let button=actions.querySelector<HTMLButtonElement>('.zenviaTransportTariffsButton');
+      if(button)return;
+      button=document.createElement('button');
+      button.type='button';
+      button.className='secondary zenviaTransportTariffsButton';
+      button.textContent='Tarifas de transporte';
+      button.setAttribute('aria-label','Abrir tarifas de transporte');
+      button.onclick=()=>setTariffsOpen(true);
+      actions.prepend(button);
+    };
     const enhance=()=>{
       document.querySelectorAll<HTMLElement>('.ordersLabelModal').forEach(enhanceModal);
       translateTrackingBadges();
+      ensureTariffsButton();
     };
     const clickCapture=(event:MouseEvent)=>{
       const target=event.target instanceof Element?event.target:null;
@@ -168,8 +183,9 @@ export function OrderLabelDefaults(){
     return()=>{
       observer.disconnect();
       document.removeEventListener('click',clickCapture,true);
+      document.querySelector('.zenviaTransportTariffsButton')?.remove();
       allowedButton=null;
     };
   },[]);
-  return null;
+  return <TransportTariffsPanel open={tariffsOpen} onClose={()=>setTariffsOpen(false)}/>;
 }
