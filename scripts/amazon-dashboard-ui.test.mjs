@@ -38,7 +38,9 @@ test('Amazon Summary renders VAT-aware net-profit KPI hierarchy and Recharts tre
 
 test('Completeness UI surfaces historical sync and missing input states',async()=>{
   const banner=await source('src/components/amazon/AmazonCompleteness.tsx');
-  for(const label of ['Sincronización histórica en curso','SKU sin vincular','coste histórico','FX','IVA','Ads'])assert.match(banner,new RegExp(label,'i'));
+  for(const label of ['Sincronización histórica en curso','SKU sin vincular','coste histórico','FX','IVA','Ads','pedidos FBM sin coste de envío'])assert.match(banner,new RegExp(label,'i'));
+  const service=await source('src/services/amazon.ts');
+  assert.match(service,/missingFbmShippingCostCount/,'FBM shipping completeness must be typed in the frontend contract');
 });
 
 test('Amazon detail tabs use typed loaders and expose approved fields',async()=>{
