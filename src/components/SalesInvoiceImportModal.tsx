@@ -1,0 +1,135 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, CheckCircle2, FileText, LoaderCircle, Plus, Trash2, Upload, X } from 'lucide-react';
+import { ensureSalesSeries, type Client, type SalesInvoice, type SalesInvoiceSeries } from '../services/sales';
+import { createSalesInvoiceDraftFromCandidate, prepareSalesInvoiceImportCandidate, recalculateSalesImportCandidate, type SalesInvoiceImportCandidate } from '../services/salesInvoiceImport';
+import { SearchableSelect } from './forms/SearchableSelect';
+import { SelectField } from './forms/SelectField';
+
+const ANALYSIS_CONCURRENCY=2;
+type Item={id:string;file:File;candidate?:SalesInvoiceImportCandidate;series:SalesInvoiceSeries[];status:'analyzing'|'needs_review'|'ready'|'duplicate'|'importing'|'imported'|'error';error?:string;excluded?:boolean};
+type Props={open:boolean;onClose:()=>void;clients:Client[];existingInvoices:SalesInvoice[];onFinished:()=>Promise<void>|void};
+const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+
+function bestSeries(series:SalesInvoiceSeries[],invoiceNumber:string){
+  const standards=series.filter(item=>item.kind==='standard'&&item.active);
+  return [...standards].sort((a,b)=>b.prefix.length-a.prefix.length).find(item=>invoiceNumber.startsWith(item.prefix))||standards[0]||null;
+}
+function proposedNumber(series:SalesInvoiceSeries){return `${series.prefix}${String(series.nextNumber).padStart(series.padding,'0')}`;}
+
+export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,onFinished}:Props){
+  const inputRef=useRef<HTMLInputElement>(null);
+  const [items,setItems]=useState<Item[]>([]);
+  const [selectedId,setSelectedId]=useState<string|null>(null);
+  const [busy,setBusy]=useState(false);
+
+  useEffect(()=>{if(!open){setItems([]);setSelectedId(null);setBusy(false);}},[open]);
+  const patch=(id:string,change:Partial<Item>)=>setItems(current=>current.map(item=>item.id===id?{...item,...change}:item));
+  const patchCandidate=(id:string,change:Partial<SalesInvoiceImportCandidate>)=>setItems(current=>current.map(item=>item.id===id&&item.candidate?{...item,status:item.status==='duplicate'?'duplicate':'needs_review',candidate:recalculateSalesImportCandidate({...item.candidate,...change,status:'needs_review'})}:item));
+
+  const prepareFile=async(item:Item)=>{
+    try{
+      let candidate=await prepareSalesInvoiceImportCandidate(item.file,clients);
+      const year=/^\d{4}-/.test(candidate.issueDate)?Number(candidate.issueDate.slice(0,4)):new Date().getFullYear();
+      const allSeries=await ensureSalesSeries(year);
+      const series=allSeries.filter(row=>row.kind==='standard'&&row.active);
+      const selectedSeries=bestSeries(series,candidate.invoiceNumber);
+      candidate={...candidate,seriesId:selectedSeries?.id||'',invoiceNumber:candidate.invoiceNumber||(selectedSeries?proposedNumber(selectedSeries):'')};
+      const duplicate=Boolean(candidate.invoiceNumber&&existingInvoices.some(invoice=>invoice.invoiceNumber===candidate.invoiceNumber));
+      if(duplicate)candidate={...candidate,status:'duplicate',reviewReason:'Ya existe una factura con este número.'};
+      patch(item.id,{candidate,series,status:duplicate?'duplicate':'needs_review',error:undefined});
+    }catch(error){patch(item.id,{status:'error',error:error instanceof Error?error.message:'No se pudo analizar la factura.'});}
+  };
+
+  const analyzeFiles=async(files:File[])=>{
+    const pdfs=files.filter(file=>file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf'));
+    const initial:Item[]=pdfs.map(file=>({id:crypto.randomUUID(),file,series:[],status:'analyzing'}));
+    setItems(initial);setSelectedId(null);
+    let cursor=0;
+    const worker=async()=>{while(true){const index=cursor++;if(index>=initial.length)return;await prepareFile(initial[index]);}};
+    await Promise.all(Array.from({length:Math.min(ANALYSIS_CONCURRENCY,initial.length)},()=>worker()));
+  };
+
+  const selected=items.find(item=>item.id===selectedId);
+  const candidate=selected?.candidate;
+  const clientOptions=useMemo(()=>clients.map(client=>({value:client.id,label:client.name,description:client.taxId||client.city||undefined,searchText:[client.name,client.taxId,client.email,client.city].filter(Boolean).join(' ')})),[clients]);
+  const seriesOptions=(selected?.series||[]).map(series=>({value:series.id,label:`${series.name} · ${series.prefix}`,description:`Siguiente ${proposedNumber(series)}`,searchText:`${series.name} ${series.code} ${series.prefix}`}));
+
+  const changeDate=async(value:string)=>{
+    if(!selected||!candidate)return;
+    patchCandidate(selected.id,{issueDate:value});
+    if(!/^\d{4}-/.test(value))return;
+    try{
+      const rows=(await ensureSalesSeries(Number(value.slice(0,4)))).filter(row=>row.kind==='standard'&&row.active);
+      const chosen=bestSeries(rows,candidate.invoiceNumber);
+      setItems(current=>current.map(item=>item.id===selected.id&&item.candidate?{...item,series:rows,status:'needs_review',candidate:{...item.candidate,issueDate:value,seriesId:chosen?.id||''}}:item));
+    }catch(error){patch(selected.id,{error:error instanceof Error?error.message:'No se pudieron cargar las series.'});}
+  };
+
+  const updateLine=(index:number,change:Partial<SalesInvoiceImportCandidate['lines'][number]>)=>{if(!selected||!candidate)return;patchCandidate(selected.id,{lines:candidate.lines.map((line,i)=>i===index?{...line,...change}:line)});};
+  const addLine=()=>{if(!selected||!candidate)return;patchCandidate(selected.id,{lines:[...candidate.lines,{position:candidate.lines.length+1,description:'',quantity:1,unit:'ud',unitPrice:0,discountPercent:0,taxRate:21,productId:null}]});};
+  const removeLine=(index:number)=>{if(!selected||!candidate)return;patchCandidate(selected.id,{lines:candidate.lines.filter((_,i)=>i!==index).map((line,i)=>({...line,position:i+1}))});};
+
+  const confirmReview=()=>{
+    if(!selected||!candidate)return;
+    const selectedSeries=selected.series.find(series=>series.id===candidate.seriesId);
+    let error='';
+    if(!candidate.clientId)error='Selecciona el cliente.';
+    else if(!candidate.issueDate)error='Indica la fecha de factura.';
+    else if(!candidate.seriesId||!selectedSeries)error='Selecciona la serie.';
+    else if(!candidate.invoiceNumber.trim())error='Indica el número de factura.';
+    else if(!candidate.invoiceNumber.startsWith(selectedSeries.prefix))error=`El número debe comenzar por ${selectedSeries.prefix}.`;
+    else if(existingInvoices.some(invoice=>invoice.invoiceNumber===candidate.invoiceNumber))error='Ya existe una factura con ese número.';
+    else if(!candidate.lines.some(line=>line.description.trim()&&line.quantity>0))error='Añade al menos una línea válida.';
+    if(error){patch(selected.id,{status:'needs_review',error});return;}
+    patch(selected.id,{status:'ready',error:undefined,candidate:{...recalculateSalesImportCandidate(candidate),status:'ready',reviewReason:undefined}});
+  };
+
+  const importReady=async()=>{
+    const ready=items.filter(item=>!item.excluded&&item.status==='ready'&&item.candidate);
+    if(!ready.length)return;
+    setBusy(true);
+    try{
+      for(const item of ready){
+        patch(item.id,{status:'importing'});
+        try{await createSalesInvoiceDraftFromCandidate(item.candidate!);patch(item.id,{status:'imported',candidate:{...item.candidate!,status:'imported'}});}
+        catch(error){patch(item.id,{status:'error',error:error instanceof Error?error.message:'No se pudo guardar el borrador.'});}
+      }
+      await onFinished();
+    }finally{setBusy(false);}
+  };
+
+  if(!open)return null;
+  const readyCount=items.filter(item=>!item.excluded&&item.status==='ready').length;
+  const pendingCount=items.filter(item=>item.status==='analyzing').length;
+  const reviewCount=items.filter(item=>!item.excluded&&item.status==='needs_review').length;
+
+  return <div className="modalBackdrop"><div className="modal bulkInvoiceModal salesImportModal">
+    <div className="modalHead"><div><h3>Importar facturas de venta</h3><p>Selecciona uno o varios PDF. Cada factura debe revisarse antes de guardarse y siempre se crea como borrador.</p></div><button onClick={onClose}><X/></button></div>
+    <input hidden ref={inputRef} type="file" multiple accept="application/pdf" onChange={event=>void analyzeFiles(Array.from(event.target.files||[]))}/>
+    {!items.length?<button className="bulkInvoiceDrop" type="button" onClick={()=>inputRef.current?.click()}><Upload/><strong>Seleccionar PDFs</strong><span>Puedes elegir varios archivos a la vez</span></button>:<>
+      <div className="bulkInvoiceSummary"><strong>{items.length-pendingCount} de {items.length} analizadas</strong><span>{readyCount} revisadas · {reviewCount} por revisar · {pendingCount} analizando</span><button className="secondary" type="button" disabled={busy} onClick={()=>inputRef.current?.click()}>Cambiar selección</button></div>
+      <div className="bulkInvoiceList">{items.map(item=><div key={item.id} className={`bulkInvoiceRow ${item.status} ${item.excluded?'excluded':''}`}>
+        <div className="bulkInvoiceFile"><FileText size={18}/><div><strong>{item.file.name}</strong><span>{item.status==='analyzing'?'Analizando':item.status==='needs_review'?'Requiere revisión':item.status==='ready'?'Revisada':item.status==='duplicate'?'Duplicada':item.status==='importing'?'Guardando':item.status==='imported'?'Borrador creado':'Error'}</span></div></div>
+        {item.status==='analyzing'?<LoaderCircle className="spin" size={18}/>:item.candidate?<div className="bulkInvoiceMeta"><span>{clients.find(client=>client.id===item.candidate?.clientId)?.name||'Cliente sin asignar'}</span><span>{item.candidate.invoiceNumber||'Sin número'} · {item.candidate.issueDate||'Sin fecha'}</span><span>Base {money(item.candidate.subtotal)} · IVA {money(item.candidate.taxAmount)} · Total {money(item.candidate.totalAmount)}</span>{item.error&&<span className="warnText">{item.error}</span>}</div>:<div className="bulkInvoiceMeta"><span className="warnText">{item.error||'No se pudo analizar.'}</span></div>}
+        <div className="bulkInvoiceActions">{item.candidate&&['needs_review','ready','duplicate'].includes(item.status)&&<button className="secondary" type="button" onClick={()=>setSelectedId(item.id)}>Revisar</button>}<button className="secondary" type="button" disabled={busy||['imported','importing'].includes(item.status)} onClick={()=>patch(item.id,{excluded:!item.excluded})}>{item.excluded?'Incluir':'Excluir'}</button></div>
+      </div>)}</div>
+    </>}
+
+    {selected&&candidate&&<div className="bulkInvoiceReview salesImportReview"><div className="bulkInvoiceReviewHead"><div><strong>Revisar factura</strong><span>{selected.file.name}</span></div><button className="iconBtn" onClick={()=>setSelectedId(null)}><X size={16}/></button></div>
+      <div className="salesFormGrid">
+        <label>Cliente *<SearchableSelect value={candidate.clientId} options={clientOptions} onChange={value=>patchCandidate(selected.id,{clientId:value})} placeholder="Selecciona cliente" searchPlaceholder="Buscar cliente, CIF, email…" ariaLabel="Cliente importado"/></label>
+        <label>Serie *<SearchableSelect value={candidate.seriesId} options={seriesOptions} onChange={value=>patchCandidate(selected.id,{seriesId:value})} placeholder="Selecciona serie" searchPlaceholder="Buscar serie…" ariaLabel="Serie importada"/></label>
+        <label>Número de factura *<input value={candidate.invoiceNumber} onChange={event=>patchCandidate(selected.id,{invoiceNumber:event.target.value})}/></label>
+        <label>Fecha factura *<input type="date" value={candidate.issueDate} onChange={event=>void changeDate(event.target.value)}/></label>
+      </div>
+      <div className="salesLinesEditor"><div className="salesLinesHead"><div><strong>Líneas detectadas</strong><span>Comprueba descripción, cantidad, precio e IVA</span></div><button className="secondary" type="button" onClick={addLine}><Plus size={15}/> Añadir línea</button></div>
+        {candidate.lines.map((line,index)=><div className="salesLine salesLineCard" key={`${candidate.id}-${index}`}><label className="salesLineDescription">Descripción<input value={line.description} onChange={event=>updateLine(index,{description:event.target.value})}/></label><label>Cantidad<input type="number" min="0.001" step="0.001" value={line.quantity} onChange={event=>updateLine(index,{quantity:Number(event.target.value)})}/></label><label>Unidad<input value={line.unit} onChange={event=>updateLine(index,{unit:event.target.value})}/></label><label>Precio unit.<input type="number" step="0.01" value={line.unitPrice} onChange={event=>updateLine(index,{unitPrice:Number(event.target.value)})}/></label><label>IVA %<SelectField value={String(line.taxRate)} onChange={value=>updateLine(index,{taxRate:Number(value)})} ariaLabel={`IVA línea ${index+1}`} options={[{value:'21',label:'21 %'},{value:'10',label:'10 %'},{value:'4',label:'4 %'},{value:'0',label:'0 %'}]}/></label><button className="iconAction danger" type="button" onClick={()=>removeLine(index)}><Trash2 size={16}/></button></div>)}
+      </div>
+      <div className="salesTotals"><span>Base imponible <strong>{money(recalculateSalesImportCandidate(candidate).subtotal)}</strong></span><span>IVA <strong>{money(recalculateSalesImportCandidate(candidate).taxAmount)}</strong></span><span className="salesGrandTotal">Total <strong>{money(recalculateSalesImportCandidate(candidate).totalAmount)}</strong></span></div>
+      {(selected.error||candidate.reviewReason)&&<div className="warningBox"><AlertCircle size={17}/>{selected.error||candidate.reviewReason}</div>}
+      <div className="modalActions"><button className="secondary" type="button" onClick={()=>setSelectedId(null)}>Cerrar revisión</button><button className="primary" type="button" onClick={confirmReview}><CheckCircle2 size={16}/> Confirmar revisión</button></div>
+    </div>}
+
+    <div className="modalActions"><button className="secondary" onClick={onClose} disabled={busy}>Cerrar</button><button className="primary" onClick={importReady} disabled={busy||readyCount===0}>{busy?'Guardando…':`Guardar como borrador (${readyCount})`}</button></div>
+  </div></div>;
+}
