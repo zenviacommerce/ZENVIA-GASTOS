@@ -13,6 +13,8 @@ export interface FulfillmentOrder {
   trackingNumber:string|null; trackingUrl:string|null; trackingStatusCode:string|null; trackingStatusMessage:string|null; trackingUpdatedAt:string|null;
   shippingOptionCode:string|null; contractId:number|null;
   carrierCode:string|null; carrierName:string|null; shippingServiceName:string|null;
+  shippingCostAmount:number|null; shippingCostCurrency:string|null; shippingCostSource:string|null;
+  shippingCostNetAmount:number|null; shippingCostTaxAmount:number|null; shippingCostRecordedAt:string|null;
   labelCreatedAt:string|null; fulfilledAt:string|null; lastSyncedAt:string;
 }
 
@@ -70,6 +72,8 @@ function mapRow(row:any):FulfillmentOrder{
     trackingStatusCode:row.tracking_status_code||null, trackingStatusMessage:row.tracking_status_message||null, trackingUpdatedAt:row.tracking_updated_at||null,
     shippingOptionCode:row.shipping_option_code||null, contractId:row.contract_id==null?null:Number(row.contract_id),
     carrierCode:row.carrier_code||null, carrierName:row.carrier_name||(balearicPending?'🏝 Baleares · usar Correos':null), shippingServiceName:row.shipping_service_name||null,
+    shippingCostAmount:row.shipping_cost_amount==null?null:Number(row.shipping_cost_amount), shippingCostCurrency:row.shipping_cost_currency||null, shippingCostSource:row.shipping_cost_source||null,
+    shippingCostNetAmount:row.shipping_cost_net_amount==null?null:Number(row.shipping_cost_net_amount), shippingCostTaxAmount:row.shipping_cost_tax_amount==null?null:Number(row.shipping_cost_tax_amount), shippingCostRecordedAt:row.shipping_cost_recorded_at||null,
     labelCreatedAt:row.label_created_at||null, fulfilledAt:row.fulfilled_at||null, lastSyncedAt:row.last_synced_at,
   };
 }
@@ -112,7 +116,7 @@ export async function getShippingOptions(orderId:string){
 }
 export function updateFulfillmentOrder(orderId:string,order:OrderUpdateInput){return invokeOrderTools<{ok:true;weightKg:number}>({action:'update_order',orderId,order});}
 export async function createOrderLabel(orderId:string,option?:ShippingOption|null){
-  const result=await invokeSendcloud<LabelResult>({action:'create_label',orderId,shippingOption:option?{code:option.code,contractId:option.contractId,carrierName:option.carrierName,name:option.name}:null});
+  const result=await invokeSendcloud<LabelResult>({action:'create_label',orderId,shippingOption:option?{code:option.code,contractId:option.contractId,carrierName:option.carrierName,name:option.name,price:option.price,currency:option.currency}:null});
   try{await invokeAmazonTracking({action:'confirm_order_tracking',orderId})}catch{/* Amazon tracking is retried on the next Sendcloud sync. */}
   return result;
 }
