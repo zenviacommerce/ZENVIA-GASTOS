@@ -1,8 +1,9 @@
 import { normalizeFinanceComponents } from '../_shared/amazon/finance-components.ts';
 import { createAdminClient, requireInternalSecret } from '../_shared/amazon/supabase.ts';
 
-const DEFAULT_LIMIT=100;
-const MAX_LIMIT=500;
+const DEFAULT_LIMIT=500;
+const MAX_LIMIT=2000;
+const BULK_WRITE_SIZE=1000;
 
 function response(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});}
 function boundedLimit(value:unknown){const parsed=Number(value);if(!Number.isFinite(parsed))return DEFAULT_LIMIT;return Math.max(1,Math.min(MAX_LIMIT,Math.trunc(parsed)));}
@@ -16,20 +17,29 @@ function sourceTransaction(row:any){
   };
 }
 
-async function replaceComponents(admin:any,row:any){
-  const components=await normalizeFinanceComponents(sourceTransaction(row),row,{owner_id:row.owner_id,amazon_account_id:row.amazon_account_id,marketplace_id:row.marketplace_id});
-  const {error:deleteError}=await admin
-    .from('amazon_finance_components')
-    .delete()
-    .eq('owner_id',row.owner_id)
-    .eq('amazon_account_id',row.amazon_account_id)
-    .eq('finance_transaction_id',row.id);
-  if(deleteError)throw deleteError;
-  if(components.length){
-    const {error:upsertError}=await admin
-      .from('amazon_finance_components')
-      .upsert(components,{onConflict:'owner_id,amazon_account_id,finance_transaction_id,component_key'});
-    if(upsertError)throw upsertError;
+async function normalizeRow(row:any){
+  return normalizeFinanceComponents(
+    sourceTransaction(row),
+    row,
+    {owner_id:row.owner_id,amazon_account_id:row.amazon_account_id,marketplace_id:row.marketplace_id},
+  );
+}
+
+async function replacePage(admin:any,rows:any[]){
+  if(!rows.length)return 0;
+  const normalized=await Promise.all(rows.map(normalizeRow));
+  const transactionIds=rows.map(row=>String(row.id));
+  const components=normalized.flat();
+
+  for(let offset=0;offset<transactionIds.length;offset+=BULK_WRITE_SIZE){
+    const ids=transactionIds.slice(offset,offset+BULK_WRITE_SIZE);
+    const {error}=await admin.from('amazon_finance_components').delete().in('finance_transaction_id',ids);
+    if(error)throw error;
+  }
+  for(let offset=0;offset<components.length;offset+=BULK_WRITE_SIZE){
+    const batch=components.slice(offset,offset+BULK_WRITE_SIZE);
+    const {error}=await admin.from('amazon_finance_components').upsert(batch,{onConflict:'owner_id,amazon_account_id,finance_transaction_id,component_key'});
+    if(error)throw error;
   }
   return components.length;
 }
@@ -54,17 +64,9 @@ Deno.serve(async(req:Request)=>{
 
     const all=data||[];
     const rows=all.slice(0,limit);
-    let componentCount=0;
-    for(const row of rows)componentCount+=await replaceComponents(admin,row);
+    const componentCount=await replacePage(admin,rows);
     const nextCursor=rows.length?String(rows[rows.length-1].id):cursor;
-    return response({
-      ok:true,
-      processed:rows.length,
-      components:componentCount,
-      cursor:nextCursor,
-      hasMore:all.length>limit,
-      limit,
-    });
+    return response({ok:true,processed:rows.length,components:componentCount,cursor:nextCursor,hasMore:all.length>limit,limit});
   }catch(error){
     return response({error:error instanceof Error?error.message:'Error interno del backfill financiero.'},401);
   }
