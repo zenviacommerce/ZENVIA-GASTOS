@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import test from 'node:test';
 
 async function source(path){return readFile(new URL(`../${path}`,import.meta.url),'utf8');}
+async function migrationsSource(){
+  const dir=new URL('../supabase/migrations/',import.meta.url);
+  const files=(await readdir(dir)).filter(name=>name.endsWith('.sql')).sort();
+  return (await Promise.all(files.map(name=>readFile(new URL(`../supabase/migrations/${name}`,import.meta.url),'utf8')))).join('\n');
+}
 
 test('service backend helper uses secret keys and internal calls require apikey',async()=>{
   const backend=await source('supabase/functions/_shared/amazon/supabase.ts');
@@ -52,6 +57,14 @@ test('orchestrator and worker are internal-only and worker claims bounded jobs a
   assert.match(worker,/rpc\('amazon_claim_sync_jobs'/);
   assert.match(worker,/limit_count:\s*3/);
   assert.match(worker,/markJobFailed/);
+});
+
+test('job claimer prioritizes current hourly/manual work ahead of historical backfill',async()=>{
+  const migrations=await migrationsSource();
+  assert.match(migrations,/payload\s*->>\s*'mode'/i);
+  assert.match(migrations,/when\s+coalesce\(j\.payload\s*->>\s*'mode'[^)]*\)\s+in\s*\('hourly','manual'\)\s+then\s+0/i);
+  assert.match(migrations,/order\s+by[\s\S]*case[\s\S]*available_at[\s\S]*created_at/i);
+  assert.match(migrations,/for\s+update\s+skip\s+locked/i);
 });
 
 test('manual sync authenticates a real user and requires admin role',async()=>{
