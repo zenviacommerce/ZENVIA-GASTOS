@@ -13,7 +13,7 @@ export type AmazonRangeKey='today'|'7d'|'30d'|'current_month'|'previous_month'|'
 export type AmazonAnalyticsFilters={from:string;to:string;marketplaceIds:string[]};
 export type AmazonCompleteness={
   profitComplete:boolean;unmappedSkuCount:number;unmappedUnits:number;missingHistoricalCostCount:number;missingHistoricalCostUnits:number;
-  missingFxEventCount:number;missingVatOrderCount:number;syncQueued:number;syncRunning:number;syncFailed:number;adsExcluded:boolean;
+  missingFxEventCount:number;missingVatOrderCount:number;missingFbmShippingCostCount:number;syncQueued:number;syncRunning:number;syncFailed:number;adsExcluded:boolean;
 };
 export type AmazonSummary=AmazonCompleteness&{
   grossSales:number;salesVat:number;netSales:number;orders:number;units:number;
