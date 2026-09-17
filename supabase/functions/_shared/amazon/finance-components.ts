@@ -33,12 +33,15 @@ function lower(value:string){return value.trim().toLowerCase();}
 function classify(name:string):FinanceComponentCategory|null{
   const text=lower(name);
   if(/productadspayment|advertis|sponsored/.test(text))return 'ads_payment_excluded';
+  if(/reservedebit|reservecredit|microdeposit/.test(text))return 'sale_audit';
+  if(/returnpostagebilling_vat/.test(text))return 'tax_audit';
+  if(/returnpostagebilling_postage/.test(text))return 'other_amazon_fee';
   if(text==='refunded sales'||text==='refundedsales')return 'refund';
   if(/commission|referral/.test(text))return 'commission_fee';
   if(/fbaperunitfulfillmentfee|fulfil+l?ment.*fee|fba.*fee/.test(text))return 'fba_fee';
   if(/digitalservicesfee|digital services fee/.test(text))return 'digital_services_fee';
   if(/storage/.test(text))return 'storage_fee';
-  if(/adjust|reimburse|correction/.test(text))return 'adjustment';
+  if(/clawback|adjust|reimburse|correction/.test(text))return 'adjustment';
   if(text==='productcharges'||text==='product charges')return 'sale_audit';
   if(text===lower(TAX_TYPE))return 'tax_audit';
   if(/amazonfees|amazon fees|fee|expense|charge/.test(text))return 'other_amazon_fee';
