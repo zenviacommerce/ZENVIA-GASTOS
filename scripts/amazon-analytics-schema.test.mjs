@@ -3,7 +3,9 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const migrationUrl = new URL('../supabase/migrations/20260917001000_amazon_analytics_dashboard_schema.sql', import.meta.url);
+const hardeningUrl = new URL('../supabase/migrations/20260917004000_amazon_analytics_security_hardening.sql', import.meta.url);
 async function migration(){return readFile(migrationUrl,'utf8');}
+async function hardening(){return readFile(hardeningUrl,'utf8');}
 
 test('Amazon analytics schema creates mappings, finance components and FX rates', async()=>{
   const sql = await migration();
@@ -23,6 +25,13 @@ test('Amazon analytics tables are workspace scoped and permission protected', as
     assert.match(sql, new RegExp(`create policy ${table}_select[\\s\\S]+private\\.app_workspace_owner_id\\(\\)[\\s\\S]+private\\.app_has_permission\\('amazon'\\)`));
   }
   assert.match(sql,/revoke insert, update, delete[\s\S]+amazon_finance_components[\s\S]+from anon, authenticated/i);
+});
+
+test('Amazon analytics hardening removes all direct mutation-capable table privileges from app roles', async()=>{
+  const sql = await hardening();
+  assert.match(sql,/revoke all on table[\s\S]+amazon_product_mappings[\s\S]+amazon_finance_components[\s\S]+amazon_fx_rates[\s\S]+from anon, authenticated/i);
+  assert.match(sql,/grant select on table[\s\S]+amazon_product_mappings[\s\S]+amazon_finance_components[\s\S]+to authenticated/i);
+  assert.doesNotMatch(sql,/grant[^;]*(insert|update|delete|truncate|trigger|references)[^;]*to authenticated/i);
 });
 
 test('Amazon analytics schema adds lookup indexes used by RPCs', async()=>{
