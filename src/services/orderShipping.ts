@@ -22,6 +22,8 @@ export interface OrderShippingCostDisplay{
   source:'actual'|'tariff'|'quote'|'none';
   estimated:boolean;
   detail:string;
+  complete:boolean;
+  snapshotSource:string|null;
 }
 type VatAwareTariff=TransportTariffDocument&{vatRatePct?:number|null};
 
@@ -47,7 +49,7 @@ export function validateOrderForCarrier(order:FulfillmentOrder,carrierCode=defau
   const address=order.shippingAddress||{};
   const name=text(order.customerName)||text(address.name);
   const street=text(address.address_line_1);
-  const house=text(address.house_number);
+  const address2=text(address.address_line_2);
   const postal=text(address.postal_code);
   const city=text(address.city);
   const country=text(address.country_code).toUpperCase();
@@ -63,10 +65,11 @@ export function validateOrderForCarrier(order:FulfillmentOrder,carrierCode=defau
   if(order.weightKg==null||order.weightKg<=0)issues.push(issue('weight_required','weight','Peso','El peso debe ser mayor que 0.'));
 
   if(carrier.includes('mrw')){
-    // Límites operativos MRW publicados por Sendcloud.
+    // Límites MRW publicados por Sendcloud: name/address/address_2 50, city 30,
+    // postal_code 8, telephone obligatorio y máximo 20, email máximo 50.
     if(name.length>50)issues.push(issue('name_too_long','name','Cliente',`Nombre: ${name.length}/50 caracteres. Reduce el nombre para MRW.`));
     if(street.length>50)issues.push(issue('address_too_long','address','Dirección',`Dirección: ${street.length}/50 caracteres. Acorta la primera línea para MRW.`));
-    if(house.length>10)issues.push(issue('house_too_long','house_number','Número',`Número: ${house.length}/10 caracteres para MRW.`));
+    if(address2.length>50)issues.push(issue('address2_too_long','address2','Dirección 2',`Dirección 2: ${address2.length}/50 caracteres para MRW.`));
     if(postal.length>8)issues.push(issue('postal_too_long','postal_code','Código postal',`Código postal: ${postal.length}/8 caracteres para MRW.`));
     if(city.length>30)issues.push(issue('city_too_long','city','Ciudad',`Ciudad: ${city.length}/30 caracteres para MRW.`));
     if(!phone)issues.push(issue('phone_required','phone','Teléfono','MRW requiere teléfono del destinatario.'));
@@ -77,9 +80,19 @@ export function validateOrderForCarrier(order:FulfillmentOrder,carrierCode=defau
   return {carrierCode:carrier,issues,blocking:issues.some(item=>item.severity==='error')};
 }
 
-function serviceIsMrw19(service:TransportTariffServiceDraft){
+function isMrwOption(option?:ShippingOption|null){
+  if(!option)return false;
+  return `${option.carrierCode} ${option.carrierName} ${option.name} ${option.code}`.toLowerCase().includes('mrw');
+}
+function selectedServiceHour(option?:ShippingOption|null){
+  if(!option)return '19';
+  const raw=`${option.name} ${option.code}`.toLowerCase();
+  const slot=raw.match(/timeslot[=:](10|12|14|19)(?::?00)?/)?.[1];if(slot)return slot;
+  const friendly=raw.match(/(?:^|\D)(10|12|14|19)(?::?00)?(?:\D|$)/)?.[1];return friendly||'19';
+}
+function serviceMatchesHour(service:TransportTariffServiceDraft,hour:string){
   const value=`${service.canonicalServiceKey} ${service.serviceName} ${service.externalServiceCode}`.toLowerCase();
-  return value.includes('manana-19')||value.includes('mañana 19')||value.includes('manana 19')||value.includes('19:00')||value.includes('timeslot=19');
+  return value.includes(`manana-${hour}`)||value.includes(`mañana ${hour}`)||value.includes(`manana ${hour}`)||value.includes(`${hour}:00`)||value.includes(`timeslot=${hour}`);
 }
 
 function tariffPriority(status:TransportTariffDocument['status']){
@@ -94,58 +107,56 @@ function matchingTariff(order:FulfillmentOrder,tariffs:TransportTariffDocument[]
     .sort((a,b)=>tariffPriority(b.status)-tariffPriority(a.status)||b.createdAt.localeCompare(a.createdAt))[0]||null;
 }
 
-function estimateFromTariff(order:FulfillmentOrder,tariffs:TransportTariffDocument[]):OrderShippingCostDisplay|null{
-  if(defaultCarrierForOrder(order)!=='mrw'||order.weightKg==null)return null;
+function estimateFromTariff(order:FulfillmentOrder,tariffs:TransportTariffDocument[],selectedOption?:ShippingOption|null):OrderShippingCostDisplay|null{
+  if((selectedOption&&!isMrwOption(selectedOption))||defaultCarrierForOrder(order)!=='mrw'||order.weightKg==null)return null;
   const doc=matchingTariff(order,tariffs);if(!doc)return null;
-  const service=doc.services.find(serviceIsMrw19);if(!service)return null;
+  const hour=selectedServiceHour(selectedOption);
+  const service=doc.services.find(item=>serviceMatchesHour(item,hour))||doc.services.find(item=>serviceMatchesHour(item,'19'));if(!service)return null;
   const country=text(order.shippingAddress.country_code).toUpperCase();
   const bands=service.bands.filter(band=>band.countryCode===country&&band.zoneCode.toLowerCase().includes('peninsular'));
   const weight=order.weightKg;
   const band=bands.find(item=>weight>=item.minWeightKg&&(item.maxWeightKg==null||weight<=item.maxWeightKg));
   if(!band)return null;
-  let base=band.basePrice;
-  if(base==null)return null;
-  if(band.maxWeightKg==null&&band.extraKgPrice!=null&&weight>band.minWeightKg){base+=Math.ceil(weight-band.minWeightKg)*band.extraKgPrice}
+  let base=band.basePrice;if(base==null)return null;
+  if(band.maxWeightKg==null&&band.extraKgPrice!=null&&weight>band.minWeightKg)base+=Math.ceil(weight-band.minWeightKg)*band.extraKgPrice;
+  const missingFuel=!doc.fuelSurchargeIncluded&&doc.fuelSurchargePct==null;
   if(!doc.fuelSurchargeIncluded&&doc.fuelSurchargePct!=null)base*=1+doc.fuelSurchargePct/100;
-  // MRW factura este contrato con IVA 21 %. La columna existe en BBDD para poder parametrizarlo;
-  // mientras el mapper antiguo no la expone, 21 % mantiene compatible la tarifa actual importada.
   const vat=(doc as VatAwareTariff).vatRatePct??(doc.carrierCode.toLowerCase().includes('mrw')?21:null);
   let net:number|null=null,tax:number|null=null,gross:number|null=null;
-  if(doc.pricesIncludeVat){
-    gross=base;
-    if(vat!=null){net=gross/(1+vat/100);tax=gross-net}
-  }else{
-    net=base;
-    if(vat!=null){tax=net*vat/100;gross=net+tax}
-  }
+  if(doc.pricesIncludeVat){gross=base;if(vat!=null){net=gross/(1+vat/100);tax=gross-net}}
+  else{net=base;if(vat!=null){tax=net*vat/100;gross=net+tax}}
   const provisional=doc.status!=='active';
-  const missingFuel=!doc.fuelSurchargeIncluded&&doc.fuelSurchargePct==null;
-  const parts=[provisional?`Tarifa ${doc.status==='draft'?'borrador':'revisada'}`:'Tarifa activa'];
-  if(missingFuel)parts.push('sin combustible');
-  if(gross==null)parts.push('IVA pendiente');
-  return {gross,net,tax,currency:doc.currencyCode||'EUR',source:'tariff',estimated:true,detail:parts.join(' · ')};
+  const complete=!provisional&&!missingFuel&&gross!=null&&net!=null&&tax!=null;
+  const parts=[provisional?`Tarifa ${doc.status==='draft'?'borrador':'revisada'}`:'Tarifa activa',service.serviceName];
+  if(missingFuel)parts.push('sin combustible');if(gross==null)parts.push('IVA pendiente');
+  return {gross,net,tax,currency:doc.currencyCode||'EUR',source:'tariff',estimated:true,detail:parts.join(' · '),complete,snapshotSource:complete?'mrw_tariff':'mrw_tariff_estimate'};
 }
 
 function quoteDisplay(option:ShippingOption|null|undefined):OrderShippingCostDisplay|null{
   if(!option||option.price==null)return null;
-  const raw:any=option.raw||{};
-  const quote=Array.isArray(raw.quotes)?raw.quotes[0]:raw.quotes||null;
+  const raw:any=option.raw||{};const quote=Array.isArray(raw.quotes)?raw.quotes[0]:raw.quotes||null;
   const tax=numeric(quote?.price?.tax?.value??quote?.tax?.value??quote?.tax_amount?.value);
   const net=numeric(quote?.price?.net?.value??quote?.price?.subtotal?.value??quote?.subtotal?.value);
   const total=numeric(quote?.price?.total?.value??quote?.total_price?.value??quote?.price?.value??option.price);
-  if(tax!=null&&net!=null)return {gross:total??net+tax,net,tax,currency:option.currency||'EUR',source:'quote',estimated:true,detail:'Cotización Sendcloud'};
-  return {gross:total,net:null,tax:null,currency:option.currency||'EUR',source:'quote',estimated:true,detail:'Cotización · IVA no desglosado'};
+  const complete=tax!=null&&net!=null;
+  if(complete)return {gross:total??net+tax,net,tax,currency:option.currency||'EUR',source:'quote',estimated:true,detail:'Cotización Sendcloud',complete:true,snapshotSource:'sendcloud_quote'};
+  return {gross:total,net:null,tax:null,currency:option.currency||'EUR',source:'quote',estimated:true,detail:'Cotización · IVA no desglosado',complete:false,snapshotSource:'sendcloud_quote'};
 }
 
 export function orderShippingCostDisplay(order:FulfillmentOrder,tariffs:TransportTariffDocument[]=[],previewOption?:ShippingOption|null):OrderShippingCostDisplay{
   if(order.shippingCostAmount!=null){
-    const amount=order.shippingCostAmount;
-    const net=order.shippingCostNetAmount;
-    const tax=order.shippingCostTaxAmount;
-    const gross=tax!=null&&tax>0&&net!=null?net+tax:amount;
-    return {gross,net,tax,currency:order.shippingCostCurrency||'EUR',source:'actual',estimated:false,detail:tax!=null&&tax>0?'Coste real':'Coste seleccionado · IVA no desglosado'};
+    const oldDirectMrwZero=order.shippingCostAmount===0&&`${order.carrierCode||''} ${order.carrierName||''}`.toLowerCase().includes('mrw')&&order.shippingCostSource==='sendcloud_quote';
+    if(!oldDirectMrwZero){
+      const amount=order.shippingCostAmount,net=order.shippingCostNetAmount,tax=order.shippingCostTaxAmount;
+      const gross=tax!=null&&tax>0&&net!=null?net+tax:amount;
+      const estimated=Boolean(order.shippingCostSource?.includes('estimate'));
+      const complete=net!=null&&tax!=null&&!estimated;
+      const detail=estimated?'Tarifa aplicada · coste provisional':tax!=null&&tax>0?'Coste real':'Coste seleccionado · IVA no desglosado';
+      return {gross,net,tax,currency:order.shippingCostCurrency||'EUR',source:'actual',estimated,detail,complete,snapshotSource:order.shippingCostSource};
+    }
   }
-  const tariff=estimateFromTariff(order,tariffs);if(tariff)return tariff;
+  if(previewOption&&!isMrwOption(previewOption)){const quote=quoteDisplay(previewOption);if(quote)return quote}
+  const tariff=estimateFromTariff(order,tariffs,previewOption);if(tariff)return tariff;
   const quote=quoteDisplay(previewOption);if(quote)return quote;
-  return {gross:null,net:null,tax:null,currency:'EUR',source:'none',estimated:true,detail:'Pendiente de cotizar'};
+  return {gross:null,net:null,tax:null,currency:'EUR',source:'none',estimated:true,detail:'Pendiente de cotizar',complete:false,snapshotSource:null};
 }
