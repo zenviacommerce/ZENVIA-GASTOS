@@ -3,7 +3,7 @@ import { createAdminClient, requireInternalSecret } from '../_shared/amazon/supa
 
 const DEFAULT_LIMIT=500;
 const MAX_LIMIT=2000;
-const BULK_WRITE_SIZE=1000;
+const BULK_WRITE_SIZE=250;
 
 function response(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});}
 function boundedLimit(value:unknown){const parsed=Number(value);if(!Number.isFinite(parsed))return DEFAULT_LIMIT;return Math.max(1,Math.min(MAX_LIMIT,Math.trunc(parsed)));}
