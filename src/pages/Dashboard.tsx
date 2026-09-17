@@ -9,7 +9,7 @@ import { StatCard } from '../components/StatCard';
 import { InvoiceFilters } from '../components/InvoiceFilters';
 import { defaultInvoiceFilter, filterInvoices, periodLabel } from '../services/filters';
 import { loadSalesInvoices, type SalesInvoice } from '../services/sales';
-import { listFulfillmentOrders, type FulfillmentOrder } from '../services/orders';
+import { listFulfillmentOrders, syncSendcloudOrders, type FulfillmentOrder } from '../services/orders';
 import { isCancelledOrder, isPendingOrder, orderStatusCode } from '../services/orderStatus';
 
 const colors = ['#0f766e','#2563eb','#7c3aed','#d97706','#64748b','#dc2626','#0891b2'];
@@ -28,7 +28,24 @@ export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{inv
 
   useEffect(()=>{
     loadSalesInvoices().then(setSales).catch(()=>setSales([]));
-    listFulfillmentOrders().then(setOrders).catch(()=>setOrders([]));
+  },[]);
+
+  useEffect(()=>{
+    let alive=true;
+    let inFlight=false;
+    const refreshOrders=async()=>{
+      if(inFlight)return;
+      inFlight=true;
+      try{
+        try{await syncSendcloudOrders(false);}catch{/* El resumen sigue mostrando el último estado persistido si Sendcloud no responde. */}
+        const next=await listFulfillmentOrders();
+        if(alive)setOrders(next);
+      }catch{/* Conserva los KPI existentes ante un fallo puntual de lectura. */}
+      finally{inFlight=false;}
+    };
+    void refreshOrders();
+    const timer=window.setInterval(()=>void refreshOrders(),60000);
+    return()=>{alive=false;window.clearInterval(timer);};
   },[]);
 
   const periodExpenses=useMemo(()=>filterInvoices(invoices,{...filter,supplierId:''}),[invoices,filter]);
