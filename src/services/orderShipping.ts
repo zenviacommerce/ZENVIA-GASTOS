@@ -67,7 +67,9 @@ export function calculateDefaultShippingPreview(order:FulfillmentOrder,tariffs:T
   if(band.maxWeightKg==null&&band.extraKgPrice!=null&&weight>band.minWeightKg){
     base+=Math.ceil(weight-band.minWeightKg)*band.extraKgPrice;
   }
-  const fuelPct=document.fuelSurchargeIncluded?0:(document.fuelSurchargePct??0);
+  const orderDate=(order.orderCreatedAt||new Date().toISOString()).slice(0,10);
+  const fuelPeriod=(document.fuelPeriods||[]).filter(item=>orderDate>=item.effectiveFrom&&(!item.effectiveTo||orderDate<=item.effectiveTo)).sort((a,b)=>b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
+  const fuelPct=document.fuelSurchargeIncluded?0:(fuelPeriod?.fuelSurchargePct??document.fuelSurchargePct??0);
   const priced=base*(1+fuelPct/100);
   let netAmount:number,totalAmount:number,taxAmount:number;
   if(document.pricesIncludeVat){
@@ -79,7 +81,7 @@ export function calculateDefaultShippingPreview(order:FulfillmentOrder,tariffs:T
   return {
     totalAmount:round(totalAmount),netAmount:round(netAmount),taxAmount:round(taxAmount),currency:document.currencyCode||'EUR',
     carrierName:'MRW',serviceName:service.serviceName,source:'tariff_estimate',
-    note:document.fuelSurchargeIncluded||document.fuelSurchargePct!=null?null:'Combustible pendiente de configurar',
+    note:document.fuelSurchargeIncluded||fuelPeriod||document.fuelSurchargePct!=null?null:'Combustible pendiente de configurar',
   };
 }
 
@@ -89,6 +91,7 @@ export function previewFromShippingOption(option:ShippingOption|null):ShippingPr
 }
 
 export function shippingPriceForOrder(order:FulfillmentOrder,preview:ShippingPricePreview|null|undefined):ShippingPricePreview|null{
+  if(order.shippingCostSource==='tariff_estimate'&&preview)return preview;
   if(order.shippingCostAmount!=null){
     return {
       totalAmount:order.shippingCostAmount,
