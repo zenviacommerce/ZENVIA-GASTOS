@@ -83,7 +83,7 @@ export function InvoiceFilters({
       <label>Hasta
         <input type="date" value={filter.to} onChange={event => setDate('to', event.target.value)}/>
       </label>
-      <button className="filterReset" type="button" onClick={() => onChange(filterForPreset('current_quarter'))} title="Restablecer filtros">
+      <button className="filterReset" type="button" onClick={() => onChange(filterForPreset('all'))} title="Restablecer filtros">
         <RotateCcw size={15}/> Restablecer
       </button>
     </div>

@@ -59,3 +59,12 @@ test('invoice page exposes bulk import action and App renders the bulk modal',as
   assert.match(app,/BulkInvoiceImportModal/);
   assert.match(app,/bulkUpload/);
 });
+
+test('invoice history defaults to all records so successful historical bulk imports stay visible',async()=>{
+  const [filters,controls]=await Promise.all([
+    read('../src/services/filters.ts'),
+    read('../src/components/InvoiceFilters.tsx'),
+  ]);
+  assert.match(filters,/defaultInvoiceFilter\(\)[\s\S]*?filterForPreset\(['"]all['"]\)/);
+  assert.match(controls,/filterReset[\s\S]*?filterForPreset\(['"]all['"]\)/);
+});

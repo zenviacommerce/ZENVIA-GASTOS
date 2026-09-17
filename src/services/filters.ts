@@ -51,7 +51,7 @@ export function filterForPreset(preset: PeriodPreset, supplierId = '', now = new
 }
 
 export function defaultInvoiceFilter(): InvoiceFilter {
-  return filterForPreset('current_quarter');
+  return filterForPreset('all');
 }
 
 export function filterInvoices(invoices: Invoice[], filter: InvoiceFilter) {
