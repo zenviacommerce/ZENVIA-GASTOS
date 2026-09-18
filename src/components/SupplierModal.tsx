@@ -4,6 +4,7 @@ import type { Supplier } from '../types';
 import type { SupplierInput, SupplierType } from '../services/supplierEditor';
 import { emailError, nameError, normalizeEmail, normalizePhone, normalizeTaxId, phoneError, taxIdError } from '../services/validation';
 import { SelectField } from './forms/SelectField';
+import { showSuccess } from '../services/toast';
 
 type FieldErrors = {name?:string;taxId?:string;email?:string;phone?:string};
 const SUPPLIER_TYPE_OPTIONS=[
@@ -66,6 +67,7 @@ export function SupplierModal({open,onClose,onSave,supplier}:{open:boolean;onClo
        website:website.trim()||undefined,
        supplierType,
      });
+     showSuccess(editing?'Proveedor modificado correctamente.':'Proveedor creado correctamente.');
      onClose();
    }catch(e){setError(e instanceof Error?e.message:'No se pudo guardar el proveedor.');}
    finally{setBusy(false)}
