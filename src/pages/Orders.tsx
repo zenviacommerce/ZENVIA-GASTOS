@@ -8,6 +8,7 @@ import {
 import { OrderEditModal } from '../components/OrderEditModal';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
+import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import {
   createManualOrder, createOrderLabel, fetchOrderLabel, getSavedPrinter,
   getSendcloudStatus, getShippingOptions, labelBlob, listFulfillmentOrders, listLocalPrinters,
@@ -195,6 +196,7 @@ export function Orders(){
   const [manualOpen,setManualOpen]=useState(false),[manualSaving,setManualSaving]=useState(false);
   const [editOrder,setEditOrder]=useState<FulfillmentOrder|null>(null),[editSaving,setEditSaving]=useState(false);
   const [bulkGenerating,setBulkGenerating]=useState(false),[bulkProgress,setBulkProgress]=useState('');
+  const [checkedIds,setCheckedIds]=useState<Set<string>>(()=>new Set());
   const [tariffs,setTariffs]=useState<TransportTariffDocument[]>([]),[shippingPreviews,setShippingPreviews]=useState<Record<string,ShippingPricePreview>>({});
   const [editValidationIssues,setEditValidationIssues]=useState<OrderValidationIssue[]>([]);
 
@@ -229,6 +231,12 @@ export function Orders(){
   const salesKpis=useMemo(()=>{const sales=orderPeriodOrders.filter(order=>!isCancelledOrder(order)&&order.totalAmount!=null&&(order.currency==null||order.currency==='EUR'));let gross=0,net=0,vat=0;for(const order of sales){const parts=taxParts(order);gross+=parts.gross;net+=parts.net;vat+=parts.vat}return {gross,net,vat,count:sales.length,average:sales.length?gross/sales.length:0}},[orderPeriodOrders]);
   const pending=pendingOrders.length,amazon=pendingOrders.filter(o=>o.sourceChannel==='amazon').length,shopify=pendingOrders.filter(o=>o.sourceChannel==='shopify').length,labelled=labelPeriodOrders.length,shipped=shippedPeriodOrders.length,cancelled=orderPeriodOrders.filter(isCancelledOrder).length;
   const filtered=useMemo(()=>{const q=query.trim().toLowerCase();const base=state==='labelled'?orders.filter(order=>inPeriod(labelDateKey(order),dateFrom,dateTo)):state==='shipped'?orders.filter(order=>inPeriod(shippedDateKey(order),dateFrom,dateTo)):orderPeriodOrders;return base.filter(order=>{if(channel!=='all'&&order.sourceChannel!==channel)return false;if(state==='pending'&&!isPendingOrder(order))return false;if(state==='labelled'&&!isLabelledOrder(order))return false;if(state==='shipped'&&!isProcessedOrder(order))return false;if(state==='cancelled'&&!isCancelledOrder(order))return false;if(trackingFilter!=='all'&&trackingFilterCode(order)!==trackingFilter)return false;if(q&&!`${order.orderNumber||''} ${order.orderId||''} ${order.customerName||''} ${order.trackingNumber||''} ${order.trackingStatusMessage||''} ${carrierLabel(order)} ${productsText(order)}`.toLowerCase().includes(q))return false;return true})},[orders,orderPeriodOrders,dateFrom,dateTo,query,channel,state,trackingFilter]);
+  const selectableOrders=filtered.filter(canPrepareOrder);
+  const selectedOrders=selectableOrders.filter(order=>checkedIds.has(order.id));
+  const allSelectableSelected=selectableOrders.length>0&&selectableOrders.every(order=>checkedIds.has(order.id));
+  const toggleOrder=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
+  const toggleAllOrders=(checked:boolean)=>setCheckedIds(checked?new Set(selectableOrders.map(order=>order.id)):new Set());
+  useEffect(()=>{setCheckedIds(new Set())},[query,channel,state,trackingFilter,dateFrom,dateTo]);
 
   const prepare=async(order:FulfillmentOrder)=>{
     if(!canPrepareOrder(order)){showError('Este pedido ya no admite una nueva etiqueta.');return}
