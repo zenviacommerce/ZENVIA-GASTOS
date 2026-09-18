@@ -1,3 +1,4 @@
 Redeploy trigger for Vercel
 sales invoice auto client import
 invoice amount parser fix
+retry invoice parser deploy
