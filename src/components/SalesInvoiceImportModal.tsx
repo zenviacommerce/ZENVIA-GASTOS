@@ -99,22 +99,23 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
   const toggleChecked=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
   const toggleAll=(checked:boolean)=>setCheckedIds(checked?new Set(selectableItems.map(item=>item.id)):new Set());
 
-  const validateSelected=()=>{
-    const ids=new Set(selectedBulkItems.map(item=>item.id));
-    if(!ids.size)return;
-    let valid=0;
-    let invalid=0;
+  const validateMany=(targets:Item[])=>{
+    if(!targets.length)return;
+    const results=new Map(targets.map(item=>[item.id,validationError(item)]));
+    const valid=[...results.values()].filter(error=>!error).length;
+    const invalid=results.size-valid;
     setItems(current=>current.map(item=>{
-      if(!ids.has(item.id)||!item.candidate)return item;
-      const error=validationError(item);
-      if(error){invalid+=1;return {...item,status:'needs_review',error};}
-      valid+=1;
+      if(!results.has(item.id)||!item.candidate)return item;
+      const error=results.get(item.id)||'';
+      if(error)return {...item,status:'needs_review',error};
       return {...item,status:'ready',error:undefined,candidate:{...recalculateSalesImportCandidate(item.candidate),status:'ready',reviewReason:undefined}};
     }));
     setCheckedIds(new Set());
     if(valid)showSuccess(`${valid} factura${valid===1?'':'s'} validada${valid===1?'':'s'}.`);
     if(invalid)showError(`${invalid} factura${invalid===1?' necesita':'s necesitan'} revisión manual.`);
   };
+  const validateSelected=()=>validateMany(selectedBulkItems);
+  const validateAll=()=>validateMany(selectableItems);
 
   const excludeSelected=()=>{
     const ids=new Set(selectedBulkItems.map(item=>item.id));
@@ -149,9 +150,10 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
       <div className="bulkInvoiceSummary"><strong>{items.length-pendingCount} de {items.length} analizadas</strong><span>{readyCount} revisadas · {reviewCount} por revisar · {pendingCount} analizando</span><button className="secondary" type="button" disabled={busy} onClick={()=>inputRef.current?.click()}>Cambiar selección</button></div>
       <BulkSelectionToolbar selectedCount={selectedBulkItems.length} totalCount={selectableItems.length} allSelected={allSelectableSelected} onToggleAll={toggleAll} label="facturas">
         <button className="secondary" type="button" disabled={!selectedBulkItems.length||busy} onClick={excludeSelected}>Excluir seleccionadas</button>
+        <button className="secondary" type="button" disabled={!selectableItems.length||busy} onClick={validateAll}><CheckCircle2 size={15}/> Validar todas</button>
         <button className="primary" type="button" disabled={!selectedBulkItems.length||busy} onClick={validateSelected}><CheckCircle2 size={15}/> Validar seleccionadas ({selectedBulkItems.length})</button>
       </BulkSelectionToolbar>
-      <div className="bulkInvoiceList">{items.map(item=><div key={item.id} className={`bulkInvoiceRow ${item.status} ${item.excluded?'excluded':''}`}>
+      <div className="bulkInvoiceList">{items.map(item=><div key={item.id} className={`bulkInvoiceRow ${item.status} ${item.excluded?'excluded':''} ${checkedIds.has(item.id)?'selected':''}`}>
         <div className="bulkInvoiceFile"><BulkSelectCheckbox checked={checkedIds.has(item.id)&&!item.excluded} disabled={item.excluded||!item.candidate||!['needs_review','ready'].includes(item.status)} onChange={checked=>toggleChecked(item.id,checked)} label={`Seleccionar ${item.file.name}`}/><FileText size={18}/><div><strong>{item.file.name}</strong><span>{item.status==='analyzing'?'Analizando':item.status==='needs_review'?'Requiere revisión':item.status==='ready'?'Revisada':item.status==='duplicate'?'Duplicada':item.status==='importing'?'Guardando':item.status==='imported'?'Borrador creado':'Error'}</span></div></div>
         {item.status==='analyzing'?<LoaderCircle className="spin" size={18}/>:item.candidate?<div className="bulkInvoiceMeta"><span>{clients.find(client=>client.id===item.candidate?.clientId)?.name||(item.candidate.proposedClient?.name?`Nuevo cliente · ${item.candidate.proposedClient.name}`:'Cliente sin asignar')}</span><span>{item.candidate.invoiceNumber||'Sin número'} · {item.candidate.issueDate||'Sin fecha'}</span><span>Base {money(item.candidate.subtotal)} · IVA {money(item.candidate.taxAmount)} · Total {money(item.candidate.totalAmount)}</span>{item.error&&<span className="warnText">{item.error}</span>}</div>:<div className="bulkInvoiceMeta"><span className="warnText">{item.error||'No se pudo analizar.'}</span></div>}
         <div className="bulkInvoiceActions">{item.candidate&&['needs_review','ready','duplicate'].includes(item.status)&&<button className="secondary" type="button" onClick={()=>setSelectedId(item.id)}>Revisar</button>}<button className="secondary" type="button" disabled={busy||['imported','importing'].includes(item.status)} onClick={()=>{patch(item.id,{excluded:!item.excluded});setCheckedIds(current=>{const next=new Set(current);next.delete(item.id);return next;});}}>{item.excluded?'Incluir':'Excluir'}</button></div>
