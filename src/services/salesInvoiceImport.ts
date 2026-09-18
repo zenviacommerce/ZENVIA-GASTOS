@@ -59,8 +59,8 @@ function extractSalesRecipient(text:string,filename:string,invoiceNumber:string)
   }
   if(!name)return null;
   const scope=nearby.join(' ');
-  const taxMatch=scope.match(/\b(?:CIF|NIF|NIE|VAT(?:\s*(?:ID|NO|NUMBER))?)\s*[:#-]?\s*(ES)?\s*([A-Z0-9][A-Z0-9 .-]{6,16})/i);
-  const taxId=((taxMatch?.[1]||'')+(taxMatch?.[2]||'')).replace(/[^A-Z0-9]/gi,'').toUpperCase();
+  const taxMatch=scope.match(/\b(?:CIF|NIF|NIE|VAT(?:\s*(?:ID|NO|NUMBER))?)\s*[:#-]?\s*((?:ES)?(?:[ABCDEFGHJNPQRSUVW]\d{7}[0-9A-J]|\d{8}[A-Z]|[XYZ]\d{7}[A-Z]|[A-Z]{2}[A-Z0-9]{8,12}))\b/i);
+  const taxId=(taxMatch?.[1]||'').replace(/[^A-Z0-9]/gi,'').toUpperCase();
   const email=scope.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]||'';
   const phone=(scope.match(/(?:\+34\s*)?(?:\d[\s.-]?){9}\b/)?.[0]||'').replace(/[\s.-]/g,'');
   const postalMatch=scope.match(/\b(\d{5})\b\s+([A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ .'-]{2,50})/);
