@@ -4,7 +4,7 @@ import type { BusinessSettings, SalesInvoice } from '../services/sales';
 import { markSalesInvoiceSent } from '../services/sales';
 import { createSalesInvoicePdfBlob, salesInvoicePdfFilename, type InvoicePdfBranding } from '../services/salesInvoicePdf';
 import { sendInvoiceViaGmail } from '../services/gmailSender';
-import { errorMessage, showError } from '../services/toast';
+import { errorMessage } from '../services/toast';
 
 export function SendInvoiceModal({invoice,settings,branding,onClose,onSent}:{invoice:SalesInvoice|null;settings:BusinessSettings;branding?:InvoicePdfBranding|null;onClose:()=>void;onSent:()=>Promise<void>}){
   const [to,setTo]=useState('');
@@ -33,7 +33,7 @@ export function SendInvoiceModal({invoice,settings,branding,onClose,onSent}:{inv
       await markSalesInvoiceSent(invoice.id);
       await onSent();
       onClose();
-    }catch(e){const message=errorMessage(e,'No se pudo enviar la factura.');setError(message);showError(message);}
+    }catch(e){setError(errorMessage(e,'No se pudo enviar la factura.'));}
     finally{setBusy(false);}
   };
 
