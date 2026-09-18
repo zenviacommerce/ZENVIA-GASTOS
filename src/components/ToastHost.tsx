@@ -12,7 +12,10 @@ export function ToastHost() {
       const payload = (event as CustomEvent<ToastPayload>).detail;
       if (!payload?.message) return;
       const id = crypto.randomUUID();
-      setItems(current => [...current.slice(-3), { ...payload, id }]);
+      setItems(current => {
+        const withoutDuplicate = current.filter(item => !(item.kind===payload.kind && item.message===payload.message));
+        return [...withoutDuplicate.slice(-3), { ...payload, id }];
+      });
       window.setTimeout(() => setItems(current => current.filter(item => item.id !== id)), payload.duration ?? 4000);
     };
     window.addEventListener(TOAST_EVENT, onToast);
