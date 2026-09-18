@@ -33,3 +33,24 @@
 .amazonQueryErrorInline{margin:0 0 12px}
 [data-theme='dark'] .amazonQueryError{background:#3f1117;border-color:#7f1d1d;color:#fca5a5}
 @media(max-width:520px){.amazonRefreshView{grid-column:1/-1;justify-content:center}.amazonQueryError{align-items:stretch;flex-direction:column}.amazonQueryError button{justify-content:center}}
+
+.amazonUnmappedTable{min-width:900px}
+.amazonUnmappedTable td:first-child{min-width:230px}
+.amazonMappingModalBackdrop{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:20px;background:rgba(15,23,42,.48);backdrop-filter:blur(2px)}
+.amazonMappingModal{width:min(760px,calc(100vw - 32px));max-height:min(760px,calc(100vh - 40px));overflow:auto;border:1px solid #e2e8f0;border-radius:18px;background:#fff;box-shadow:0 24px 70px rgba(15,23,42,.24)}
+.amazonMappingModalHead{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;border-bottom:1px solid #e2e8f0;background:#fff}
+.amazonMappingModalIdentity{display:flex;align-items:center;gap:12px;min-width:0}
+.amazonMappingModalIdentity>div{min-width:0}
+.amazonMappingModalIdentity strong{display:flex;align-items:center;gap:7px;margin-top:3px;color:#172033;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.amazonMappingModalIdentity small{display:block;margin-top:2px;color:#94a3b8;font-size:11px}
+.amazonMappingModalThumb{width:54px;height:54px;flex:0 0 54px;object-fit:contain;border:1px solid #e2e8f0;border-radius:11px;background:#fff}
+.amazonMappingModalClose{width:36px;height:36px;display:grid;place-items:center;flex:0 0 36px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#64748b;cursor:pointer}
+.amazonMappingModalBody{padding:18px}
+.amazonMappingModal .amazonMappingEditor{grid-template-columns:minmax(0,1fr) 160px;align-items:start}
+.amazonMappingModal .amazonMappingPicker{grid-column:1/-1}
+.amazonMappingModal .amazonMappingActions{grid-column:1/-1;justify-content:flex-end;margin-top:4px}
+.amazonMappingModal .amazonMappingResults{max-height:270px;overflow:auto}
+[data-theme='dark'] .amazonMappingModal,[data-theme='dark'] .amazonMappingModalHead{background:#111827;border-color:#334155}
+[data-theme='dark'] .amazonMappingModalIdentity strong{color:#f8fafc}
+[data-theme='dark'] .amazonMappingModalThumb,[data-theme='dark'] .amazonMappingModalClose{background:#0f172a;border-color:#334155;color:#cbd5e1}
+@media(max-width:620px){.amazonMappingModalBackdrop{padding:10px;place-items:end center}.amazonMappingModal{width:100%;max-height:88vh;border-radius:18px 18px 0 0}.amazonMappingModal .amazonMappingEditor{grid-template-columns:1fr}.amazonMappingModal .amazonMappingPicker,.amazonMappingModal .amazonMappingActions{grid-column:auto}.amazonMappingModal .amazonMappingActions{justify-content:stretch}.amazonMappingModal .amazonMappingActions button{flex:1 1 auto;justify-content:center}.amazonMappingModalIdentity strong{max-width:220px}}
