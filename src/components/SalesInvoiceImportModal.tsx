@@ -37,9 +37,14 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
       const series=allSeries.filter(row=>row.kind==='standard'&&row.active);
       const selectedSeries=bestSeries(series,candidate.invoiceNumber);
       candidate={...candidate,seriesId:selectedSeries?.id||'',invoiceNumber:candidate.invoiceNumber||(selectedSeries?proposedNumber(selectedSeries):'')};
-      const duplicate=Boolean(candidate.invoiceNumber&&existingInvoices.some(invoice=>invoice.invoiceNumber===candidate.invoiceNumber));
-      if(duplicate)candidate={...candidate,status:'duplicate',reviewReason:'Ya existe una factura con este número.'};
-      patch(item.id,{candidate,series,status:duplicate?'duplicate':'needs_review',error:undefined});
+      const duplicateInvoice=candidate.invoiceNumber?existingInvoices.find(invoice=>invoice.invoiceNumber===candidate.invoiceNumber):undefined;
+      const repairable=Boolean(duplicateInvoice&&duplicateInvoice.status==='draft');
+      if(duplicateInvoice){
+        candidate=repairable
+          ? {...candidate,status:'needs_review',existingInvoiceId:duplicateInvoice!.id,existingInvoiceNumber:duplicateInvoice!.invoiceNumber,existingClientId:duplicateInvoice!.clientId,reviewReason:'Ya existe este borrador. Al guardar se actualizarán sus datos y su cliente, sin crear una factura duplicada.'}
+          : {...candidate,status:'duplicate',reviewReason:'Ya existe una factura emitida o no reparable con este número.'};
+      }
+      patch(item.id,{candidate,series,status:duplicateInvoice&&!repairable?'duplicate':'needs_review',error:undefined});
     }catch(error){patch(item.id,{status:'error',error:error instanceof Error?error.message:'No se pudo analizar la factura.'});}
   };
 
@@ -81,7 +86,9 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
     if(!current.seriesId||!selectedSeries)return 'Selecciona la serie.';
     if(!current.invoiceNumber.trim())return 'Indica el número de factura.';
     if(!current.invoiceNumber.startsWith(selectedSeries.prefix))return `El número debe comenzar por ${selectedSeries.prefix}.`;
-    if(existingInvoices.some(invoice=>invoice.invoiceNumber===current.invoiceNumber))return 'Ya existe una factura con este número.';
+    const collision=existingInvoices.find(invoice=>invoice.invoiceNumber===current.invoiceNumber);
+    if(current.existingInvoiceId&&current.existingInvoiceNumber&&current.invoiceNumber!==current.existingInvoiceNumber)return 'Para reparar este borrador conserva su número de factura.';
+    if(collision&&collision.id!==current.existingInvoiceId)return 'Ya existe una factura con este número.';
     if(!current.lines.some(line=>line.description.trim()&&Number.isFinite(line.quantity)&&line.quantity>0))return 'Añade al menos una línea válida.';
     if(current.lines.some(line=>!Number.isFinite(line.quantity)||!Number.isFinite(line.unitPrice)||!Number.isFinite(line.taxRate)))return 'Hay una línea con valores numéricos no válidos.';
     return '';
@@ -156,8 +163,8 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
         <button className="primary" type="button" disabled={!selectedBulkItems.length||busy} onClick={validateSelected}><CheckCircle2 size={15}/> Validar seleccionadas ({selectedBulkItems.length})</button>
       </BulkSelectionToolbar>
       <div className="bulkInvoiceList">{items.map(item=><div key={item.id} className={`bulkInvoiceRow ${item.status} ${item.excluded?'excluded':''} ${checkedIds.has(item.id)?'selected':''}`}>
-        <div className="bulkInvoiceFile"><BulkSelectCheckbox checked={checkedIds.has(item.id)&&!item.excluded} disabled={item.excluded||!item.candidate||!['needs_review','ready'].includes(item.status)} onChange={checked=>toggleChecked(item.id,checked)} label={`Seleccionar ${item.file.name}`}/><FileText size={18}/><div><strong>{item.file.name}</strong><span>{item.status==='analyzing'?'Analizando':item.status==='needs_review'?'Requiere revisión':item.status==='ready'?'Revisada':item.status==='duplicate'?'Duplicada':item.status==='importing'?'Guardando':item.status==='imported'?'Borrador creado':'Error'}</span></div></div>
-        {item.status==='analyzing'?<LoaderCircle className="spin" size={18}/>:item.candidate?<div className="bulkInvoiceMeta"><span>{clients.find(client=>client.id===item.candidate?.clientId)?.name||(item.candidate.proposedClient?.name?`Nuevo cliente · ${item.candidate.proposedClient.name}`:'Cliente sin asignar')}</span><span>{item.candidate.invoiceNumber||'Sin número'} · {item.candidate.issueDate||'Sin fecha'}</span><span>Base {money(item.candidate.subtotal)} · IVA {money(item.candidate.taxAmount)} · Total {money(item.candidate.totalAmount)}</span>{item.error&&<span className="warnText">{item.error}</span>}</div>:<div className="bulkInvoiceMeta"><span className="warnText">{item.error||'No se pudo analizar.'}</span></div>}
+        <div className="bulkInvoiceFile"><BulkSelectCheckbox checked={checkedIds.has(item.id)&&!item.excluded} disabled={item.excluded||!item.candidate||!['needs_review','ready'].includes(item.status)} onChange={checked=>toggleChecked(item.id,checked)} label={`Seleccionar ${item.file.name}`}/><FileText size={18}/><div><strong>{item.file.name}</strong><span>{item.status==='analyzing'?'Analizando':item.status==='needs_review'?(item.candidate?.existingInvoiceId?'Reparar borrador':'Requiere revisión'):item.status==='ready'?(item.candidate?.existingInvoiceId?'Listo para reparar':'Revisada'):item.status==='duplicate'?'Duplicada':item.status==='importing'?'Guardando':item.status==='imported'?(item.candidate?.existingInvoiceId?'Borrador actualizado':'Borrador creado'):'Error'}</span></div></div>
+        {item.status==='analyzing'?<LoaderCircle className="spin" size={18}/>:item.candidate?<div className="bulkInvoiceMeta"><span>{clients.find(client=>client.id===item.candidate?.clientId)?.name||(item.candidate.proposedClient?.name?`${item.candidate.existingInvoiceId?'Cliente corregido':'Nuevo cliente'} · ${item.candidate.proposedClient.name}`:'Cliente sin asignar')}</span><span>{item.candidate.invoiceNumber||'Sin número'} · {item.candidate.issueDate||'Sin fecha'}</span><span>Base {money(item.candidate.subtotal)} · IVA {money(item.candidate.taxAmount)} · Total {money(item.candidate.totalAmount)}</span>{item.error&&<span className="warnText">{item.error}</span>}</div>:<div className="bulkInvoiceMeta"><span className="warnText">{item.error||'No se pudo analizar.'}</span></div>}
         <div className="bulkInvoiceActions">{item.candidate&&['needs_review','ready','duplicate'].includes(item.status)&&<button className="secondary" type="button" onClick={()=>setSelectedId(item.id)}>Revisar</button>}<button className="secondary" type="button" disabled={busy||['imported','importing'].includes(item.status)} onClick={()=>{patch(item.id,{excluded:!item.excluded});setCheckedIds(current=>{const next=new Set(current);next.delete(item.id);return next;});}}>{item.excluded?'Incluir':'Excluir'}</button></div>
       </div>)}</div>
     </>}
@@ -166,7 +173,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
       <div className="salesFormGrid">
         <label>Cliente *<SearchableSelect value={candidate.clientId} options={clientOptions} onChange={value=>patchCandidate(selected.id,{clientId:value,proposedClient:value?null:candidate.proposedClient})} placeholder={candidate.proposedClient?.name?`Nuevo: ${candidate.proposedClient.name}`:'Selecciona cliente'} searchPlaceholder="Buscar cliente, CIF, email…" ariaLabel="Cliente importado"/>{!candidate.clientId&&candidate.proposedClient?.name&&<small className="salesImportedClientHint">Se creará automáticamente: <strong>{candidate.proposedClient.name}</strong>{candidate.proposedClient.taxId?` · ${candidate.proposedClient.taxId}`:''}</small>}</label>
         <label>Serie *<SearchableSelect value={candidate.seriesId} options={seriesOptions} onChange={value=>patchCandidate(selected.id,{seriesId:value})} placeholder="Selecciona serie" searchPlaceholder="Buscar serie…" ariaLabel="Serie importada"/></label>
-        <label>Número de factura *<input value={candidate.invoiceNumber} onChange={event=>patchCandidate(selected.id,{invoiceNumber:event.target.value})}/></label>
+        <label>Número de factura *<input value={candidate.invoiceNumber} disabled={Boolean(candidate.existingInvoiceId)} onChange={event=>patchCandidate(selected.id,{invoiceNumber:event.target.value})}/>{candidate.existingInvoiceId&&<small className="salesImportedClientHint">Se actualizará el borrador existente, conservando este número.</small>}</label>
         <label>Fecha factura *<input type="date" value={candidate.issueDate} onChange={event=>void changeDate(event.target.value)}/></label>
       </div>
       <div className="salesLinesEditor"><div className="salesLinesHead"><div><strong>Líneas detectadas</strong><span>Comprueba descripción, cantidad, precio e IVA</span></div><button className="secondary" type="button" onClick={addLine}><Plus size={15}/> Añadir línea</button></div>
@@ -177,6 +184,6 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
       <div className="modalActions"><button className="secondary" type="button" onClick={()=>setSelectedId(null)}>Cerrar revisión</button><button className="primary" type="button" onClick={confirmReview}><CheckCircle2 size={16}/> Confirmar revisión</button></div>
     </div>}
 
-    <div className="modalActions"><button className="secondary" onClick={onClose} disabled={busy}>Cerrar</button><button className="primary" onClick={importReady} disabled={busy||readyCount===0}>{busy?'Guardando…':`Guardar como borrador (${readyCount})`}</button></div>
+    <div className="modalActions"><button className="secondary" onClick={onClose} disabled={busy}>Cerrar</button><button className="primary" onClick={importReady} disabled={busy||readyCount===0}>{busy?'Guardando…':`Guardar / reparar borradores (${readyCount})`}</button></div>
   </div></div>;
 }
