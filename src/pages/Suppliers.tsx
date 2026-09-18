@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Building2, CalendarDays, ChevronRight, FileText, Globe, Mail, MapPin, Package, Pencil, Phone, Search, ShoppingCart, Trash2, X } from 'lucide-react';
 import { loadAppData } from '../services/repository';
-import { showError, showOperationResult, showSuccess } from '../services/toast';
+import { showError, showSuccess } from '../services/toast';
+import { confirmAction, openActionProcess } from '../services/actionDialog';
 import type { Invoice, Supplier } from '../types';
 import { Pagination } from '../components/Pagination';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
@@ -121,7 +122,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  const totals=useMemo(()=>({spent:suppliers.reduce((sum,s)=>sum+(metrics.get(s.id)?.total||0),0),invoices:suppliers.reduce((sum,s)=>sum+(metrics.get(s.id)?.count||0),0),active:suppliers.filter(s=>(metrics.get(s.id)?.count||0)>0).length}),[suppliers,metrics]);
 
  const remove=async(supplier:Supplier)=>{
-   const confirmed=window.confirm(`¿Eliminar el proveedor "${supplier.name}"?\n\nLas facturas existentes no se borrarán; quedarán sin proveedor asignado.`);
+   const confirmed=await confirmAction({title:'Eliminar proveedor',message:`Se eliminará “${supplier.name}”.`,confirmLabel:'Eliminar',tone:'danger',details:['Las facturas existentes no se borrarán; quedarán sin proveedor asignado.']});
    if(!confirmed)return;
    setBusyId(supplier.id);setError('');
    try{await onDelete(supplier);setSelected(null);showSuccess('Proveedor eliminado correctamente.')}
@@ -130,19 +131,20 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  };
  const removeSelected=async()=>{
    if(!selectedSuppliers.length)return;
-   if(!window.confirm(`¿Eliminar ${selectedSuppliers.length} proveedor${selectedSuppliers.length===1?'':'es'} seleccionado${selectedSuppliers.length===1?'':'s'}?\n\nLas facturas existentes no se borrarán.`))return;
+   const confirmed=await confirmAction({title:`Eliminar ${selectedSuppliers.length} proveedor${selectedSuppliers.length===1?'':'es'}`,message:'Se eliminarán los proveedores seleccionados.',confirmLabel:'Eliminar seleccionados',tone:'danger',details:['Las facturas existentes no se borrarán.']});
+   if(!confirmed)return;
    setBulkBusy(true);setError('');
-   const failed:string[]=[];
-   for(const supplier of selectedSuppliers){
-     try{await onDelete(supplier);}
-     catch(e){failed.push(`${supplier.name}: ${e instanceof Error?e.message:'No se pudo eliminar'}`);}
-   }
-   setCheckedIds(new Set());
-   setBulkBusy(false);
-   const removed=selectedSuppliers.length-failed.length;
-   const successMessage=removed?`${removed} proveedor${removed===1?' eliminado':'es eliminados'} correctamente.`:'';
-   const failureMessage=failed.length?`${failed.length} proveedor${failed.length===1?' no se pudo eliminar':'es no se pudieron eliminar'}. ${failed.slice(0,3).join(' · ')}`:'';
-   showOperationResult(successMessage,failureMessage);
+   const process=openActionProcess({title:'Eliminando proveedores',description:'El resultado permanecerá visible al terminar.',items:selectedSuppliers.map(supplier=>({id:supplier.id,label:supplier.name}))});
+   let removed=0;let failed=0;
+   try{
+     for(const supplier of selectedSuppliers){
+       process.setItem(supplier.id,'running','Eliminando…');
+       try{await onDelete(supplier);removed+=1;process.setItem(supplier.id,'success','Eliminado correctamente.');}
+       catch(e){failed+=1;process.setItem(supplier.id,'error',e instanceof Error?e.message:'No se pudo eliminar.');}
+     }
+     setCheckedIds(new Set());
+     process.finish(`${removed} eliminado${removed===1?'':'s'}.${failed?` ${failed} con error.`:''}`,failed?(removed?'warning':'error'):'success');
+   }finally{setBulkBusy(false);}
  };
  const edit=(supplier:Supplier)=>{setSelected(null);onEdit(supplier)};
 
