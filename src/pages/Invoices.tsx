@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Download, Search, Camera, FileUp, CheckCircle2, CircleDollarSign, Eye, Trash2, AlertCircle, Files, Euro, BadgeEuro, ReceiptText, Clock3, Calculator, Building2 } from 'lucide-react';
+import { Download, Search, Camera, FileUp, CheckCircle2, CircleDollarSign, Eye, Trash2, Files, Euro, BadgeEuro, ReceiptText, Clock3, Calculator, Building2 } from 'lucide-react';
 import type { ExpenseCategory, Invoice, Supplier } from '../types';
 import { exportInvoices } from '../services/exportQuarter';
 import { InvoiceDetailModal } from '../components/InvoiceDetailModal';
@@ -8,7 +8,7 @@ import { Pagination } from '../components/Pagination';
 import { StatCard } from '../components/StatCard';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { defaultInvoiceFilter, filterInvoices, periodLabel, safeExportLabel } from '../services/filters';
-import { errorMessage, showError, showSuccess } from '../services/toast';
+import { errorMessage, showError, showOperationResult } from '../services/toast';
 
 const PAGE_SIZE=20;
 const money=(value:number)=>`${value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €`;
@@ -20,7 +20,6 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
  const [checkedIds,setCheckedIds]=useState<Set<string>>(()=>new Set());
  const [busyId,setBusyId]=useState<string|null>(null);
  const [bulkDeleting,setBulkDeleting]=useState(false);
- const [actionError,setActionError]=useState('');
  const [page,setPage]=useState(1);
  const filtered=useMemo(()=>{
    const periodFiltered=filterInvoices(invoices,filter);
@@ -44,17 +43,17 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
  const toggleChecked=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
  const toggleAllFiltered=(checked:boolean)=>setCheckedIds(checked?new Set(filtered.map(invoice=>invoice.id)):new Set());
  const exportRows=selectedRows.length?selectedRows:filtered;
- const doExport=async()=>{setExporting(true);setActionError('');try{const label=selectedRows.length?`${selectedRows.length} seleccionadas`:selectionLabel;const blob=await exportInvoices(exportRows,label);const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`ZENVIA_Gastos_${safeExportLabel(label)||'seleccion'}.zip`;a.click();URL.revokeObjectURL(url);}catch(e){setActionError(e instanceof Error?e.message:'No se pudo preparar la exportación.')}finally{setExporting(false)}};
- const openFile=async(invoice:Invoice)=>{setActionError('');try{await onOpenFile(invoice)}catch(e){setActionError(e instanceof Error?e.message:'No se pudo abrir el documento.')}};
+ const doExport=async()=>{setExporting(true);try{const label=selectedRows.length?`${selectedRows.length} seleccionadas`:selectionLabel;const blob=await exportInvoices(exportRows,label);const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`ZENVIA_Gastos_${safeExportLabel(label)||'seleccion'}.zip`;a.click();URL.revokeObjectURL(url);}catch(e){showError(e instanceof Error?e.message:'No se pudo preparar la exportación.')}finally{setExporting(false)}};
+ const openFile=async(invoice:Invoice)=>{try{await onOpenFile(invoice)}catch(e){showError(e instanceof Error?e.message:'No se pudo abrir el documento.')}};
  const remove=async(invoice:Invoice)=>{
    if(!window.confirm(`¿Eliminar la factura ${invoice.invoiceNumber==='—'?'seleccionada':invoice.invoiceNumber} de ${invoice.supplierName}? Esta acción no se puede deshacer.`)) return;
-   setActionError(''); setBusyId(invoice.id);
-   try{await onDelete(invoice);if(selected?.id===invoice.id)setSelected(null);setCheckedIds(current=>{const next=new Set(current);next.delete(invoice.id);return next})}catch(e){setActionError(e instanceof Error?e.message:'No se pudo eliminar la factura.')}finally{setBusyId(null)}
+   setBusyId(invoice.id);
+   try{await onDelete(invoice);if(selected?.id===invoice.id)setSelected(null);setCheckedIds(current=>{const next=new Set(current);next.delete(invoice.id);return next})}catch(e){showError(e instanceof Error?e.message:'No se pudo eliminar la factura.')}finally{setBusyId(null)}
  };
  const removeSelected=async()=>{
    if(!selectedRows.length)return;
    if(!window.confirm(`¿Eliminar ${selectedRows.length} factura${selectedRows.length===1?'':'s'} de gasto seleccionada${selectedRows.length===1?'':'s'}? Esta acción no se puede deshacer.`))return;
-   setBulkDeleting(true);setActionError('');
+   setBulkDeleting(true);
    const failed:string[]=[];
    for(const invoice of selectedRows){
      try{await onDelete(invoice);}
@@ -64,16 +63,17 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
    setCheckedIds(new Set());
    setBulkDeleting(false);
    const removed=selectedRows.length-failed.length;
-   if(removed)showSuccess(`${removed} factura${removed===1?' eliminada':'s eliminadas'}.`);
-   if(failed.length){const message=`${failed.length} no se pudieron eliminar: ${failed.slice(0,3).join(' · ')}`;setActionError(message);showError(message);}
+   const successMessage=removed?`${removed} factura${removed===1?' eliminada':'s eliminadas'} correctamente.`:'';
+   const failureMessage=failed.length?`${failed.length} factura${failed.length===1?' no se pudo eliminar':'s no se pudieron eliminar'}. ${failed.slice(0,3).join(' · ')}`:'';
+   showOperationResult(successMessage,failureMessage);
  };
  const changeSupplier=async(invoice:Invoice,supplierId:string)=>{
-   setActionError('');setBusyId(invoice.id);
-   try{await onSupplierChange(invoice.id,supplierId);const supplier=suppliers.find(s=>s.id===supplierId);if(supplier)setSelected(current=>current?.id===invoice.id?{...current,supplierId,supplierName:supplier.name}:current)}catch(e){const text=e instanceof Error?e.message:'No se pudo cambiar el proveedor de la factura.';setActionError(text);throw e}finally{setBusyId(null)}
+   setBusyId(invoice.id);
+   try{await onSupplierChange(invoice.id,supplierId);const supplier=suppliers.find(s=>s.id===supplierId);if(supplier)setSelected(current=>current?.id===invoice.id?{...current,supplierId,supplierName:supplier.name}:current)}catch(e){throw e instanceof Error?e:new Error('No se pudo cambiar el proveedor de la factura.')}finally{setBusyId(null)}
  };
  const changeCategory=async(invoice:Invoice,categoryId:string)=>{
    setActionError('');setBusyId(invoice.id);
-   try{await onCategoryChange(invoice.id,categoryId);const category=categories.find(c=>c.id===categoryId);if(category)setSelected(current=>current?.id===invoice.id?{...current,categoryId,category:category.name}:current)}catch(e){const text=e instanceof Error?e.message:'No se pudo cambiar la categoría de la factura.';setActionError(text);throw e}finally{setBusyId(null)}
+   try{await onCategoryChange(invoice.id,categoryId);const category=categories.find(c=>c.id===categoryId);if(category)setSelected(current=>current?.id===invoice.id?{...current,categoryId,category:category.name}:current)}catch(e){throw e instanceof Error?e:new Error('No se pudo cambiar la categoría de la factura.')}finally{setBusyId(null)}
  };
  return <div className="page"><div className="pageHead"><div><div className="eyebrow">DOCUMENTACIÓN · {periodLabel(filter)}</div><h1>Facturas de gastos</h1><p>Consulta el histórico completo, filtra y exporta cualquier periodo.</p></div><div className="actions"><button className="secondary" onClick={doExport} disabled={exporting||!exportRows.length}><Download size={17}/> {exporting?'Preparando…':selectedRows.length?`Exportar seleccionadas (${selectedRows.length})`:`Exportar (${filtered.length})`}</button><button className="secondary" onClick={onBulkUpload}><Files size={17}/> Importar facturas</button><button className="primary" onClick={onUpload}>+ Nueva factura</button></div></div>
  <InvoiceFilters filter={filter} onChange={setFilter} invoices={invoices} suppliers={suppliers}/>
@@ -83,7 +83,6 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
    <button className="secondary dangerText" type="button" disabled={!selectedRows.length||bulkDeleting||exporting} onClick={()=>void removeSelected()}><Trash2 size={15}/> {bulkDeleting?'Eliminando…':`Eliminar seleccionados (${selectedRows.length})`}</button>
    <button className="primary" type="button" disabled={!selectedRows.length||exporting||bulkDeleting} onClick={doExport}><Download size={15}/> Exportar seleccionados ({selectedRows.length})</button>
  </BulkSelectionToolbar>}
- {actionError&&<div className="errorBox tableError"><AlertCircle size={18}/>{actionError}</div>}
  <section className="card tableCard">{filtered.length?<><table><thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllFiltered} label={allFilteredSelected?'Deseleccionar gastos visibles':'Seleccionar gastos visibles'}/></th><th>Fecha</th><th>Proveedor</th><th>Factura</th><th>Categoría</th><th>Origen</th><th>Estado</th><th className="right">IVA</th><th className="right">Total</th><th className="right">Acciones</th></tr></thead><tbody>{paged.map(i=><tr key={i.id} className={`clickableRow ${checkedIds.has(i.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(i)}><td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(i.id)} onChange={checked=>toggleChecked(i.id,checked)} label={`Seleccionar gasto ${i.invoiceNumber==='—'?i.supplierName:i.invoiceNumber}`}/></td><td>{new Date(`${i.invoiceDate}T12:00:00`).toLocaleDateString('es-ES')}</td><td><strong>{i.supplierName}</strong></td><td>{i.invoiceNumber}</td><td><span className="tag">{i.category}</span></td><td>{i.source==='camera'?<><Camera size={14}/> Cámara</>:i.source==='manual'?<><FileUp size={14}/> Archivo</>:'Gmail'}</td><td><div className="statusActions" onClick={e=>e.stopPropagation()}><button title="Pendiente" className={i.status==='pending'?'statusBtn active warnBtn':'statusBtn'} onClick={()=>onStatusChange(i.id,'pending')}>P</button><button title="Revisada" className={i.status==='reviewed'?'statusBtn active okBtn':'statusBtn'} onClick={()=>onStatusChange(i.id,'reviewed')}><CheckCircle2 size={13}/></button><button title="Contabilizada" className={i.status==='accounted'?'statusBtn active accountBtn':'statusBtn'} onClick={()=>onStatusChange(i.id,'accounted')}><CircleDollarSign size={13}/></button></div></td><td className="right">{i.vat.toLocaleString('es-ES',{minimumFractionDigits:2})} €</td><td className="right"><strong>{i.total.toLocaleString('es-ES',{minimumFractionDigits:2})} €</strong></td><td className="right"><div className="invoiceActions" onClick={e=>e.stopPropagation()}><button className="iconBtn" title="Abrir factura" disabled={!i.filePath} onClick={()=>openFile(i)}><Eye size={16}/></button><button className="iconBtn dangerIcon" title="Eliminar factura" disabled={busyId===i.id} onClick={()=>remove(i)}><Trash2 size={16}/></button></div></td></tr>)}</tbody></table><Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage}/></>:<div className="emptyState large">No hay facturas para los filtros seleccionados.</div>}</section>
  <InvoiceDetailModal invoice={selected} suppliers={suppliers} categories={categories} onClose={()=>setSelected(null)} onOpenFile={openFile} onDelete={remove} onSupplierChange={changeSupplier} onCategoryChange={changeCategory} deleting={busyId===selected?.id}/>
  </div>
