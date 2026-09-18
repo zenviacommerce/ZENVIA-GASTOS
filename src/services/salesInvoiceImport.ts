@@ -1,5 +1,5 @@
 import { readInvoiceDocumentEnhanced } from './invoiceReaderEnhanced';
-import { addClient, createSalesInvoiceDraft, loadClients, updateClient, type Client, type ClientInput, type SalesInvoiceDraftInput, type SalesInvoiceLine } from './sales';
+import { addClient, createSalesInvoiceDraft, deleteClientIfUnused, loadClients, updateClient, type Client, type ClientInput, type SalesInvoiceDraftInput, type SalesInvoiceLine } from './sales';
 import { updateSalesInvoiceNumber } from './salesInvoiceNumber';
 import { deleteSalesInvoiceDraftSafe } from './salesDraftDelete';
 import { extractInvoiceParty } from './invoicePartyExtractor';
@@ -32,7 +32,7 @@ function normalize(value:string|undefined|null){return String(value||'').normali
 function normalizedText(value:string){return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ');}
 function compact(value:string){return value.replace(/\s+/g,' ').trim();}
 function titleCase(value:string){return value.toLowerCase().replace(/(^|\s)([a-záéíóúñ])/g,(_,space,letter)=>space+letter.toUpperCase()).replace(/\b(Sl|Sa|Slu|Sc|Cb)\b/g,value=>value.toUpperCase());}
-function validClientName(value:string){const clean=compact(value).replace(/^[-:·]+|[-:·]+$/g,'');return clean.length>=4&&/[A-Za-zÁÉÍÓÚÑáéíóúñ]{3}/.test(clean)&&!/^(?:cliente|customer|destinatario|factura|invoice|nombre|raz[oó]n social)$/i.test(clean)?clean:'';}
+function validClientName(value:string){const clean=compact(value).replace(/^[-:·]+|[-:·]+$/g,'');if(/^[0-9a-f]{8}(?:[-_][0-9a-f]{4}){3}[-_][0-9a-f]{12}$/i.test(clean))return '';if(/^[0-9a-f_-]{20,}$/i.test(clean))return '';return clean.length>=4&&/[A-Za-zÁÉÍÓÚÑáéíóúñ]{3}/.test(clean)&&!/^(?:cliente|customer|destinatario|factura|invoice|nombre|raz[oó]n social|transferencia|tarjeta|paypal|bizum|contado|efectivo|iban|swift|bic|vencimiento)$/i.test(clean)?clean:'';}
 
 function clientNameFromFilename(filename:string,invoiceNumber:string){
   let base=filename.replace(/\.[^.]+$/,'').trim();
@@ -109,13 +109,13 @@ async function enrichImportedClient(clientId:string,input:ClientInput){
 async function ensureImportedClient(input:ClientInput){
   let clients=await loadClients();
   const existing=matchClientIdentity(input,clients);
-  if(existing){await enrichImportedClient(existing.id,input);return existing.id;}
-  try{return await addClient(input);}
+  if(existing){await enrichImportedClient(existing.id,input);return {id:existing.id,created:false};}
+  try{return {id:await addClient(input),created:true};}
   catch(error:any){
     if(error?.code!=='23505')throw error;
     clients=await loadClients();
     const raced=matchClientIdentity(input,clients);
-    if(raced){await enrichImportedClient(raced.id,input);return raced.id;}
+    if(raced){await enrichImportedClient(raced.id,input);return {id:raced.id,created:false};}
     throw error;
   }
 }
@@ -283,17 +283,27 @@ export function friendlySalesImportError(error:unknown){
 export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoiceImportCandidate){
   const reviewed=recalculateSalesImportCandidate(candidate);
   let clientId=reviewed.clientId;
-  if(clientId&&reviewed.proposedClient?.name)await enrichImportedClient(clientId,reviewed.proposedClient);
-  if(!clientId&&reviewed.proposedClient?.name)clientId=await ensureImportedClient(reviewed.proposedClient);
-  if(!clientId)throw new Error('Selecciona el cliente o revisa los datos detectados.');
-  if(!reviewed.seriesId)throw new Error('Selecciona la serie.');
-  if(!reviewed.invoiceNumber.trim())throw new Error('Indica el número de factura.');
-  if(!reviewed.issueDate)throw new Error('Indica la fecha de factura.');
-  const lines=cleanImportLines(reviewed);
-  if(!lines.length)throw new Error('No hay líneas válidas para guardar esta factura.');
-  const payload:SalesInvoiceDraftInput={clientId,seriesId:reviewed.seriesId,taxRegistrationId:reviewed.taxRegistrationId||null,issueDate:reviewed.issueDate,paymentMethod:reviewed.paymentMethod||undefined,notes:reviewed.notes||undefined,lines};
-  const id=await createSalesInvoiceDraft(payload);
-  try{await updateSalesInvoiceNumber(id,reviewed.invoiceNumber.trim());}
-  catch(error){await deleteSalesInvoiceDraftSafe(id).catch(()=>{});throw error;}
-  return id;
+  let createdClientId='';
+  try{
+    if(clientId&&reviewed.proposedClient?.name)await enrichImportedClient(clientId,reviewed.proposedClient);
+    if(!clientId&&reviewed.proposedClient?.name){
+      const ensured=await ensureImportedClient(reviewed.proposedClient);
+      clientId=ensured.id;
+      if(ensured.created)createdClientId=ensured.id;
+    }
+    if(!clientId)throw new Error('Selecciona el cliente o revisa los datos detectados.');
+    if(!reviewed.seriesId)throw new Error('Selecciona la serie.');
+    if(!reviewed.invoiceNumber.trim())throw new Error('Indica el número de factura.');
+    if(!reviewed.issueDate)throw new Error('Indica la fecha de factura.');
+    const lines=cleanImportLines(reviewed);
+    if(!lines.length)throw new Error('No hay líneas válidas para guardar esta factura.');
+    const payload:SalesInvoiceDraftInput={clientId,seriesId:reviewed.seriesId,taxRegistrationId:reviewed.taxRegistrationId||null,issueDate:reviewed.issueDate,paymentMethod:reviewed.paymentMethod||undefined,notes:reviewed.notes||undefined,lines};
+    const id=await createSalesInvoiceDraft(payload);
+    try{await updateSalesInvoiceNumber(id,reviewed.invoiceNumber.trim());}
+    catch(error){await deleteSalesInvoiceDraftSafe(id).catch(()=>{});throw error;}
+    return id;
+  }catch(error){
+    if(createdClientId)await deleteClientIfUnused(createdClientId).catch(()=>{});
+    throw error;
+  }
 }
