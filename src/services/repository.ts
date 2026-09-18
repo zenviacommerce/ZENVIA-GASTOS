@@ -5,6 +5,7 @@ import { extractSupplierContactData, type SupplierContactData } from './supplier
 import { extractSupplierInvoiceDetails } from './supplierInvoiceDetails';
 import { repairInvoiceAmounts, repairInvoiceProductLines } from './invoiceProductLine';
 import { emailError, normalizeEmail, normalizePhone, normalizeTaxId, phoneError, taxIdError } from './validation';
+import { sanitizeDatabaseSingleLine, sanitizeDatabaseText, sanitizeDatabaseValue } from './textSanitizer';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
 const normalizeProductKey = (value: string) => value
@@ -115,8 +116,8 @@ function cleanSupplierContact(contact: SupplierProfileData): SupplierProfileData
   const taxId = contact.taxId ? normalizeTaxId(contact.taxId) : '';
   const email = contact.email ? normalizeEmail(contact.email) : '';
   const phone = contact.phone ? normalizePhone(contact.phone) : '';
-  const address = contact.address?.replace(/\s+/g, ' ').trim().slice(0, 500) || '';
-  const rawWebsite = contact.website?.trim().slice(0, 300) || '';
+  const address = sanitizeDatabaseSingleLine(contact.address).slice(0, 500);
+  const rawWebsite = sanitizeDatabaseSingleLine(contact.website).slice(0, 300);
   const website = rawWebsite ? (/^https?:\/\//i.test(rawWebsite) ? rawWebsite : `https://${rawWebsite}`) : '';
   return {
     taxId: taxId && !taxIdError(taxId, false) ? taxId : undefined,
@@ -128,7 +129,7 @@ function cleanSupplierContact(contact: SupplierProfileData): SupplierProfileData
 }
 
 async function ensureSupplier(name: string, contactInput: SupplierProfileData = {}, supplierTypeHint?: 'goods'): Promise<{ id: string; created: boolean }> {
-  const clean = canonicalizeSupplierName(name) || name.trim().slice(0, 120);
+  const clean = sanitizeDatabaseSingleLine(canonicalizeSupplierName(name) || name).slice(0, 120);
   const cleanKey = supplierIdentityKey(clean);
   const contact = cleanSupplierContact(contactInput);
 
@@ -240,11 +241,11 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
 
   try {
     for (const line of input.lines) {
-      const description = line.description.trim().slice(0, 250);
+      const description = sanitizeDatabaseSingleLine(line.description).slice(0, 250);
       if (!description) continue;
 
       const key = normalizeProductKey(description);
-      const unit = line.unit?.trim() || 'ud';
+      const unit = sanitizeDatabaseSingleLine(line.unit) || 'ud';
       let productId: string | null = null;
       let supplierProductId: string | null = null;
 
@@ -272,7 +273,7 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
           const { data: supplierProduct, error: supplierProductError } = await supabase.from('supplier_products').insert({
             supplier_id: supplierId,
             product_id: productId,
-            supplier_sku: line.supplierSku?.trim() || null,
+            supplier_sku: sanitizeDatabaseSingleLine(line.supplierSku) || null,
             supplier_description: description,
             purchase_unit: unit,
             units_per_purchase: 1,
@@ -290,7 +291,7 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
         product_id: productId,
         supplier_product_id: supplierProductId,
         description,
-        supplier_sku: line.supplierSku?.trim() || null,
+        supplier_sku: sanitizeDatabaseSingleLine(line.supplierSku) || null,
         quantity: line.quantity || 1,
         unit,
         unit_price: line.unitPrice ?? null,
@@ -354,7 +355,7 @@ export async function createInvoice(input: NewInvoiceInput) {
 
   const { data: invoice, error } = await supabase.from('invoices').insert({
     supplier_id: supplierId,
-    invoice_number: input.invoiceNumber.trim() || null,
+    invoice_number: sanitizeDatabaseSingleLine(input.invoiceNumber) || null,
     issue_date: input.invoiceDate || null,
     expense_category_id: input.categoryId || null,
     net_amount: preparedInput.subtotal,
@@ -365,11 +366,11 @@ export async function createInvoice(input: NewInvoiceInput) {
     source: input.source,
     status: 'pending',
     file_path: storagePath,
-    file_name: input.file.name,
+    file_name: sanitizeDatabaseSingleLine(input.file.name),
     mime_type: input.file.type || 'application/pdf',
     file_hash: fileHash,
-    ocr_text: input.ocrText || null,
-    extraction: {
+    ocr_text: sanitizeDatabaseText(input.ocrText) || null,
+    extraction: sanitizeDatabaseValue({
       ...(input.extraction ?? {}),
       supplierTaxId: input.supplierTaxId || extractedContact.taxId || extractedDetails.taxId || null,
       supplierEmail: input.supplierEmail || extractedContact.email || null,
@@ -378,7 +379,7 @@ export async function createInvoice(input: NewInvoiceInput) {
       supplierWebsite: input.supplierWebsite || extractedDetails.website || null,
       equivalenceSurcharge: preparedInput.equivalenceSurcharge ?? 0,
       normalizedLineCount: preparedInput.lines?.length || 0,
-    },
+    }),
     extraction_confidence: input.extractionConfidence ?? null,
   }).select('id').single();
 
@@ -420,10 +421,10 @@ export async function getInvoiceFileUrl(path: string) {
 
 export async function addProduct(input: { name: string; sku?: string; category?: string; unit: string }) {
   const { error } = await supabase.from('products').insert({
-    name: input.name.trim(),
-    sku: input.sku?.trim() || null,
-    category: input.category?.trim() || null,
-    base_unit: input.unit.trim() || 'ud',
+    name: sanitizeDatabaseSingleLine(input.name),
+    sku: sanitizeDatabaseSingleLine(input.sku) || null,
+    category: sanitizeDatabaseSingleLine(input.category) || null,
+    base_unit: sanitizeDatabaseSingleLine(input.unit) || 'ud',
   });
   if (error) throw error;
 }
@@ -447,12 +448,12 @@ type SupplierInput = { name: string; taxId?: string; email?: string; phone?: str
 
 export async function addSupplier(input: SupplierInput) {
   const { error } = await supabase.from('suppliers').insert({
-    name: input.name.trim(),
-    tax_id: input.taxId?.trim() || null,
-    email: input.email?.trim() || null,
-    phone: input.phone?.trim() || null,
-    address: input.address?.trim() || null,
-    website: input.website?.trim() || null,
+    name: sanitizeDatabaseSingleLine(input.name),
+    tax_id: sanitizeDatabaseSingleLine(input.taxId) || null,
+    email: sanitizeDatabaseSingleLine(input.email) || null,
+    phone: sanitizeDatabaseSingleLine(input.phone) || null,
+    address: sanitizeDatabaseSingleLine(input.address) || null,
+    website: sanitizeDatabaseSingleLine(input.website) || null,
     supplier_type: input.supplierType,
   });
   if (error) throw error;
