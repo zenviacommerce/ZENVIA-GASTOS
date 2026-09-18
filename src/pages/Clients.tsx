@@ -7,6 +7,7 @@ import { Pagination } from '../components/Pagination';
 import { FormGrid, FormModal, FormSection } from '../components/forms/FormPrimitives';
 import { PostalAddressFields } from '../components/forms/PostalAddressFields';
 import { SelectField } from '../components/forms/SelectField';
+import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import '../sales.css';
 
 const PAGE_SIZE=20;
@@ -127,6 +128,8 @@ export function Clients(){
   const [modal,setModal]=useState(false);
   const [error,setError]=useState('');
   const [busyId,setBusyId]=useState<string|null>(null);
+  const [checkedIds,setCheckedIds]=useState<Set<string>>(()=>new Set());
+  const [bulkBusy,setBulkBusy]=useState(false);
   const [page,setPage]=useState(1);
 
   const refresh=async()=>{setLoading(true);try{const [nextClients,nextInvoices]=await Promise.all([loadClients(),loadSalesInvoices()]);setClients(nextClients);setInvoices(nextInvoices);setSelected(current=>current?nextClients.find(c=>c.id===current.id)||null:null);setError('')}catch(e){setError(errorMessage(e,'No se pudieron cargar los clientes.'))}finally{setLoading(false)}};
@@ -152,9 +155,13 @@ export function Clients(){
     const matchesFilter=filter==='all'||(filter==='pending'&&metric.pending>0.005)||(filter==='settled'&&metric.pending<=0.005)||(filter==='es'&&country==='ES')||(filter==='eu'&&country!=='ES'&&EU_COUNTRIES.has(country));
     return matchesQuery&&matchesFilter;
   })},[clients,metrics,query,filter]);
+  const selectedClients=filtered.filter(client=>checkedIds.has(client.id));
+  const allFilteredSelected=filtered.length>0&&filtered.every(client=>checkedIds.has(client.id));
+  const toggleClient=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
+  const toggleAllClients=(checked:boolean)=>setCheckedIds(checked?new Set(filtered.map(client=>client.id)):new Set());
   const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
   const paged=useMemo(()=>filtered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[filtered,page]);
-  useEffect(()=>{setPage(1)},[query,filter]);
+  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,filter]);
   useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
 
   const totals=useMemo(()=>({invoiced:clients.reduce((sum,c)=>sum+(metrics.get(c.id)?.invoiced||0),0),pending:clients.reduce((sum,c)=>sum+(metrics.get(c.id)?.pending||0),0)}),[clients,metrics]);
@@ -165,14 +172,33 @@ export function Clients(){
     setBusyId(client.id);setError('');
     try{await deleteClient(client.id);setSelected(null);await refresh();showSuccess('Cliente eliminado correctamente.')}catch(e){const message=errorMessage(e,'No se pudo eliminar el cliente.');setError(message);showError(message)}finally{setBusyId(null)}
   };
+  const removeSelected=async()=>{
+    if(!selectedClients.length)return;
+    if(!window.confirm(`¿Eliminar ${selectedClients.length} cliente${selectedClients.length===1?'':'s'} seleccionado${selectedClients.length===1?'':'s'}?`))return;
+    setBulkBusy(true);setError('');
+    const failed:string[]=[];
+    for(const client of selectedClients){
+      try{await deleteClient(client.id);}
+      catch(e){failed.push(`${client.name}: ${errorMessage(e,'No se pudo eliminar')}`);}
+    }
+    setCheckedIds(new Set());
+    await refresh();
+    setBulkBusy(false);
+    const removed=selectedClients.length-failed.length;
+    if(removed)showSuccess(`${removed} cliente${removed===1?' eliminado':'s eliminados'}.`);
+    if(failed.length){const message=`${failed.length} no se pudieron eliminar: ${failed.slice(0,3).join(' · ')}`;setError(message);showError(message);}
+  };
 
   return <div className="page masterPage">
     <div className="pageHead"><div><div className="eyebrow">VENTAS</div><h1>Clientes</h1><p>Directorio comercial, facturación acumulada y situación de cobro.</p></div><button className="primary" onClick={openNew}>+ Cliente</button></div>
     <div className="stats masterStats"><div className="stat"><div className="statIcon"><UserRound/></div><div><span>Clientes activos</span><strong>{clients.length}</strong><small>Registrados en el maestro</small></div></div><div className="stat"><div className="statIcon"><CircleDollarSign/></div><div><span>Facturado</span><strong>{money(totals.invoiced)}</strong><small>Facturas registradas</small></div></div><div className="stat"><div className="statIcon"><WalletCards/></div><div><span>Pendiente de cobro</span><strong>{money(totals.pending)}</strong><small>Saldo comercial abierto</small></div></div></div>
     <div className="masterToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente, CIF, email, teléfono o ciudad…"/></div><div className="masterFilters"><button className={filter==='all'?'active':''} onClick={()=>setFilter('all')}>Todos</button><button className={filter==='pending'?'active':''} onClick={()=>setFilter('pending')}>Con pendiente</button><button className={filter==='settled'?'active':''} onClick={()=>setFilter('settled')}>Sin pendiente</button><button className={filter==='es'?'active':''} onClick={()=>setFilter('es')}>España</button><button className={filter==='eu'?'active':''} onClick={()=>setFilter('eu')}>UE</button></div></div>
+    {filtered.length>0&&<BulkSelectionToolbar selectedCount={selectedClients.length} totalCount={filtered.length} allSelected={allFilteredSelected} onToggleAll={toggleAllClients} label="clientes">
+      <button className="secondary dangerText" type="button" disabled={!selectedClients.length||bulkBusy} onClick={()=>void removeSelected()}><Trash2 size={15}/> {bulkBusy?'Eliminando…':`Eliminar seleccionados (${selectedClients.length})`}</button>
+    </BulkSelectionToolbar>}
     {error&&<div className="errorBox">{error}</div>}
-    <section className="card tableCard masterTableCard">{loading?<div className="emptyState large">Cargando clientes…</div>:filtered.length?<table className="masterTable"><thead><tr><th>Cliente</th><th>CIF/NIF</th><th>País</th><th>Contacto</th><th className="right">Facturado</th><th className="right">Pendiente</th><th>Última factura</th><th></th></tr></thead><tbody>{paged.map(client=>{const metric=metrics.get(client.id)!;return <tr key={client.id} className="clickableRow" onClick={()=>setSelected(client)}><td><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{client.name}</strong><small>{client.city||'Sin ciudad'}</small></div></div></td><td>{client.taxId||<span className="muted">Pendiente</span>}</td><td><span className="masterCountry">{client.countryCode&&client.countryCode!=='XX'?client.countryCode:'Pendiente'}</span></td><td><div className="masterContactCell"><span>{client.email||'—'}</span><small>{client.phone||''}</small></div></td><td className="right"><strong>{money(metric.invoiced)}</strong></td><td className="right"><strong className={metric.pending>0.005?'masterPending':''}>{money(metric.pending)}</strong></td><td>{dateLabel(metric.lastDate)}</td><td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay clientes para los filtros seleccionados.</div>}</section>
-    {!loading&&filtered.length>0&&<div className="masterMobileList">{paged.map(client=>{const metric=metrics.get(client.id)!;return <button className="card masterMobileRow" key={client.id} onClick={()=>setSelected(client)}><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{client.name}</strong><small>{client.taxId||'CIF/NIF pendiente'} · {client.countryCode&&client.countryCode!=='XX'?client.countryCode:'Pendiente'}</small></div></div><div className="masterMobileAmounts"><span>Facturado <strong>{money(metric.invoiced)}</strong></span><span>Pendiente <strong className={metric.pending>0.005?'masterPending':''}>{money(metric.pending)}</strong></span></div><ChevronRight size={18}/></button>})}</div>}
+    <section className="card tableCard masterTableCard">{loading?<div className="emptyState large">Cargando clientes…</div>:filtered.length?<table className="masterTable"><thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllClients} label={allFilteredSelected?'Deseleccionar clientes visibles':'Seleccionar clientes visibles'}/></th><th>Cliente</th><th>CIF/NIF</th><th>País</th><th>Contacto</th><th className="right">Facturado</th><th className="right">Pendiente</th><th>Última factura</th><th></th></tr></thead><tbody>{paged.map(client=>{const metric=metrics.get(client.id)!;return <tr key={client.id} className={`clickableRow ${checkedIds.has(client.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(client)}><td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(client.id)} onChange={checked=>toggleClient(client.id,checked)} label={`Seleccionar ${client.name}`}/></td><td><div className="masterEntityCell"><div className="masterAvatar"><UserRound size={17}/></div><div><strong>{client.name}</strong><small>{client.city||'Sin ciudad'}</small></div></div></td><td>{client.taxId||<span className="muted">Pendiente</span>}</td><td><span className="masterCountry">{client.countryCode&&client.countryCode!=='XX'?client.countryCode:'Pendiente'}</span></td><td><div className="masterContactCell"><span>{client.email||'—'}</span><small>{client.phone||''}</small></div></td><td className="right"><strong>{money(metric.invoiced)}</strong></td><td className="right"><strong className={metric.pending>0.005?'masterPending':''}>{money(metric.pending)}</strong></td><td>{dateLabel(metric.lastDate)}</td><td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay clientes para los filtros seleccionados.</div>}</section>
+    {!loading&&filtered.length>0&&<div className="masterMobileList">{paged.map(client=>{const metric=metrics.get(client.id)!;return <div className={`bulkMobileSelectableRow ${checkedIds.has(client.id)?'selected':''}`} key={client.id}><BulkSelectCheckbox checked={checkedIds.has(client.id)} onChange={checked=>toggleClient(client.id,checked)} label={`Seleccionar ${client.name}`}/><button className="card masterMobileRow" onClick={()=>setSelected(client)}><div className="masterEntityCell"><div className="masterAvatar"><UserRound size={17}/></div><div><strong>{client.name}</strong><small>{client.taxId||'CIF/NIF pendiente'} · {client.countryCode&&client.countryCode!=='XX'?client.countryCode:'Pendiente'}</small></div></div><div className="masterMobileAmounts"><span>Facturado <strong>{money(metric.invoiced)}</strong></span><span>Pendiente <strong className={metric.pending>0.005?'masterPending':''}>{money(metric.pending)}</strong></span></div><ChevronRight size={18}/></button></div>})}</div>}
     {!loading&&filtered.length>0&&<Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
     <ClientModal open={modal} client={editing} onClose={()=>{setModal(false);setEditing(null)}} onSaved={refresh}/>
     {selected&&<ClientDrawer client={selected} metric={metrics.get(selected.id)||{invoiced:0,pending:0,count:0,lastDate:null,recent:[]}} onClose={()=>setSelected(null)} onEdit={()=>openEdit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>} 
