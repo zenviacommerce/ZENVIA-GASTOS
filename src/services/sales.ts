@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { sanitizeDatabaseSingleLine, sanitizeDatabaseText } from './textSanitizer';
 
 export type Client = {
   id: string;
@@ -127,7 +128,7 @@ export type SalesInvoiceDraftInput = {
 };
 
 const n=(value:unknown)=>Number(value??0)||0;
-const nullable=(value?:string|null)=>value?.trim()||null;
+const nullable=(value?:string|null)=>{const cleaned=sanitizeDatabaseText(value).trim();return cleaned||null;};
 const addressFrom=(row:any)=>[row?.address_line1,row?.address_line2,[row?.postal_code,row?.city].filter(Boolean).join(' '),row?.province,row?.country_code].filter(Boolean).join(', ');
 
 export async function loadClients():Promise<Client[]> {
@@ -137,12 +138,13 @@ export async function loadClients():Promise<Client[]> {
 }
 
 function clientRow(input:ClientInput){
-  return {name:input.name.trim(),tax_id:nullable(input.taxId),email:nullable(input.email)?.toLowerCase()||null,phone:nullable(input.phone),address_line1:nullable(input.addressLine1),address_line2:nullable(input.addressLine2),postal_code:nullable(input.postalCode),city:nullable(input.city),province:nullable(input.province),country_code:(input.countryCode||'ES').trim().toUpperCase().slice(0,2),payment_terms_days:Math.max(0,Math.round(input.paymentTermsDays||0)),notes:nullable(input.notes)};
+  return {name:sanitizeDatabaseSingleLine(input.name),tax_id:nullable(input.taxId),email:nullable(input.email)?.toLowerCase()||null,phone:nullable(input.phone),address_line1:nullable(input.addressLine1),address_line2:nullable(input.addressLine2),postal_code:nullable(input.postalCode),city:nullable(input.city),province:nullable(input.province),country_code:sanitizeDatabaseSingleLine(input.countryCode||'ES').toUpperCase().slice(0,2),payment_terms_days:Math.max(0,Math.round(input.paymentTermsDays||0)),notes:nullable(input.notes)};
 }
 
 export async function addClient(input:ClientInput){const {data,error}=await supabase.from('clients').insert(clientRow(input)).select('id').single();if(error)throw error;return data.id as string;}
 export async function updateClient(id:string,input:ClientInput){const {error}=await supabase.from('clients').update(clientRow(input)).eq('id',id);if(error)throw error;}
 export async function deleteClient(id:string){const {error}=await supabase.from('clients').delete().eq('id',id);if(error){if(error.code==='23503')throw new Error('Este cliente tiene facturas asociadas y no se puede eliminar. Puedes dejarlo registrado y reutilizarlo.');throw error;}}
+export async function deleteClientIfUnused(id:string){const {count,error}=await supabase.from('sales_invoices').select('id',{count:'exact',head:true}).eq('client_id',id);if(error)throw error;if((count||0)>0)return false;const {error:deleteError}=await supabase.from('clients').delete().eq('id',id);if(deleteError){if(deleteError.code==='23503')return false;throw deleteError;}return true;}
 
 export async function loadBusinessSettings():Promise<BusinessSettings>{
   const {data,error}=await supabase.from('business_settings').select('*').maybeSingle();if(error)throw error;
@@ -192,8 +194,8 @@ export async function loadSalesInvoices():Promise<SalesInvoice[]>{
   });
 }
 
-function invoiceRow(input:SalesInvoiceDraftInput){return {client_id:input.clientId,series_id:input.seriesId,tax_registration_id:input.taxRegistrationId||null,issue_date:input.issueDate,operation_date:nullable(input.operationDate),due_date:nullable(input.dueDate),payment_method:nullable(input.paymentMethod),notes:nullable(input.notes)};}
-function lineRows(invoiceId:string,lines:SalesInvoiceLine[]){return lines.map((line,index)=>({invoice_id:invoiceId,product_id:line.productId||null,position:index+1,description:line.description.trim(),quantity:line.quantity,unit:line.unit.trim()||'ud',unit_price:line.unitPrice,discount_percent:line.discountPercent||0,tax_rate:line.taxRate}));}
+function invoiceRow(input:SalesInvoiceDraftInput){return {client_id:input.clientId,series_id:input.seriesId,tax_registration_id:input.taxRegistrationId||null,issue_date:sanitizeDatabaseSingleLine(input.issueDate),operation_date:nullable(input.operationDate),due_date:nullable(input.dueDate),payment_method:nullable(input.paymentMethod),notes:nullable(input.notes)};}
+function lineRows(invoiceId:string,lines:SalesInvoiceLine[]){return lines.map((line,index)=>({invoice_id:invoiceId,product_id:line.productId||null,position:index+1,description:sanitizeDatabaseSingleLine(line.description),quantity:line.quantity,unit:sanitizeDatabaseSingleLine(line.unit)||'ud',unit_price:line.unitPrice,discount_percent:line.discountPercent||0,tax_rate:line.taxRate}));}
 
 export async function createSalesInvoiceDraft(input:SalesInvoiceDraftInput){const {data:invoice,error}=await supabase.from('sales_invoices').insert(invoiceRow(input)).select('id').single();if(error)throw error;const rows=lineRows(invoice.id,input.lines).filter(row=>row.description);if(rows.length){const {error:lineError}=await supabase.from('sales_invoice_lines').insert(rows);if(lineError){await supabase.from('sales_invoices').delete().eq('id',invoice.id);throw lineError;}}return invoice.id as string;}
 export async function updateSalesInvoiceDraft(id:string,input:SalesInvoiceDraftInput){const {error}=await supabase.from('sales_invoices').update(invoiceRow(input)).eq('id',id).eq('status','draft');if(error)throw error;const {error:deleteError}=await supabase.from('sales_invoice_lines').delete().eq('invoice_id',id);if(deleteError)throw deleteError;const rows=lineRows(id,input.lines).filter(row=>row.description);if(rows.length){const {error:lineError}=await supabase.from('sales_invoice_lines').insert(rows);if(lineError)throw lineError;}}
