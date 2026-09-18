@@ -73,7 +73,7 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
    try{await onSupplierChange(invoice.id,supplierId);const supplier=suppliers.find(s=>s.id===supplierId);if(supplier)setSelected(current=>current?.id===invoice.id?{...current,supplierId,supplierName:supplier.name}:current);showSuccess('Proveedor de la factura actualizado correctamente.')}catch(e){throw e instanceof Error?e:new Error('No se pudo cambiar el proveedor de la factura.')}finally{setBusyId(null)}
  };
  const changeCategory=async(invoice:Invoice,categoryId:string)=>{
-   setActionError('');setBusyId(invoice.id);
+   setBusyId(invoice.id);
    try{await onCategoryChange(invoice.id,categoryId);const category=categories.find(c=>c.id===categoryId);if(category)setSelected(current=>current?.id===invoice.id?{...current,categoryId,category:category.name}:current);showSuccess('Categoría de la factura actualizada correctamente.')}catch(e){throw e instanceof Error?e:new Error('No se pudo cambiar la categoría de la factura.')}finally{setBusyId(null)}
  };
  return <div className="page"><div className="pageHead"><div><div className="eyebrow">DOCUMENTACIÓN · {periodLabel(filter)}</div><h1>Facturas de gastos</h1><p>Consulta el histórico completo, filtra y exporta cualquier periodo.</p></div><div className="actions"><button className="secondary" onClick={doExport} disabled={exporting||!exportRows.length}><Download size={17}/> {exporting?'Preparando…':selectedRows.length?`Exportar seleccionadas (${selectedRows.length})`:`Exportar (${filtered.length})`}</button><button className="secondary" onClick={onBulkUpload}><Files size={17}/> Importar facturas</button><button className="primary" onClick={onUpload}>+ Nueva factura</button></div></div>
