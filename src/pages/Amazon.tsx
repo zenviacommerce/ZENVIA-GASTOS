@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ExternalLink, LoaderCircle, Megaphone, RefreshCw, ShoppingBag } from 'lucide-react';
-import { amazonQuickRange, loadAmazonStatus, requestAmazonSync, type AmazonAnalyticsFilters, type AmazonStatus, type AmazonSummary as AmazonSummaryData } from '../services/amazon';
+import { AlertTriangle, CheckCircle2, ExternalLink, LoaderCircle, Megaphone, RefreshCw, ShoppingBag, WifiOff } from 'lucide-react';
+import { AMAZON_CONNECTIVITY_EVENT, amazonQuickRange, isAmazonConnectivityError, loadAmazonStatus, requestAmazonSync, type AmazonAnalyticsFilters, type AmazonStatus, type AmazonSummary as AmazonSummaryData } from '../services/amazon';
 import { errorMessage, showError, showSuccess } from '../services/toast';
 import { AmazonFilters } from '../components/amazon/AmazonFilters';
 import { AmazonSummary } from '../components/amazon/AmazonSummary';
@@ -25,18 +25,57 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
   const [summaryMeta,setSummaryMeta]=useState<AmazonSummaryData|null>(null);
   const [analyticsRefresh,setAnalyticsRefresh]=useState(0);
   const [refreshingAnalytics,setRefreshingAnalytics]=useState(false);
+  const [connectivityIssue,setConnectivityIssue]=useState(()=>typeof navigator!=='undefined'&&!navigator.onLine);
 
-  const refresh=useCallback(async()=>{setLoading(true);setError('');try{const next=await loadAmazonStatus();setStatus(next);writeViewCache(AMAZON_STATUS_CACHE,next);}catch(e){setError(errorMessage(e,'No se pudo consultar Amazon.'));}finally{setLoading(false);}},[]);
+  const refresh=useCallback(async()=>{
+    setLoading(true);setError('');
+    try{
+      const next=await loadAmazonStatus();
+      setStatus(next);writeViewCache(AMAZON_STATUS_CACHE,next);setConnectivityIssue(false);
+    }catch(e){
+      if(isAmazonConnectivityError(e)){setConnectivityIssue(true);setError('');}
+      else setError(errorMessage(e,'No se pudo consultar Amazon.'));
+    }finally{setLoading(false);}
+  },[]);
   useEffect(()=>{void refresh();},[refresh]);
+  useEffect(()=>{
+    const markOffline=()=>{setConnectivityIssue(true);setError('');};
+    const markOnline=()=>{setConnectivityIssue(false);void refresh();setAnalyticsRefresh(value=>value+1);};
+    const onAmazonConnectivity=()=>markOffline();
+    window.addEventListener('offline',markOffline);
+    window.addEventListener('online',markOnline);
+    window.addEventListener(AMAZON_CONNECTIVITY_EVENT,onAmazonConnectivity);
+    return()=>{
+      window.removeEventListener('offline',markOffline);
+      window.removeEventListener('online',markOnline);
+      window.removeEventListener(AMAZON_CONNECTIVITY_EVENT,onAmazonConnectivity);
+    };
+  },[refresh]);
   const handleSummary=useCallback((summary:AmazonSummaryData)=>setSummaryMeta(summary),[]);
-  const syncNow=async()=>{setSyncing(true);try{const result=await requestAmazonSync();showSuccess(result.jobs?`Sincronización solicitada: ${result.jobs} trabajos en cola.`:'Amazon está al día; no se han creado trabajos nuevos.');await refresh();}catch(e){showError(errorMessage(e,'No se pudo iniciar la sincronización de Amazon.'));}finally{setSyncing(false);}};
-  const refreshAnalytics=()=>{setSummaryMeta(null);setRefreshingAnalytics(true);setAnalyticsRefresh(value=>value+1);window.setTimeout(()=>setRefreshingAnalytics(false),1200);};
+  const syncNow=async()=>{
+    if(connectivityIssue){showError('No hay conexión a Internet. La sincronización se reanudará cuando vuelva la conexión.');return;}
+    setSyncing(true);
+    try{
+      const result=await requestAmazonSync();
+      showSuccess(result.jobs?`Sincronización solicitada: ${result.jobs} trabajos en cola.`:'Amazon está al día; no se han creado trabajos nuevos.');
+      await refresh();
+    }catch(e){
+      if(!isAmazonConnectivityError(e))showError(errorMessage(e,'No se pudo iniciar la sincronización de Amazon.'));
+    }finally{setSyncing(false);}
+  };
+  const refreshAnalytics=()=>{
+    if(connectivityIssue){setError('');return;}
+    setRefreshingAnalytics(true);
+    setAnalyticsRefresh(value=>value+1);
+    window.setTimeout(()=>setRefreshingAnalytics(false),1200);
+  };
 
   const connected=Boolean(status?.connected);const marketplaces=(status?.marketplaces||[]).filter(item=>item.active);const jobs=status?.sync.jobCounts;
   return <div className="page amazonPage">
     <header className="pageHead amazonPageHead"><div><div className="eyebrow">AMAZON ANALYTICS</div><h1>Amazon</h1><p>Ventas, costes, rentabilidad e inventario de tus marketplaces europeos.</p></div><div className="actions amazonExternalLinks">{externalLinks.map(({label,href,Icon})=><a key={label} className="secondary amazonExternalLink" href={href} target="_blank" rel="noopener noreferrer"><Icon size={17}/><span>{label}</span><ExternalLink size={14}/></a>)}{connected&&<button className="secondary amazonRefreshView" onClick={refreshAnalytics} disabled={refreshingAnalytics}>{<RefreshCw size={17} className={refreshingAnalytics?'spin':''}/>}<span>{refreshingAnalytics?'Actualizando…':'Actualizar datos'}</span></button>}{isAdmin&&<button className="primary amazonSyncButton" onClick={()=>void syncNow()} disabled={syncing||loading||!status?.configured}>{syncing?<LoaderCircle size={17} className="spin"/>:<RefreshCw size={17}/>}<span>{syncing?'Sincronizando…':'Sincronizar ahora'}</span></button>}</div></header>
 
     <section aria-label="Estado de conexión" className={`card amazonCompactStatus ${connected?'isConnected':status?.status==='error'?'isError':''}`}><div className="amazonCompactState">{connected?<CheckCircle2 size={18}/>:<AlertTriangle size={18}/>}<strong>{statusLabel(status,loading)}</strong><span>{status?.account?.displayName||'Amazon SP-API'}</span></div><div className="amazonCompactMeta"><span>{marketplaces.length} marketplaces</span><span>{jobs?.running||0} en curso</span><span>{jobs?.queued||0} en cola</span>{jobs?.failed? <span className="amazonFailed">{jobs.failed} con error</span>:null}{status?.account?.lastSuccessfulSyncAt&&<span>Última sync {new Date(status.account.lastSuccessfulSyncAt).toLocaleString('es-ES')}</span>}</div></section>
+    {connectivityIssue&&<div className="amazonOfflineNotice card"><WifiOff size={18}/><div><strong>Sin conexión a Internet</strong><span>Mostrando los últimos datos guardados. Amazon se actualizará automáticamente cuando vuelva la conexión.</span></div><button className="secondary" onClick={()=>{if(navigator.onLine){setConnectivityIssue(false);void refresh();setAnalyticsRefresh(value=>value+1);}}}><RefreshCw size={15}/> Reintentar</button></div>}
     {error&&<div className="amazonQueryError card"><span>{error}</span><button className="secondary" onClick={()=>void refresh()}><RefreshCw size={15}/> Reintentar</button></div>}
 
     {connected?<>
