@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Building2, CalendarDays, ChevronRight, FileText, Globe, Mail, MapPin, Package, Pencil, Phone, Search, ShoppingCart, Trash2, X } from 'lucide-react';
 import { loadAppData } from '../services/repository';
+import { showError, showSuccess } from '../services/toast';
 import type { Invoice, Supplier } from '../types';
 import { Pagination } from '../components/Pagination';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
@@ -137,7 +138,8 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
    setCheckedIds(new Set());
    setBulkBusy(false);
    const removed=selectedSuppliers.length-failed.length;
-   if(failed.length)setError(`${removed} eliminados · ${failed.length} con error: ${failed.slice(0,3).join(' · ')}`);
+   if(removed)showSuccess(`${removed} proveedor${removed===1?' eliminado':'es eliminados'}.`);
+   if(failed.length){const message=`${failed.length} no se pudieron eliminar: ${failed.slice(0,3).join(' · ')}`;setError(message);showError(message);}
  };
  const edit=(supplier:Supplier)=>{setSelected(null);onEdit(supplier)};
 
