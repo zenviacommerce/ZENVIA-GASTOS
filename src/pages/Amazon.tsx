@@ -9,22 +9,24 @@ import { AmazonMarketplaces } from '../components/amazon/AmazonMarketplaces';
 import { AmazonOrders } from '../components/amazon/AmazonOrders';
 import { AmazonInventory } from '../components/amazon/AmazonInventory';
 import { AmazonUnmapped } from '../components/amazon/AmazonUnmapped';
+import { readViewCache, writeViewCache } from '../services/viewCache';
 
 const externalLinks=[{label:'Seller Central',href:'https://sellercentral.amazon.es/',Icon:ShoppingBag},{label:'Sellerboard',href:'https://sellerboard.com/',Icon:Megaphone}] as const;
 const tabs=[['summary','Resumen'],['products','Productos'],['marketplaces','Marketplaces'],['orders','Pedidos'],['inventory','Inventario'],['unmapped','Sin vincular']] as const;
 type AmazonTab=(typeof tabs)[number][0];
 
-function statusLabel(status:AmazonStatus|null,loading:boolean){if(loading)return 'Comprobando';if(!status?.configured)return 'Pendiente de configurar';if(status.connected)return 'Conectado';if(status.status==='error')return 'Error';return 'Configurado';}
+const AMAZON_STATUS_CACHE='amazon:status';
+function statusLabel(status:AmazonStatus|null,loading:boolean){if(loading&&!status)return 'Comprobando';if(!status?.configured)return 'Pendiente de configurar';if(status.connected)return 'Conectado';if(status.status==='error')return 'Error';return 'Configurado';}
 
 export function AmazonPage({isAdmin}:{isAdmin:boolean}){
-  const [status,setStatus]=useState<AmazonStatus|null>(null);const [loading,setLoading]=useState(true);const [syncing,setSyncing]=useState(false);const [error,setError]=useState('');
+  const [status,setStatus]=useState<AmazonStatus|null>(()=>readViewCache<AmazonStatus>(AMAZON_STATUS_CACHE));const [loading,setLoading]=useState(()=>!readViewCache<AmazonStatus>(AMAZON_STATUS_CACHE));const [syncing,setSyncing]=useState(false);const [error,setError]=useState('');
   const [activeTab,setActiveTab]=useState<AmazonTab>('summary');
   const [filters,setFilters]=useState<AmazonAnalyticsFilters>(()=>({...amazonQuickRange('current_month',new Date()),marketplaceIds:[]}));
   const [summaryMeta,setSummaryMeta]=useState<AmazonSummaryData|null>(null);
   const [analyticsRefresh,setAnalyticsRefresh]=useState(0);
   const [refreshingAnalytics,setRefreshingAnalytics]=useState(false);
 
-  const refresh=useCallback(async()=>{setLoading(true);setError('');try{setStatus(await loadAmazonStatus());}catch(e){setError(errorMessage(e,'No se pudo consultar Amazon.'));}finally{setLoading(false);}},[]);
+  const refresh=useCallback(async()=>{setLoading(true);setError('');try{const next=await loadAmazonStatus();setStatus(next);writeViewCache(AMAZON_STATUS_CACHE,next);}catch(e){setError(errorMessage(e,'No se pudo consultar Amazon.'));}finally{setLoading(false);}},[]);
   useEffect(()=>{void refresh();},[refresh]);
   const handleSummary=useCallback((summary:AmazonSummaryData)=>setSummaryMeta(summary),[]);
   const syncNow=async()=>{setSyncing(true);try{const result=await requestAmazonSync();showSuccess(result.jobs?`Sincronización solicitada: ${result.jobs} trabajos en cola.`:'Amazon está al día; no se han creado trabajos nuevos.');await refresh();}catch(e){showError(errorMessage(e,'No se pudo iniciar la sincronización de Amazon.'));}finally{setSyncing(false);}};
