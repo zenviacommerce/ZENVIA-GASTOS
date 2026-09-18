@@ -23,7 +23,7 @@ export function AmazonMappingEditor({sellerSku,initialProductId=null,initialFact
     if(!productId){showError('Selecciona un producto interno.');return;}
     if(!Number.isFinite(numeric)||numeric<=0){showError('El factor debe ser mayor que 0.');return;}
     setLoading(true);
-    try{await setAmazonProductMapping({sellerSku,productId,consumptionFactor:numeric});showSuccess('Producto de Amazon vinculado.');onSaved();}
+    try{const result=await setAmazonProductMapping({sellerSku,productId,consumptionFactor:numeric});showSuccess(result.skuAssigned?'Producto vinculado y SKU interno asignado automáticamente.':'Producto de Amazon vinculado.');onSaved();}
     catch(error){showError(errorMessage(error,'No se pudo guardar el vínculo.'));}
     finally{setLoading(false);}
   };
