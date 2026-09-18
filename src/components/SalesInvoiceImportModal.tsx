@@ -4,6 +4,8 @@ import { ensureSalesSeries, type Client, type SalesInvoice, type SalesInvoiceSer
 import { createSalesInvoiceDraftFromCandidate, prepareSalesInvoiceImportCandidate, recalculateSalesImportCandidate, type SalesInvoiceImportCandidate } from '../services/salesInvoiceImport';
 import { SearchableSelect } from './forms/SearchableSelect';
 import { SelectField } from './forms/SelectField';
+import { BulkSelectCheckbox, BulkSelectionToolbar } from './BulkSelectionToolbar';
+import { showError, showSuccess } from '../services/toast';
 
 const ANALYSIS_CONCURRENCY=2;
 type Item={id:string;file:File;candidate?:SalesInvoiceImportCandidate;series:SalesInvoiceSeries[];status:'analyzing'|'needs_review'|'ready'|'duplicate'|'importing'|'imported'|'error';error?:string;excluded?:boolean};
@@ -20,9 +22,10 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
   const inputRef=useRef<HTMLInputElement>(null);
   const [items,setItems]=useState<Item[]>([]);
   const [selectedId,setSelectedId]=useState<string|null>(null);
+  const [checkedIds,setCheckedIds]=useState<Set<string>>(()=>new Set());
   const [busy,setBusy]=useState(false);
 
-  useEffect(()=>{if(!open){setItems([]);setSelectedId(null);setBusy(false);}},[open]);
+  useEffect(()=>{if(!open){setItems([]);setSelectedId(null);setCheckedIds(new Set());setBusy(false);}},[open]);
   const patch=(id:string,change:Partial<Item>)=>setItems(current=>current.map(item=>item.id===id?{...item,...change}:item));
   const patchCandidate=(id:string,change:Partial<SalesInvoiceImportCandidate>)=>setItems(current=>current.map(item=>item.id===id&&item.candidate?{...item,status:item.status==='duplicate'?'duplicate':'needs_review',candidate:recalculateSalesImportCandidate({...item.candidate,...change,status:'needs_review'})}:item));
 
@@ -43,7 +46,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
   const analyzeFiles=async(files:File[])=>{
     const pdfs=files.filter(file=>file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf'));
     const initial:Item[]=pdfs.map(file=>({id:crypto.randomUUID(),file,series:[],status:'analyzing'}));
-    setItems(initial);setSelectedId(null);
+    setItems(initial);setSelectedId(null);setCheckedIds(new Set());
     let cursor=0;
     const worker=async()=>{while(true){const index=cursor++;if(index>=initial.length)return;await prepareFile(initial[index]);}};
     await Promise.all(Array.from({length:Math.min(ANALYSIS_CONCURRENCY,initial.length)},()=>worker()));
@@ -69,19 +72,55 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
   const addLine=()=>{if(!selected||!candidate)return;patchCandidate(selected.id,{lines:[...candidate.lines,{position:candidate.lines.length+1,description:'',quantity:1,unit:'ud',unitPrice:0,discountPercent:0,taxRate:21,productId:null}]});};
   const removeLine=(index:number)=>{if(!selected||!candidate)return;patchCandidate(selected.id,{lines:candidate.lines.filter((_,i)=>i!==index).map((line,i)=>({...line,position:i+1}))});};
 
+  const validationError=(item:Item)=>{
+    const current=item.candidate;
+    if(!current)return 'No se ha podido analizar la factura.';
+    const selectedSeries=item.series.find(series=>series.id===current.seriesId);
+    if(!current.clientId&&!current.proposedClient?.name)return 'Selecciona el cliente o revisa el cliente detectado.';
+    if(!current.issueDate)return 'Indica la fecha de factura.';
+    if(!current.seriesId||!selectedSeries)return 'Selecciona la serie.';
+    if(!current.invoiceNumber.trim())return 'Indica el número de factura.';
+    if(!current.invoiceNumber.startsWith(selectedSeries.prefix))return `El número debe comenzar por ${selectedSeries.prefix}.`;
+    if(existingInvoices.some(invoice=>invoice.invoiceNumber===current.invoiceNumber))return 'Ya existe una factura con este número.';
+    if(!current.lines.some(line=>line.description.trim()&&line.quantity>0))return 'Añade al menos una línea válida.';
+    return '';
+  };
+
   const confirmReview=()=>{
     if(!selected||!candidate)return;
-    const selectedSeries=selected.series.find(series=>series.id===candidate.seriesId);
-    let error='';
-    if(!candidate.clientId&&!candidate.proposedClient?.name)error='Selecciona el cliente o revisa el cliente detectado.';
-    else if(!candidate.issueDate)error='Indica la fecha de factura.';
-    else if(!candidate.seriesId||!selectedSeries)error='Selecciona la serie.';
-    else if(!candidate.invoiceNumber.trim())error='Indica el número de factura.';
-    else if(!candidate.invoiceNumber.startsWith(selectedSeries.prefix))error=`El número debe comenzar por ${selectedSeries.prefix}.`;
-    else if(existingInvoices.some(invoice=>invoice.invoiceNumber===candidate.invoiceNumber))error='Ya existe una factura con ese número.';
-    else if(!candidate.lines.some(line=>line.description.trim()&&line.quantity>0))error='Añade al menos una línea válida.';
+    const error=validationError(selected);
     if(error){patch(selected.id,{status:'needs_review',error});return;}
     patch(selected.id,{status:'ready',error:undefined,candidate:{...recalculateSalesImportCandidate(candidate),status:'ready',reviewReason:undefined}});
+  };
+
+  const selectableItems=items.filter(item=>!item.excluded&&item.candidate&&['needs_review','ready'].includes(item.status));
+  const selectedBulkItems=selectableItems.filter(item=>checkedIds.has(item.id));
+  const allSelectableSelected=selectableItems.length>0&&selectableItems.every(item=>checkedIds.has(item.id));
+  const toggleChecked=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
+  const toggleAll=(checked:boolean)=>setCheckedIds(checked?new Set(selectableItems.map(item=>item.id)):new Set());
+
+  const validateSelected=()=>{
+    const ids=new Set(selectedBulkItems.map(item=>item.id));
+    if(!ids.size)return;
+    let valid=0;
+    let invalid=0;
+    setItems(current=>current.map(item=>{
+      if(!ids.has(item.id)||!item.candidate)return item;
+      const error=validationError(item);
+      if(error){invalid+=1;return {...item,status:'needs_review',error};}
+      valid+=1;
+      return {...item,status:'ready',error:undefined,candidate:{...recalculateSalesImportCandidate(item.candidate),status:'ready',reviewReason:undefined}};
+    }));
+    setCheckedIds(new Set());
+    if(valid)showSuccess(`${valid} factura${valid===1?'':'s'} validada${valid===1?'':'s'}.`);
+    if(invalid)showError(`${invalid} factura${invalid===1?' necesita':'s necesitan'} revisión manual.`);
+  };
+
+  const excludeSelected=()=>{
+    const ids=new Set(selectedBulkItems.map(item=>item.id));
+    if(!ids.size)return;
+    setItems(current=>current.map(item=>ids.has(item.id)?{...item,excluded:true}:item));
+    setCheckedIds(new Set());
   };
 
   const importReady=async()=>{
@@ -108,10 +147,14 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
     <input hidden ref={inputRef} type="file" multiple accept="application/pdf" onChange={event=>void analyzeFiles(Array.from(event.target.files||[]))}/>
     {!items.length?<button className="bulkInvoiceDrop" type="button" onClick={()=>inputRef.current?.click()}><Upload/><strong>Seleccionar PDFs</strong><span>Puedes elegir varios archivos a la vez</span></button>:<>
       <div className="bulkInvoiceSummary"><strong>{items.length-pendingCount} de {items.length} analizadas</strong><span>{readyCount} revisadas · {reviewCount} por revisar · {pendingCount} analizando</span><button className="secondary" type="button" disabled={busy} onClick={()=>inputRef.current?.click()}>Cambiar selección</button></div>
+      <BulkSelectionToolbar selectedCount={selectedBulkItems.length} totalCount={selectableItems.length} allSelected={allSelectableSelected} onToggleAll={toggleAll} label="facturas">
+        <button className="secondary" type="button" disabled={!selectedBulkItems.length||busy} onClick={excludeSelected}>Excluir seleccionadas</button>
+        <button className="primary" type="button" disabled={!selectedBulkItems.length||busy} onClick={validateSelected}><CheckCircle2 size={15}/> Validar seleccionadas ({selectedBulkItems.length})</button>
+      </BulkSelectionToolbar>
       <div className="bulkInvoiceList">{items.map(item=><div key={item.id} className={`bulkInvoiceRow ${item.status} ${item.excluded?'excluded':''}`}>
-        <div className="bulkInvoiceFile"><FileText size={18}/><div><strong>{item.file.name}</strong><span>{item.status==='analyzing'?'Analizando':item.status==='needs_review'?'Requiere revisión':item.status==='ready'?'Revisada':item.status==='duplicate'?'Duplicada':item.status==='importing'?'Guardando':item.status==='imported'?'Borrador creado':'Error'}</span></div></div>
+        <div className="bulkInvoiceFile"><BulkSelectCheckbox checked={checkedIds.has(item.id)&&!item.excluded} disabled={item.excluded||!item.candidate||!['needs_review','ready'].includes(item.status)} onChange={checked=>toggleChecked(item.id,checked)} label={`Seleccionar ${item.file.name}`}/><FileText size={18}/><div><strong>{item.file.name}</strong><span>{item.status==='analyzing'?'Analizando':item.status==='needs_review'?'Requiere revisión':item.status==='ready'?'Revisada':item.status==='duplicate'?'Duplicada':item.status==='importing'?'Guardando':item.status==='imported'?'Borrador creado':'Error'}</span></div></div>
         {item.status==='analyzing'?<LoaderCircle className="spin" size={18}/>:item.candidate?<div className="bulkInvoiceMeta"><span>{clients.find(client=>client.id===item.candidate?.clientId)?.name||(item.candidate.proposedClient?.name?`Nuevo cliente · ${item.candidate.proposedClient.name}`:'Cliente sin asignar')}</span><span>{item.candidate.invoiceNumber||'Sin número'} · {item.candidate.issueDate||'Sin fecha'}</span><span>Base {money(item.candidate.subtotal)} · IVA {money(item.candidate.taxAmount)} · Total {money(item.candidate.totalAmount)}</span>{item.error&&<span className="warnText">{item.error}</span>}</div>:<div className="bulkInvoiceMeta"><span className="warnText">{item.error||'No se pudo analizar.'}</span></div>}
-        <div className="bulkInvoiceActions">{item.candidate&&['needs_review','ready','duplicate'].includes(item.status)&&<button className="secondary" type="button" onClick={()=>setSelectedId(item.id)}>Revisar</button>}<button className="secondary" type="button" disabled={busy||['imported','importing'].includes(item.status)} onClick={()=>patch(item.id,{excluded:!item.excluded})}>{item.excluded?'Incluir':'Excluir'}</button></div>
+        <div className="bulkInvoiceActions">{item.candidate&&['needs_review','ready','duplicate'].includes(item.status)&&<button className="secondary" type="button" onClick={()=>setSelectedId(item.id)}>Revisar</button>}<button className="secondary" type="button" disabled={busy||['imported','importing'].includes(item.status)} onClick={()=>{patch(item.id,{excluded:!item.excluded});setCheckedIds(current=>{const next=new Set(current);next.delete(item.id);return next;});}}>{item.excluded?'Incluir':'Excluir'}</button></div>
       </div>)}</div>
     </>}
 
