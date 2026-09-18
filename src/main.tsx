@@ -6,6 +6,7 @@ import { AutoPagination } from './components/AutoPagination';
 import { OrderLabelDefaults } from './components/OrderLabelDefaults';
 import { PendingOrdersKpiHighlight } from './components/PendingOrdersKpiHighlight';
 import { UnifiedListExperience } from './components/UnifiedListExperience';
+import { ActionDialogHost } from './components/ActionDialogHost';
 import './styles.css';
 import './enhancements.css';
 import './sidebar-brand.css';
@@ -44,6 +45,7 @@ import './truncated-tooltip.css';
 import './bulk-invoice-import.css';
 import './dark-mode-consistency.css';
 import './layout-polish.css';
+import './action-dialog.css';
 
 const favicon=document.querySelector<HTMLLinkElement>("link[rel~='icon']")||document.createElement('link');
 favicon.rel='icon';
@@ -51,4 +53,4 @@ favicon.type='image/webp';
 favicon.href=ZENVIA_LOGO;
 if(!favicon.parentNode)document.head.appendChild(favicon);
 
-ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/><AutoPagination/><OrderLabelDefaults/><PendingOrdersKpiHighlight/><UnifiedListExperience/></React.StrictMode>);
+ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/><ActionDialogHost/><AutoPagination/><OrderLabelDefaults/><PendingOrdersKpiHighlight/><UnifiedListExperience/></React.StrictMode>);
