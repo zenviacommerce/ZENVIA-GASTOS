@@ -3,6 +3,7 @@ import { Check, Clock3, History, KeyRound, Pencil, RefreshCw, Search, ShieldChec
 import { createManagedUser, deleteManagedUser, listManagedUsers, permissionOptions, updateManagedUser, type ManagedUser, type MenuPermission } from '../services/access';
 import { listAuditLogs, type AuditEntry } from '../services/audit';
 import { errorMessage, showError, showSuccess } from '../services/toast';
+import { confirmAction } from '../services/actionDialog';
 import { Pagination } from '../components/Pagination';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
@@ -59,7 +60,8 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
 
   const remove = async (user: ManagedUser) => {
     if (user.role === 'admin' || user.userId === currentUserId) return;
-    if (!window.confirm(`¿Eliminar definitivamente el acceso de ${user.email}?\n\nSi ha subido archivos, Supabase puede impedir el borrado; en ese caso puedes dejarlo desactivado.`)) return;
+    const confirmed=await confirmAction({title:'Eliminar acceso',message:`Se eliminará definitivamente el acceso de ${user.email}.`,confirmLabel:'Eliminar acceso',tone:'danger',details:['Si ha subido archivos, Supabase puede impedir el borrado; en ese caso puedes dejarlo desactivado.']});
+    if(!confirmed)return;
     setBusyId(user.userId); setError('');
     try { await deleteManagedUser(user.userId); await refresh(); showSuccess('Usuario eliminado correctamente.'); }
     catch (e) { showError(errorMessage(e,'No se pudo eliminar el usuario.')); }
