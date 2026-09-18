@@ -3,6 +3,7 @@ import { Building2, ChevronRight, CircleDollarSign, FileText, Mail, MapPin, Penc
 import { addClient, deleteClient, loadClients, loadSalesInvoices, updateClient, type Client, type ClientInput, type SalesInvoice } from '../services/sales';
 import { emailError, nameError, normalizeEmail, normalizePhone, normalizeTaxId, phoneError, taxIdError } from '../services/validation';
 import { errorMessage, showError, showSuccess } from '../services/toast';
+import { confirmAction, openActionProcess } from '../services/actionDialog';
 import { Pagination } from '../components/Pagination';
 import { FormGrid, FormModal, FormSection } from '../components/forms/FormPrimitives';
 import { PostalAddressFields } from '../components/forms/PostalAddressFields';
@@ -168,43 +169,29 @@ export function Clients(){
   const openNew=()=>{setEditing(null);setModal(true)};
   const openEdit=(client:Client)=>{setSelected(null);setEditing(client);setModal(true)};
   const remove=async(client:Client)=>{
-    if(!window.confirm(`¿Eliminar el cliente “${client.name}”?`))return;
+    const confirmed=await confirmAction({title:'Eliminar cliente',message:`Se eliminará “${client.name}”.`,confirmLabel:'Eliminar',tone:'danger',details:['Si tiene facturas asociadas, la aplicación impedirá el borrado.']});
+    if(!confirmed)return;
     setBusyId(client.id);setError('');
-    try{
-      await deleteClient(client.id);
-      setSelected(null);
-      await refresh();
-      showSuccess('Cliente eliminado correctamente.');
-    }catch(e){
-      showError(errorMessage(e,'No se pudo eliminar el cliente.'));
-    }finally{setBusyId(null)}
+    try{await deleteClient(client.id);setSelected(null);await refresh();showSuccess('Cliente eliminado correctamente.');}
+    catch(e){showError(errorMessage(e,'No se pudo eliminar el cliente.'));}
+    finally{setBusyId(null)}
   };
   const removeSelected=async()=>{
     if(!selectedClients.length)return;
-    if(!window.confirm(`¿Eliminar ${selectedClients.length} cliente${selectedClients.length===1?'':'s'} seleccionado${selectedClients.length===1?'':'s'}?`))return;
+    const confirmed=await confirmAction({title:`Eliminar ${selectedClients.length} cliente${selectedClients.length===1?'':'s'}`,message:'Se intentarán eliminar los clientes seleccionados.',confirmLabel:'Eliminar seleccionados',tone:'danger',details:['Los clientes con facturas asociadas se conservarán y se indicará el motivo.']});
+    if(!confirmed)return;
     setBulkBusy(true);setError('');
-    const failed:{client:Client;message:string}[]=[];
-    for(const client of selectedClients){
-      try{await deleteClient(client.id);}
-      catch(e){failed.push({client,message:errorMessage(e,'No se pudo eliminar el cliente.')});}
-    }
-    setCheckedIds(new Set());
-    await refresh();
-    setBulkBusy(false);
-
-    const removed=selectedClients.length-failed.length;
-    if(!failed.length){
-      showSuccess(`${removed} cliente${removed===1?' eliminado':'s eliminados'}.`);
-      return;
-    }
-
-    const linkedCount=failed.filter(item=>/facturas? asociadas?/i.test(item.message)).length;
-    const otherCount=failed.length-linkedCount;
-    const parts:string[]=[];
-    if(removed)parts.push(`${removed} cliente${removed===1?' se eliminó':'s se eliminaron'} correctamente.`);
-    if(linkedCount)parts.push(`${linkedCount} cliente${linkedCount===1?' no se puede eliminar porque tiene':'s no se pueden eliminar porque tienen'} facturas asociadas. Elimina antes esas facturas o conserva ${linkedCount===1?'el cliente':'los clientes'}.`);
-    if(otherCount)parts.push(`${otherCount} cliente${otherCount===1?' no se pudo eliminar por otro error':'s no se pudieron eliminar por otros errores'}.`);
-    showError(parts.join(' '));
+    const process=openActionProcess({title:'Eliminando clientes',description:'El resultado permanecerá visible al terminar.',items:selectedClients.map(client=>({id:client.id,label:client.name}))});
+    let removed=0;let failed=0;
+    try{
+      for(const client of selectedClients){
+        process.setItem(client.id,'running','Eliminando…');
+        try{await deleteClient(client.id);removed+=1;process.setItem(client.id,'success','Eliminado correctamente.');}
+        catch(e){failed+=1;process.setItem(client.id,'error',errorMessage(e,'No se pudo eliminar el cliente.'));}
+      }
+      setCheckedIds(new Set());await refresh();
+      process.finish(`${removed} eliminado${removed===1?'':'s'}.${failed?` ${failed} con error.`:''}`,failed?(removed?'warning':'error'):'success');
+    }finally{setBulkBusy(false);}
   };
 
   return <div className="page masterPage">
