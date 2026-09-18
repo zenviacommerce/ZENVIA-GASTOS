@@ -31,11 +31,13 @@ const phoneMarker=/\b(?:tel(?:[ée]fono)?|telf|phone|mobile|m[oó]vil)\b/i;
 const addressMarker=/\b(?:direcci[oó]n|address|adresse|indirizzo|anschrift)\b/i;
 const streetMarker=/(?:^|\s)(?:c\s*\/|c\.|calle\b|avda?\.?\b|av\.?\b|avenida\b|carretera\b|ctra\.?\b|camino\b|paseo\b|plaza\b|barrio\b|pol[ií]gono\b|nave\b|rua\b|via\b|viale\b|piazza\b|rue\b|place\b|avenue\b|boulevard\b|strasse\b|straße\b|landstrasse\b|landstraße\b|weg\b|street\b|st\.\b|road\b|rd\.\b|lane\b|drive\b|väg\b|\p{L}+vägen\b|gata\b|gate\b)/iu;
 const addressAreaMarker=/^(?:zac\b|parc\b|parque\b|park\b|parkea\b|zona\s+(?:industrial|comercial)\b|pol[ií]gono\b)|\b(?:parkea|parque\s+tecnol[oó]gico|technology\s+park|edificio|planta|portal|oficina|local)\b/i;
+const postalLocationMarker=/^(?:[A-Z]{2}[-\s]?)?(?:\d{3}\s?\d{2}|\d{4}-\d{3}|\d{4,6})\b/i;
 
 function looksLikeAddress(value:string){
   const clean=compact(value);
   if(!clean)return false;
   if(/^\d{1,5}\s+[A-Za-zÁÉÍÓÚÑÜÄÖÅÆØáéíóúñüäöåæø]/.test(clean))return true;
+  if(postalLocationMarker.test(clean)&&/[A-Za-zÁÉÍÓÚÑÜÄÖÅÆØáéíóúñüäöåæø]{2}/.test(clean.replace(postalLocationMarker,'')))return true;
   if(streetMarker.test(clean)&&(/[\/#,]/.test(clean)||/\b\d{1,5}[A-Z]?\b/i.test(clean)))return true;
   if(addressAreaMarker.test(clean)&&(/\b\d{1,5}[A-Z]?\b/i.test(clean)||/[,#]/.test(clean)||/^(?:zac|parc|parque|park|parkea)\b/i.test(clean)))return true;
   if(/\b\d{4,6}\b/.test(clean)&&/(?:,|\b(?:madrid|barcelona|valencia|sevilla|lisboa|leipzig|francia|españa|italia|alemania|suecia)\b)/i.test(clean))return true;
@@ -191,10 +193,12 @@ function extractAddress(block:string[],options:Options){
       if(inline&&streetMarker.test(inline))addressLine1=inline;
     }
 
-    const postal=line.match(/\b([A-Z]{0,2}[-\s]?\d{4,6})\b\s*[,;-]?\s*([A-Za-zÁÉÍÓÚÑÜÄÖÅÆØáéíóúñüäöåæø][A-Za-zÁÉÍÓÚÑÜÄÖÅÆØáéíóúñüäöåæø .'-]{1,60})/);
+    const postal=line.match(/\b((?:[A-Z]{2}[-\s]?)?(?:\d{3}\s?\d{2}|\d{4}-\d{3}|\d{4,6}))\b\s*[,;-]?\s*([A-Za-zÁÉÍÓÚÑÜÄÖÅÆØáéíóúñüäöåæø][A-Za-zÁÉÍÓÚÑÜÄÖÅÆØáéíóúñüäöåæø .'-]{1,60})/i);
     if(postal){
-      postalCode=postal[1].replace(/\s/g,'');
-      city=compact(postal[2]).replace(/\s+(?:CIF|NIF|VAT|Tel[eé]fono|Email).*$/i,'');
+      postalCode=postal[1].replace(/[\s-]/g,'').replace(/^[A-Z]{2}/i,'');
+      city=compact(postal[2])
+        .replace(/\s+(?:CIF|NIF|VAT|Tel[eé]fono|Email).*$/i,'')
+        .replace(/\s*[,;-]?\s*(?:españa|spain|francia|france|italia|italy|alemania|germany|deutschland|portugal|suecia|sweden|sverige|dinamarca|denmark|danmark|b[eé]lgica|belgium|netherlands|nederland|austria|polonia|poland|suiza|switzerland)\s*$/i,'');
       if(!addressLine1){
         for(let back=1;back<=2;back+=1){
           const previous=cleanAddressCandidate(block[index-back]||'',options);
