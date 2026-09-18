@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { loadAmazonSeries, loadAmazonSummary, type AmazonAnalyticsFilters, type AmazonSummary as AmazonSummaryData } from '../../services/amazon';
+import { isAmazonConnectivityError, loadAmazonSeries, loadAmazonSummary, type AmazonAnalyticsFilters, type AmazonSummary as AmazonSummaryData } from '../../services/amazon';
 import { errorMessage } from '../../services/toast';
 import { AmazonCompleteness } from './AmazonCompleteness';
 import { AmazonProducts } from './AmazonProducts';
@@ -39,10 +39,10 @@ export function AmazonSummary({filters,onLoaded,refreshToken=0}:{filters:AmazonA
           const nextSeries=await loadAmazonSeries(filters,grain);
           if(alive){setSeries(nextSeries);writeViewCache(currentSeriesKey,nextSeries);}
         }catch(reason){
-          if(alive)setError(errorMessage(reason,'No se pudo cargar la evolución de Amazon.'));
+          if(alive&&!isAmazonConnectivityError(reason))setError(errorMessage(reason,'No se pudo cargar la evolución de Amazon.'));
         }
       }catch(reason){
-        if(alive)setError(errorMessage(reason,'No se pudo cargar Amazon Analytics.'));
+        if(alive&&!isAmazonConnectivityError(reason))setError(errorMessage(reason,'No se pudo cargar Amazon Analytics.'));
       }finally{
         if(alive)setLoading(false);
       }
