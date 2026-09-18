@@ -5,3 +5,4 @@ artifact build
 publish prebuilt
 retry after jsx fix
 bulk delete + jsx fix
+retry after closure fix
