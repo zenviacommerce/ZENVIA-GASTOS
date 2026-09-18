@@ -1,6 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { ExpenseCategory, NewInvoiceLineInput } from '../types';
+import { sanitizeDatabaseText, sanitizeDatabaseSingleLine } from './textSanitizer';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -19,7 +20,7 @@ export interface InvoiceReadResult {
   usedOcr: boolean;
 }
 
-const compact = (value: string) => value.replace(/\s+/g, ' ').trim();
+const compact = (value: string) => sanitizeDatabaseSingleLine(value);
 
 function parseMoney(value: string | undefined | null): number {
   if (!value) return 0;
@@ -202,8 +203,8 @@ async function extractPdfText(file: File): Promise<{ text: string; pdf: any }> {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
     const items = (content.items as Array<any>)
-      .filter(item => typeof item.str === 'string' && item.str.trim())
-      .map(item => ({ text: item.str.trim(), x: item.transform?.[4] ?? 0, y: item.transform?.[5] ?? 0 }))
+      .map(item => ({ text: sanitizeDatabaseSingleLine(typeof item.str === 'string' ? item.str : ''), x: item.transform?.[4] ?? 0, y: item.transform?.[5] ?? 0 }))
+      .filter(item => item.text)
       .sort((a, b) => Math.abs(b.y - a.y) > 2.5 ? b.y - a.y : a.x - b.x);
 
     const grouped: string[] = [];
@@ -222,7 +223,7 @@ async function extractPdfText(file: File): Promise<{ text: string; pdf: any }> {
     if (current.length) grouped.push(current.join(' '));
     pages.push(grouped.join('\n'));
   }
-  return { text: pages.join('\n'), pdf };
+  return { text: sanitizeDatabaseText(pages.join('\n')), pdf };
 }
 
 function ocrSignalScore(text:string){
@@ -313,7 +314,7 @@ async function ocrPdf(pdf: any, onProgress?: (message: string) => void): Promise
   } finally {
     await worker.terminate();
   }
-  return pages.join('\n');
+  return sanitizeDatabaseText(pages.join('\n'));
 }
 
 async function ocrImage(file: File, onProgress?: (message: string) => void): Promise<string> {
@@ -336,7 +337,7 @@ async function ocrImage(file: File, onProgress?: (message: string) => void): Pro
       const originalScore=ocrSignalScore(originalText);
       if(originalScore>bestScore){bestText=originalText;bestScore=originalScore;}
     }
-    return bestText;
+    return sanitizeDatabaseText(bestText);
   } finally {
     await worker.terminate();
   }
