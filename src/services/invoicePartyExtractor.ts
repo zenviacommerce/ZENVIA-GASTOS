@@ -36,8 +36,8 @@ function looksLikeAddress(value:string){
   const clean=compact(value);
   if(!clean)return false;
   if(/^\d{1,5}\s+[A-Za-zÁÉÍÓÚÑÜÄÖÅÆØáéíóúñüäöåæø]/.test(clean))return true;
-  if(streetMarker.test(clean)&&(\/|#|,|\b\d{1,5}[A-Z]?\b/i.test(clean)))return true;
-  if(addressAreaMarker.test(clean)&&(\b\d{1,5}[A-Z]?\b|,|#/.test(clean)||/^(?:zac|parc|parque|park|parkea)\b/i.test(clean)))return true;
+  if(streetMarker.test(clean)&&(/[\/#,]/.test(clean)||/\b\d{1,5}[A-Z]?\b/i.test(clean)))return true;
+  if(addressAreaMarker.test(clean)&&(/\b\d{1,5}[A-Z]?\b/i.test(clean)||/[,#]/.test(clean)||/^(?:zac|parc|parque|park|parkea)\b/i.test(clean)))return true;
   if(/\b\d{4,6}\b/.test(clean)&&/(?:,|\b(?:madrid|barcelona|valencia|sevilla|lisboa|leipzig|francia|españa|italia|alemania|suecia)\b)/i.test(clean))return true;
   return false;
 }
