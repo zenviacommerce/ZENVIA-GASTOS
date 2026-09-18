@@ -54,29 +54,32 @@ const knownTaxPrefixes=new Set(['ES','IT','FR','DE','PT','IE','BE','NL','SE','DK
 function validName(value:string){
   const clean=compact(value).replace(/^[-:·]+|[-:·]+$/g,'');
   if(clean.length<4||clean.length>140)return '';
+  if(/^[0-9a-f]{8}(?:[-_][0-9a-f]{4}){3}[-_][0-9a-f]{12}$/i.test(clean))return '';
+  if(/^[0-9a-f_-]{20,}$/i.test(clean))return '';
   if(metadataLine.test(clean)||fiscalMarker.test(clean)||phoneMarker.test(clean))return '';
+  if(/^(?:transferencia|tarjeta|paypal|bizum|contado|efectivo|iban|swift|bic|cuenta\s+bancaria|vencimiento)\b/i.test(clean))return '';
   if(!/[A-Za-zÁÉÍÓÚÑÜÄÖÅÆØáéíóúñüäöåæø]{3}/.test(clean))return '';
   return clean;
 }
 
 function locateBlock(lines:string[],options:Options){
   const marker=options.role==='supplier'?supplierMarker:recipientMarker;
-  let index=-1;
+  const markerIndex=lines.findIndex(line=>marker.test(line));
+  if(markerIndex>=0)return lines.slice(markerIndex,Math.min(lines.length,markerIndex+12));
+
   if(options.nameHint){
     const hint=normalize(options.nameHint);
-    index=lines.findIndex(line=>{
+    const hintIndex=lines.findIndex(line=>{
       const key=normalize(line);
       return key.includes(hint)||hint.includes(key);
     });
+    if(hintIndex>=0)return lines.slice(hintIndex,Math.min(lines.length,hintIndex+10));
   }
-  if(index<0)index=lines.findIndex(line=>marker.test(line));
-  if(index<0)return lines.slice(0,Math.min(lines.length,24));
-  return lines.slice(Math.max(0,index-2),Math.min(lines.length,index+12));
+
+  return lines.slice(0,Math.min(lines.length,24));
 }
 
 function extractName(block:string[],options:Options){
-  const hinted=validName(options.nameHint||'');
-  if(hinted)return hinted;
   const marker=options.role==='supplier'?supplierMarker:recipientMarker;
   for(let index=0;index<block.length;index+=1){
     const line=block[index];
@@ -89,7 +92,8 @@ function extractName(block:string[],options:Options){
       }
     }
   }
-  return undefined;
+  const hinted=validName(options.nameHint||'');
+  return hinted||undefined;
 }
 
 function extractTaxId(block:string[]){
