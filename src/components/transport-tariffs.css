@@ -27,3 +27,38 @@
 .transportActiveScope label input{width:100%;box-sizing:border-box;min-height:38px}
 @media(max-width:900px){.transportActiveScope{grid-template-columns:1fr 1fr}.transportActiveScope>div{grid-column:1/-1}}
 @media(max-width:620px){.transportActiveScope{grid-template-columns:1fr}.transportActiveScope>div{grid-column:auto}.transportActiveScope button{width:100%;justify-content:center}}
+
+
+/* Mobile follows the same modal sheet pattern as the rest of the app. */
+@media(max-width:760px){
+  .transportTariffOverlay{padding:max(10px,env(safe-area-inset-top)) 0 0;place-items:end center}
+  .modal.transportTariffModal{width:100%;height:min(94dvh,900px);max-height:calc(100dvh - max(10px,env(safe-area-inset-top)));margin:0;border-radius:20px 20px 0 0}
+  .transportTariffHead{padding:16px 16px 12px;gap:12px}
+  .transportTariffHead h2{font-size:24px;line-height:1.1}
+  .transportTariffHead p{font-size:13px;line-height:1.4}
+  .transportTariffActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 16px}
+  .transportTariffActions>button{width:100%;justify-content:center;min-height:44px}
+  .transportImportRule{grid-column:1/-1;width:auto;margin:0;font-size:11px;line-height:1.35}
+  .transportTariffBody{grid-template-columns:1fr;min-height:0}
+  .transportTariffVersions{padding:10px 14px;max-height:112px;gap:8px}
+  .transportVersion{min-width:190px;padding:10px}
+  .transportTariffReview{padding:14px 14px max(18px,env(safe-area-inset-bottom));overflow-y:auto;overflow-x:hidden}
+  .transportReviewTitle{gap:10px}
+  .transportReviewTitle>div{min-width:0}
+  .transportReviewTitle p{overflow-wrap:anywhere}
+  .transportParserNotes{display:grid;grid-template-columns:1fr;gap:7px}
+  .transportParserNotes span{width:100%;align-items:flex-start;line-height:1.35}
+  .transportMetaGrid,.transportServiceFields{grid-template-columns:1fr}
+  .transportServiceCard{padding:12px}
+  .transportServiceHeader{display:grid;gap:10px}
+  .transportMappingActions{justify-content:flex-start}
+  .transportBands{margin-inline:-2px;padding-bottom:4px}
+  .transportBandHeader,.transportBandRow{min-width:720px}
+  .transportTariffFooter{position:static;margin:18px -14px -18px;padding:14px 14px max(14px,env(safe-area-inset-bottom));background:var(--surface);backdrop-filter:none}
+  .transportFooterMain{display:grid;grid-template-columns:1fr;width:100%;gap:8px}
+  .transportFooterMain>button{width:100%;min-height:44px}
+  .transportActiveScope{grid-template-columns:1fr;width:100%;gap:10px}
+  .transportActiveScope>div{grid-column:auto}
+  .transportActiveScope label input{min-height:44px}
+  .transportActiveScope button{width:100%;min-height:44px;justify-content:center}
+}
