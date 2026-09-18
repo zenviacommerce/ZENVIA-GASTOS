@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown, ImageOff, Link2, RefreshCw, Search } from 'lucide-react';
-import { loadAmazonProductImages, loadAmazonProducts, type AmazonAnalyticsFilters, type AmazonPageResult, type AmazonProductAnalytics, type AmazonProductSort, type AmazonSortDirection } from '../../services/amazon';
+import { isAmazonConnectivityError, loadAmazonProductImages, loadAmazonProducts, type AmazonAnalyticsFilters, type AmazonPageResult, type AmazonProductAnalytics, type AmazonProductSort, type AmazonSortDirection } from '../../services/amazon';
 import { errorMessage } from '../../services/toast';
 import { AmazonMappingModal } from './AmazonMappingModal';
 import { readViewCache, stableCacheKey, writeViewCache } from '../../services/viewCache';
@@ -44,7 +44,7 @@ export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:
     const cached=readViewCache<AmazonPageResult<AmazonProductAnalytics>>(key);
     if(cached)setData(cached);
     setError('');
-    return loadAmazonProducts(filters,search,page,pageSize,sortBy,sortDir).then(next=>{setData(next);writeViewCache(key,next);}).catch(e=>setError(errorMessage(e,'No se pudieron cargar los productos.')));
+    return loadAmazonProducts(filters,search,page,pageSize,sortBy,sortDir).then(next=>{setData(next);writeViewCache(key,next);}).catch(e=>{if(!isAmazonConnectivityError(e))setError(errorMessage(e,'No se pudieron cargar los productos.'));});
   };
   useEffect(()=>{void refresh();},[filters.from,filters.to,filters.marketplaceIds.join(','),search,page,sortBy,sortDir,refreshToken]);
   useEffect(()=>{const asins=data.items.map(row=>row.asin).filter((value):value is string=>Boolean(value));if(!asins.length){setImages({});return}void loadAmazonProductImages(asins).then(setImages).catch(()=>setImages({}));},[data.items]);
@@ -65,7 +65,7 @@ export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:
       </div>
       <label className="amazonSearch"><Search size={16}/><input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="Buscar SKU, ASIN o producto"/></label>
     </div>
-    {error&&<div className="amazonQueryError amazonQueryErrorInline"><span>{error}</span><button className="secondary" onClick={()=>void refresh()}><RefreshCw size={14}/> Reintentar</button></div>}
+    {error&&!embedded&&<div className="amazonQueryError amazonQueryErrorInline"><span>{error}</span><button className="secondary" onClick={()=>void refresh()}><RefreshCw size={14}/> Reintentar</button></div>}
     <div className="amazonTableScroll">
       <table className="amazonTable amazonProductTable">
         <thead>
