@@ -170,23 +170,41 @@ export function Clients(){
   const remove=async(client:Client)=>{
     if(!window.confirm(`¿Eliminar el cliente “${client.name}”?`))return;
     setBusyId(client.id);setError('');
-    try{await deleteClient(client.id);setSelected(null);await refresh();showSuccess('Cliente eliminado correctamente.')}catch(e){const message=errorMessage(e,'No se pudo eliminar el cliente.');setError(message);showError(message)}finally{setBusyId(null)}
+    try{
+      await deleteClient(client.id);
+      setSelected(null);
+      await refresh();
+      showSuccess('Cliente eliminado correctamente.');
+    }catch(e){
+      showError(errorMessage(e,'No se pudo eliminar el cliente.'));
+    }finally{setBusyId(null)}
   };
   const removeSelected=async()=>{
     if(!selectedClients.length)return;
     if(!window.confirm(`¿Eliminar ${selectedClients.length} cliente${selectedClients.length===1?'':'s'} seleccionado${selectedClients.length===1?'':'s'}?`))return;
     setBulkBusy(true);setError('');
-    const failed:string[]=[];
+    const failed:{client:Client;message:string}[]=[];
     for(const client of selectedClients){
       try{await deleteClient(client.id);}
-      catch(e){failed.push(`${client.name}: ${errorMessage(e,'No se pudo eliminar')}`);}
+      catch(e){failed.push({client,message:errorMessage(e,'No se pudo eliminar el cliente.')});}
     }
     setCheckedIds(new Set());
     await refresh();
     setBulkBusy(false);
+
     const removed=selectedClients.length-failed.length;
-    if(removed)showSuccess(`${removed} cliente${removed===1?' eliminado':'s eliminados'}.`);
-    if(failed.length){const message=`${failed.length} no se pudieron eliminar: ${failed.slice(0,3).join(' · ')}`;setError(message);showError(message);}
+    if(!failed.length){
+      showSuccess(`${removed} cliente${removed===1?' eliminado':'s eliminados'}.`);
+      return;
+    }
+
+    const linkedCount=failed.filter(item=>/facturas? asociadas?/i.test(item.message)).length;
+    const otherCount=failed.length-linkedCount;
+    const parts:string[]=[];
+    if(removed)parts.push(`${removed} cliente${removed===1?' se eliminó':'s se eliminaron'} correctamente.`);
+    if(linkedCount)parts.push(`${linkedCount} cliente${linkedCount===1?' no se puede eliminar porque tiene':'s no se pueden eliminar porque tienen'} facturas asociadas. Elimina antes esas facturas o conserva ${linkedCount===1?'el cliente':'los clientes'}.`);
+    if(otherCount)parts.push(`${otherCount} cliente${otherCount===1?' no se pudo eliminar por otro error':'s no se pudieron eliminar por otros errores'}.`);
+    showError(parts.join(' '));
   };
 
   return <div className="page masterPage">
