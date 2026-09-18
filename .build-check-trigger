@@ -3,3 +3,4 @@ retry
 after jsx fix
 artifact build
 publish prebuilt
+retry after jsx fix
