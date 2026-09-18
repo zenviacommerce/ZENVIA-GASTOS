@@ -4,6 +4,7 @@ import { imageFilesToPdf } from '../services/pdf';
 import { isMultiInvoiceDocumentError } from '../services/invoiceReaderEnhanced';
 import { classifyInvoiceCandidate, createManualInvoiceCandidate, invoiceCandidateToInput, prepareInvoiceCandidate } from '../services/invoiceImportPipeline';
 import { InvoiceCandidateForm } from './InvoiceCandidateForm';
+import { showSuccess } from '../services/toast';
 import type { ExpenseCategory, Invoice, InvoiceImportCandidate, InvoiceSource, NewInvoiceInput } from '../types';
 
 export function UploadInvoiceModal({open,onClose,onSave,categories,existingInvoices}:{open:boolean;onClose:()=>void;onSave:(input:NewInvoiceInput)=>Promise<void>;categories:ExpenseCategory[];existingInvoices:Invoice[]}) {
@@ -81,6 +82,7 @@ export function UploadInvoiceModal({open,onClose,onSave,categories,existingInvoi
     setSaving(true);setError('');
     try{
       await onSave(invoiceCandidateToInput(candidate,source));
+      showSuccess('Factura guardada correctamente.');
       onClose();
     }catch(e){setError(e instanceof Error?e.message:'No se pudo guardar la factura.');}
     finally{setSaving(false);}
