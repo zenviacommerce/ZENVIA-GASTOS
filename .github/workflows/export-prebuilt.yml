@@ -1,0 +1,30 @@
+name: Export prebuilt dist
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund --legacy-peer-deps
+      - run: npm run build
+      - name: Publish prebuilt branch
+        run: |
+          rm -rf /tmp/zenvia-dist
+          mkdir -p /tmp/zenvia-dist
+          cp -R dist/. /tmp/zenvia-dist/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan prebuilt-dist
+          git rm -rf .
+          cp -R /tmp/zenvia-dist/. .
+          touch .nojekyll
+          git add -A
+          git commit -m "Prebuilt dist"
+          git push --force origin HEAD:prebuilt-dist
