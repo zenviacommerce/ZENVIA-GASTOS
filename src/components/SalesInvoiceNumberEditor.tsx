@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Hash, Pencil, Search, X } from 'lucide-react';
 import { ensureSalesSeries, loadSalesInvoices, type SalesInvoice } from '../services/sales';
 import { updateSalesInvoiceNumber } from '../services/salesInvoiceNumber';
-import { errorMessage, showError, showSuccess } from '../services/toast';
+import { errorMessage, showSuccess } from '../services/toast';
 
 const statusLabel=(status:SalesInvoice['status'])=>({draft:'Borrador',issued:'Emitida',sent:'Enviada',partially_paid:'Cobro parcial',paid:'Cobrada',rectified:'Rectificada'}[status]);
 
@@ -33,7 +33,7 @@ export function SalesInvoiceNumberEditor(){
   const refresh=async()=>{
     setLoading(true);setError('');
     try{setInvoices(await loadSalesInvoices());}
-    catch(e){const message=errorMessage(e,'No se pudo cargar la numeración.');setError(message);showError(message);}
+    catch(e){setError(errorMessage(e,'No se pudo cargar la numeración.'));}
     finally{setLoading(false);}
   };
 
