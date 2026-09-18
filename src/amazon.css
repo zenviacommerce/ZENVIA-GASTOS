@@ -138,3 +138,17 @@
     max-width:100%;
   }
 }
+
+
+/* Keep Amazon search fields consistent in dark mode. */
+[data-theme='dark'] .amazonSearch input,
+[data-theme='dark'] .amazonMappingSearch input{
+  background:transparent;
+  color:#f8fafc;
+  caret-color:#f8fafc;
+}
+[data-theme='dark'] .amazonSearch input::placeholder,
+[data-theme='dark'] .amazonMappingSearch input::placeholder{
+  color:#64748b;
+  opacity:1;
+}
