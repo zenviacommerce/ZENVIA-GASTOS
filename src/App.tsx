@@ -130,7 +130,6 @@ export default function App(){
  const finishBulkImport=async()=>{await refresh();showSuccess('Importación masiva finalizada.');};
  const changeStatus=async(id:string,status:'pending'|'reviewed'|'accounted')=>{
    if(!can('invoices'))throw new Error('No tienes permiso para modificar facturas.');
-   const labels={pending:'pendiente',reviewed:'revisada',accounted:'contabilizada'} as const;
    await runAction(async()=>{await updateInvoiceStatus(id,status);await refresh()},'No se pudo cambiar el estado de la factura.');
  };
  const changeInvoiceSupplier=async(invoiceId:string,supplierId:string)=>{
@@ -157,7 +156,6 @@ export default function App(){
  const closeProductModal=()=>{setProductModal(false);setProductToEdit(null)};
  const saveProduct=async(input:ProductInput)=>{
    if(!can('products'))throw new Error('No tienes permiso para modificar productos.');
-   const editing=Boolean(productToEdit);
    await runAction(async()=>{
      if(productToEdit) await updateProduct(productToEdit.id,input); else await addProduct(input);
      await refresh();
@@ -172,7 +170,6 @@ export default function App(){
  const closeSupplierModal=()=>{setSupplierModal(false);setSupplierToEdit(null)};
  const saveSupplier=async(input:SupplierInput)=>{
    if(!can('suppliers'))throw new Error('No tienes permiso para modificar proveedores.');
-   const editing=Boolean(supplierToEdit);
    await runAction(async()=>{
      if(supplierToEdit) await updateSupplier(supplierToEdit.id,input); else await addSupplier(input);
      await refresh();
