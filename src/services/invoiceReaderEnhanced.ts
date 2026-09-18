@@ -1,6 +1,6 @@
 import type { ExpenseCategory } from '../types';
 import { readInvoiceDocument, type InvoiceReadResult } from './invoiceReader';
-import { detectMerchandiseCategory, extractServiceTableLines, extractStructuredProductLines, extractSupplierV2, repairInvoiceAmounts } from './invoiceReaderV2';
+import { detectMerchandiseCategory, extractCompactProductLines, extractServiceTableLines, extractStructuredProductLines, extractSupplierV2, repairInvoiceAmounts } from './invoiceReaderV2';
 import { getRetailInvoiceCorrection } from './invoiceRetailCorrections';
 import { canonicalizeSupplierName, extractExplicitLegalSupplier } from './supplierIdentity';
 
@@ -281,8 +281,15 @@ export async function readInvoiceDocumentEnhanced(
   const invoiceNumber = explicitNumber || filenameNumber || baseNumber;
   const retailCorrection = getRetailInvoiceCorrection(textLines, base.text);
   const structuredLines = extractStructuredProductLines(textLines);
+  const compactProductLines = extractCompactProductLines(textLines);
   const serviceLines = extractServiceTableLines(textLines);
-  const specializedLines = structuredLines.length >= 2 ? structuredLines : serviceLines.length >= 2 ? serviceLines : [];
+  const specializedLines = structuredLines.length >= 2
+    ? structuredLines
+    : compactProductLines.length >= 2
+      ? compactProductLines
+      : serviceLines.length >= 2
+        ? serviceLines
+        : [];
   const invoiceLines = retailCorrection ? retailCorrection.lines : specializedLines.length ? specializedLines : base.lines;
   const merchandiseCategoryId = detectMerchandiseCategory(categories, base.text, invoiceLines);
   const serviceCategoryId = merchandiseCategoryId ? undefined : serviceCategoryByContent(categories, base.text);
