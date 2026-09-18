@@ -29,7 +29,18 @@ const recipientMarker=/\b(?:cliente|customer|destinatario|receptor|facturar\s+a|
 const fiscalMarker=/\b(?:cif|nif|nie|vat|tax\s*id|iva)\b/i;
 const phoneMarker=/\b(?:tel(?:[ée]fono)?|telf|phone|mobile|m[oó]vil)\b/i;
 const addressMarker=/\b(?:direcci[oó]n|address|adresse|indirizzo|anschrift)\b/i;
-const streetMarker=/(?:^|\s)(?:c\/|c\.|calle\b|avda?\.?\b|avenida\b|carretera\b|ctra\.?\b|camino\b|paseo\b|plaza\b|pol[ií]gono\b|nave\b|via\b|viale\b|piazza\b|rue\b|avenue\b|boulevard\b|strasse\b|straße\b|weg\b|street\b|st\.\b|road\b|rd\.\b|lane\b|drive\b|väg\b|gata\b|gate\b)/i;
+const streetMarker=/(?:^|\s)(?:c\s*\/|c\.|calle\b|avda?\.?\b|av\.?\b|avenida\b|carretera\b|ctra\.?\b|camino\b|paseo\b|plaza\b|barrio\b|pol[ií]gono\b|nave\b|rua\b|via\b|viale\b|piazza\b|rue\b|place\b|avenue\b|boulevard\b|strasse\b|straße\b|landstrasse\b|landstraße\b|weg\b|street\b|st\.\b|road\b|rd\.\b|lane\b|drive\b|väg\b|\p{L}+vägen\b|gata\b|gate\b)/iu;
+const addressAreaMarker=/^(?:zac\b|parc\b|parque\b|park\b|parkea\b|zona\s+(?:industrial|comercial)\b|pol[ií]gono\b)|\b(?:edificio|planta|portal|oficina|local)\b/i;
+
+function looksLikeAddress(value:string){
+  const clean=compact(value);
+  if(!clean)return false;
+  if(/^\d{1,5}\s+[A-Za-zÁÉÍÓÚÑÜÄÖÅÆØáéíóúñüäöåæø]/.test(clean))return true;
+  if(streetMarker.test(clean)&&(\/|#|,|\b\d{1,5}[A-Z]?\b/i.test(clean)))return true;
+  if(addressAreaMarker.test(clean)&&(\b\d{1,5}[A-Z]?\b|,|#/.test(clean)||/^(?:zac|parc|parque|park|parkea)\b/i.test(clean)))return true;
+  if(/\b\d{4,6}\b/.test(clean)&&/(?:,|\b(?:madrid|barcelona|valencia|sevilla|lisboa|leipzig|francia|españa|italia|alemania|suecia)\b)/i.test(clean))return true;
+  return false;
+}
 const metadataLine=/\b(?:factura|invoice|fecha|date|pedido|order|n[uú]mero\s+factura|invoice\s+(?:no|number)|base\s+imponible|subtotal|total|iva|vat|cantidad|quantity|precio|price|concepto|description|forma\s+de\s+pago)\b/i;
 
 const countryNames:Array<[RegExp,string]>=[
@@ -58,6 +69,7 @@ function validName(value:string){
   if(/^[0-9a-f_-]{20,}$/i.test(clean))return '';
   if(metadataLine.test(clean)||fiscalMarker.test(clean)||phoneMarker.test(clean))return '';
   if(/^(?:transferencia|tarjeta|paypal|bizum|contado|efectivo|iban|swift|bic|cuenta\s+bancaria|vencimiento)\b/i.test(clean))return '';
+  if(looksLikeAddress(clean))return '';
   if(!/[A-Za-zÁÉÍÓÚÑÜÄÖÅÆØáéíóúñüäöåæø]{3}/.test(clean))return '';
   return clean;
 }
@@ -86,17 +98,27 @@ function extractName(block:string[],options:Options){
       .replace(/\s+(?:n(?:º|°|o)\.?\s*(?:de\s+)?factura|n[uú]mero\s+(?:de\s+)?factura|invoice\s+(?:no\.?|number)|fecha\s+factura|invoice\s+date)\b.*$/i,'')
       .replace(/\s+FACTURA\s*$/i,''),
   );
+
+  const candidates:{value:string;score:number}[]=[];
   for(let index=0;index<block.length;index+=1){
     const line=block[index];
-    const inline=line.match(marker)?cleanCandidate(line.replace(marker,'').replace(/^\s*[:.-]?\s*/,'')):'';
-    if(inline)return inline;
-    if(marker.test(line)){
-      for(let offset=1;offset<=4;offset+=1){
-        const candidate=cleanCandidate(block[index+offset]||'');
-        if(candidate)return candidate;
-      }
+    if(!marker.test(line))continue;
+
+    const inline=cleanCandidate(line.replace(marker,'').replace(/^\s*[:.-]?\s*/,''));
+    if(inline)candidates.push({value:inline,score:120});
+
+    for(let offset=1;offset<=5;offset+=1){
+      const candidate=cleanCandidate(block[index+offset]||'');
+      if(!candidate)continue;
+      let score=100-offset*8;
+      if(/\b(?:s\.?l\.?u?|s\.?a\.?|s\.?c\.?|ltd\.?|limited|gmbh|sarl|sas|bv|ab)\b/i.test(candidate))score+=35;
+      if(/^[A-ZÁÉÍÓÚÑÜÄÖÅÆØ][A-Za-zÁÉÍÓÚÑÜÄÖÅÆØáéíóúñüäöåæø.'-]+(?:\s+[A-ZÁÉÍÓÚÑÜÄÖÅÆØ][A-Za-zÁÉÍÓÚÑÜÄÖÅÆØáéíóúñüäöåæø.'-]+){1,4}$/.test(candidate))score+=18;
+      if(/\d/.test(candidate))score-=30;
+      candidates.push({value:candidate,score});
     }
   }
+
+  if(candidates.length)return candidates.sort((a,b)=>b.score-a.score)[0].value;
   const hinted=validName(options.nameHint||'');
   return hinted||undefined;
 }
