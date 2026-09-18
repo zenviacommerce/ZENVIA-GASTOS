@@ -29,8 +29,14 @@ begin
       )
   loop
     v_def:=pg_get_functiondef(r.oid);
+    -- Replace the longer alias first so "o.purchase_date" can never match inside "eo.purchase_date".
     v_new:=replace(
       v_def,
+      'eo.purchase_date::date between from_date and to_date',
+      'eo.purchase_date >= from_date::timestamptz and eo.purchase_date < (to_date+1)::timestamptz'
+    );
+    v_new:=replace(
+      v_new,
       'o.purchase_date::date between from_date and to_date',
       'o.purchase_date >= from_date::timestamptz and o.purchase_date < (to_date+1)::timestamptz'
     );
