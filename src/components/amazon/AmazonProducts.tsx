@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, ImageOff, Link2, RefreshCw, Search } f
 import { loadAmazonProductImages, loadAmazonProducts, type AmazonAnalyticsFilters, type AmazonPageResult, type AmazonProductAnalytics, type AmazonProductSort, type AmazonSortDirection } from '../../services/amazon';
 import { errorMessage } from '../../services/toast';
 import { AmazonMappingModal } from './AmazonMappingModal';
+import { readViewCache, stableCacheKey, writeViewCache } from '../../services/viewCache';
 
 const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'});
 const integer=new Intl.NumberFormat('es-ES',{maximumFractionDigits:0});
@@ -27,9 +28,10 @@ function SortIcon({active,direction}:{active:boolean;direction:AmazonSortDirecti
 }
 
 export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:AmazonAnalyticsFilters;embedded?:boolean;refreshToken?:number}){
-  const [data,setData]=useState<AmazonPageResult<AmazonProductAnalytics>>({items:[],page:1,pageSize:50,total:0});
   const [search,setSearch]=useState('');
   const [page,setPage]=useState(1);
+  const initialProductsKey=stableCacheKey('amazon:products',{filters,search:'',page:1,pageSize:50,sortBy:'profit_before_ads',sortDir:'desc'});
+  const [data,setData]=useState<AmazonPageResult<AmazonProductAnalytics>>(()=>readViewCache<AmazonPageResult<AmazonProductAnalytics>>(initialProductsKey)||{items:[],page:1,pageSize:50,total:0});
   const [editing,setEditing]=useState<string|null>(null);
   const [error,setError]=useState('');
   const [sortBy,setSortBy]=useState<AmazonProductSort>('profit_before_ads');
@@ -37,7 +39,13 @@ export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:
   const [images,setImages]=useState<Record<string,string>>({});
   const pageSize=50;
 
-  const refresh=()=>{setError('');return loadAmazonProducts(filters,search,page,pageSize,sortBy,sortDir).then(setData).catch(e=>setError(errorMessage(e,'No se pudieron cargar los productos.')));};
+  const refresh=()=>{
+    const key=stableCacheKey('amazon:products',{filters,search,page,pageSize,sortBy,sortDir});
+    const cached=readViewCache<AmazonPageResult<AmazonProductAnalytics>>(key);
+    if(cached)setData(cached);
+    setError('');
+    return loadAmazonProducts(filters,search,page,pageSize,sortBy,sortDir).then(next=>{setData(next);writeViewCache(key,next);}).catch(e=>setError(errorMessage(e,'No se pudieron cargar los productos.')));
+  };
   useEffect(()=>{void refresh();},[filters.from,filters.to,filters.marketplaceIds.join(','),search,page,sortBy,sortDir,refreshToken]);
   useEffect(()=>{const asins=data.items.map(row=>row.asin).filter((value):value is string=>Boolean(value));if(!asins.length){setImages({});return}void loadAmazonProductImages(asins).then(setImages).catch(()=>setImages({}));},[data.items]);
   const editingRow=editing?data.items.find(row=>row.sellerSku===editing):undefined;
