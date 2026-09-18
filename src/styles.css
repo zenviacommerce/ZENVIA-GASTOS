@@ -16,3 +16,13 @@
   .modalActions{position:sticky;bottom:calc(-1 * max(18px,env(safe-area-inset-bottom)));z-index:6;margin-left:-16px;margin-right:-16px;padding:12px 16px max(12px,env(safe-area-inset-bottom));background:white;border-top:1px solid #e5e9f0}
   [data-theme='dark'] .modalActions{background:#111827;border-color:#334155}
 }
+
+
+/* Administration lives with account controls on desktop, but remains in mobile navigation. */
+.adminNavMobile{display:none!important}
+.adminSidebarButton{margin-top:2px}
+.adminSidebarButton.active{background:#1e293b!important;color:white!important}
+.adminSidebarButton.active svg{color:#2dd4bf}
+@media(max-width:760px){
+  .adminNavMobile{display:grid!important}
+}
