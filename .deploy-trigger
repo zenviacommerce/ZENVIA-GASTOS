@@ -18,3 +18,4 @@ retry after validated build and bulk delete
 manual production deploy requested 2026-09-18 14:23
 deploy unicode-safe sales import and client cleanup
 deploy main fa9c36b3360d4953b1b09acc49171c02bb3274ea
+retry main deploy 2026-09-18 16:01
