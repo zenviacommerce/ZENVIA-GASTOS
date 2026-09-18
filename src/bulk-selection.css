@@ -98,16 +98,20 @@
   justify-self:center;
 }
 .bulkMobileSelectableRow>.masterMobileRow,
-.bulkMobileSelectableRow>.ordersMobileRow{
+.bulkMobileSelectableRow>.ordersMobileRow,
+.bulkMobileSelectableRow>.zenviaUnifiedMobileRow{
   width:100%;
+  min-width:0;
 }
 .bulkMobileSelectableRow.selected>.masterMobileRow,
-.bulkMobileSelectableRow.selected>.ordersMobileRow{
+.bulkMobileSelectableRow.selected>.ordersMobileRow,
+.bulkMobileSelectableRow.selected>.zenviaUnifiedMobileRow{
   border-color:#5eead4;
   background:color-mix(in srgb,#14b8a6 7%,var(--surface,#fff));
 }
 [data-theme='dark'] .bulkMobileSelectableRow.selected>.masterMobileRow,
-[data-theme='dark'] .bulkMobileSelectableRow.selected>.ordersMobileRow{
+[data-theme='dark'] .bulkMobileSelectableRow.selected>.ordersMobileRow,
+[data-theme='dark'] .bulkMobileSelectableRow.selected>.zenviaUnifiedMobileRow{
   background:color-mix(in srgb,#14b8a6 10%,#111827);
 }
 @media(max-width:700px){
