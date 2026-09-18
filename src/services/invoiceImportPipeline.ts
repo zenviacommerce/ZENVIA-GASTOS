@@ -4,6 +4,7 @@ import { repairInvoiceAmounts, repairInvoiceProductLines } from './invoiceProduc
 import { extractSupplierContactData } from './supplierContactExtractor';
 import { extractSupplierInvoiceDetails } from './supplierInvoiceDetails';
 import { validateInvoiceRecipient } from './invoiceRecipientRules';
+import { extractInvoiceParty, formatInvoicePartyAddress } from './invoicePartyExtractor';
 
 async function sha256File(file:File){
   const buffer=await file.arrayBuffer();
@@ -49,6 +50,7 @@ export async function prepareInvoiceCandidate(
   ]);
   const repairedAmounts=repairInvoiceAmounts(read.text,{subtotal:read.subtotal,vat:read.vat,total:read.total});
   const repairedLines=repairInvoiceProductLines(read.text,read.lines);
+  const party=extractInvoiceParty(read.text,{role:'supplier',nameHint:read.supplierName,invoiceNumber:read.invoiceNumber,invoiceDate:read.invoiceDate});
   const contact=extractSupplierContactData(read.text,read.supplierName);
   const details=extractSupplierInvoiceDetails(read.text,read.supplierName);
   const recipient=validateInvoiceRecipient(read.text,read.invoiceDate);
@@ -74,10 +76,10 @@ export async function prepareInvoiceCandidate(
     status,
     reviewReason,
     supplierName:read.supplierName,
-    supplierTaxId:contact.taxId||details.taxId,
-    supplierEmail:contact.email,
-    supplierPhone:contact.phone,
-    supplierAddress:details.address,
+    supplierTaxId:party.taxId||contact.taxId||details.taxId,
+    supplierEmail:party.email||contact.email,
+    supplierPhone:party.phone||contact.phone,
+    supplierAddress:formatInvoicePartyAddress(party)||details.address,
     supplierWebsite:details.website,
     recipientTaxId:recipient.detectedTaxId,
     recipientName:recipient.detectedName,
