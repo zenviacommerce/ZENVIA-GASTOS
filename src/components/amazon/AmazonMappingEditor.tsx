@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Check, Search, Trash2 } from 'lucide-react';
 import { deleteAmazonProductMapping, loadAmazonProductOptions, setAmazonProductMapping, type AmazonProductOption } from '../../services/amazon';
 import { errorMessage, showError, showSuccess } from '../../services/toast';
+import { confirmAction } from '../../services/actionDialog';
 
 type Props={sellerSku:string;initialProductId?:string|null;initialFactor?:number;allowDelete?:boolean;onSaved:()=>void;onCancel?:()=>void};
 
@@ -29,7 +30,8 @@ export function AmazonMappingEditor({sellerSku,initialProductId=null,initialFact
   };
 
   const remove=async()=>{
-    if(!window.confirm(`¿Eliminar el vínculo de ${sellerSku}?`))return;
+    const confirmed=await confirmAction({title:'Eliminar vínculo',message:`Se eliminará el vínculo de ${sellerSku}.`,confirmLabel:'Eliminar vínculo',tone:'danger'});
+    if(!confirmed)return;
     setLoading(true);
     try{await deleteAmazonProductMapping(sellerSku);showSuccess('Vínculo eliminado.');onSaved();}
     catch(error){showError(errorMessage(error,'No se pudo eliminar el vínculo.'));}
