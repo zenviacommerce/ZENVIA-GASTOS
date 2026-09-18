@@ -152,6 +152,35 @@ export function extractStructuredProductLines(lines: string[]): NewInvoiceLineIn
   return groups.map(parseProductGroup).filter((line): line is NewInvoiceLineInput => Boolean(line)).slice(0, 50);
 }
 
+export function extractCompactProductLines(lines:string[]):NewInvoiceLineInput[]{
+  const result:NewInvoiceLineInput[]=[];
+  const rowStart=/^\s*([A-Z0-9][A-Z0-9._\/-]{2,10})\s+(.+)$/i;
+  const stop=/^(?:base\s+imponible|%\s*i\.?v\.?a|importe\s+i\.?v\.?a|total\s+factura|previsi[oó]n\s+de\s+pago|vencimientos?)/i;
+
+  for(const raw of lines){
+    const line=compact(raw);
+    if(!line||stop.test(line))continue;
+    const match=line.match(rowStart);
+    if(!match)continue;
+    const supplierSku=match[1];
+    const rest=match[2];
+    const amounts=moneyMatches(rest);
+    if(amounts.length<3)continue;
+
+    const quantity=parseMoneyV2(amounts[amounts.length-3][0]);
+    const unitPrice=parseMoneyV2(amounts[amounts.length-2][0]);
+    const lineTotal=parseMoneyV2(amounts[amounts.length-1][0]);
+    if(!quantity||!unitPrice||!lineTotal||quantity>1_000_000)continue;
+    const expected=Math.round(quantity*unitPrice*100)/100;
+    if(expected>0&&Math.abs(lineTotal-expected)>Math.max(.15,expected*.03))continue;
+
+    const description=compact(rest.slice(0,amounts[0].index??rest.length));
+    if(description.length<3)continue;
+    result.push({supplierSku,description:description.slice(0,250),quantity,unitPrice,lineTotal});
+  }
+  return result.slice(0,50);
+}
+
 export function extractServiceTableLines(lines: string[]): NewInvoiceLineInput[] {
   const result: NewInvoiceLineInput[] = [];
   const taxMarker = /\b(?:inv\.?\s*pasivo|reverse\s+charge|\d{1,2}(?:[.,]\d+)?\s*%)\b/i;
@@ -189,7 +218,7 @@ export function extractServiceTableLines(lines: string[]): NewInvoiceLineInput[]
 }
 
 export function detectMerchandiseCategory(categories: ExpenseCategory[], fullText: string, lines: NewInvoiceLineInput[]): string | undefined {
-  const tableHeader = /(?:n[º°o]?\s*)?art[ií]culo[\s\S]{0,80}descripci[oó]n[\s\S]{0,80}cantidad[\s\S]{0,80}precio/i.test(fullText);
+  const tableHeader = /(?:(?:n[º°o]?\s*)?art[ií]culo|c[oó]digo)[\s\S]{0,100}descripci[oó]n[\s\S]{0,100}cantidad[\s\S]{0,100}precio(?:[\s\S]{0,80}importe)?/i.test(fullText);
   const hasSkus = lines.filter(line => line.supplierSku).length >= 2;
   if (!tableHeader && !hasSkus) return undefined;
   return categories.find(category => category.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('mercancia'))?.id;
