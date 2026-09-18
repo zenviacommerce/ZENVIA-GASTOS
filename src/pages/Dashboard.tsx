@@ -11,9 +11,12 @@ import { defaultInvoiceFilter, filterInvoices, periodLabel } from '../services/f
 import { loadSalesInvoices, type SalesInvoice } from '../services/sales';
 import { listFulfillmentOrders, syncSendcloudOrders, type FulfillmentOrder } from '../services/orders';
 import { isCancelledOrder, isPendingOrder, orderStatusCode } from '../services/orderStatus';
+import { readViewCache, writeViewCache } from '../services/viewCache';
 
 const colors = ['#0f766e','#2563eb','#7c3aed','#d97706','#64748b','#dc2626','#0891b2'];
 const money=(value:number)=>`${value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €`;
+const DASHBOARD_SALES_CACHE='dashboard:sales';
+const DASHBOARD_ORDERS_CACHE='dashboard:orders';
 
 function orderDate(order:FulfillmentOrder){return order.orderCreatedAt?.slice(0,10)||'';}
 function isShippedOrder(order:FulfillmentOrder){
@@ -23,26 +26,31 @@ function isShippedOrder(order:FulfillmentOrder){
 
 export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{invoices:Invoice[];products:Product[];suppliers:Supplier[];onUpload?:()=>void;onProducts?:()=>void}){
   const [filter,setFilter]=useState(defaultInvoiceFilter);
-  const [sales,setSales]=useState<SalesInvoice[]>([]);
-  const [orders,setOrders]=useState<FulfillmentOrder[]>([]);
+  const [sales,setSales]=useState<SalesInvoice[]>(()=>readViewCache<SalesInvoice[]>(DASHBOARD_SALES_CACHE)||[]);
+  const [orders,setOrders]=useState<FulfillmentOrder[]>(()=>readViewCache<FulfillmentOrder[]>(DASHBOARD_ORDERS_CACHE)||[]);
 
   useEffect(()=>{
-    loadSalesInvoices().then(setSales).catch(()=>setSales([]));
+    loadSalesInvoices().then(next=>{setSales(next);writeViewCache(DASHBOARD_SALES_CACHE,next);}).catch(()=>{/* conserva el último valor cacheado */});
   },[]);
 
   useEffect(()=>{
     let alive=true;
     let inFlight=false;
+    const publish=(next:FulfillmentOrder[])=>{if(!alive)return;setOrders(next);writeViewCache(DASHBOARD_ORDERS_CACHE,next);};
+    const loadPersisted=async()=>{
+      try{publish(await listFulfillmentOrders());}catch{/* El caché mantiene el KPI visible mientras se recupera la lectura. */}
+    };
     const refreshOrders=async()=>{
       if(inFlight)return;
       inFlight=true;
       try{
-        try{await syncSendcloudOrders(false);}catch{/* El resumen sigue mostrando el último estado persistido si Sendcloud no responde. */}
-        const next=await listFulfillmentOrders();
-        if(alive)setOrders(next);
-      }catch{/* Conserva los KPI existentes ante un fallo puntual de lectura. */}
+        try{await syncSendcloudOrders(false);}catch{/* Sendcloud puede fallar sin vaciar el resumen. */}
+        publish(await listFulfillmentOrders());
+      }catch{/* Conserva los KPI existentes ante un fallo puntual de sincronización o lectura. */}
       finally{inFlight=false;}
     };
+    // Primero pintamos el estado persistido de Supabase; la sincronización externa ocurre después.
+    void loadPersisted();
     void refreshOrders();
     const timer=window.setInterval(()=>void refreshOrders(),60000);
     return()=>{alive=false;window.clearInterval(timer);};
