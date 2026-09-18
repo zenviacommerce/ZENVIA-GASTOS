@@ -30,7 +30,7 @@ const fiscalMarker=/\b(?:cif|nif|nie|vat|tax\s*id|iva)\b/i;
 const phoneMarker=/\b(?:tel(?:[ée]fono)?|telf|phone|mobile|m[oó]vil)\b/i;
 const addressMarker=/\b(?:direcci[oó]n|address|adresse|indirizzo|anschrift)\b/i;
 const streetMarker=/(?:^|\s)(?:c\s*\/|c\.|calle\b|avda?\.?\b|av\.?\b|avenida\b|carretera\b|ctra\.?\b|camino\b|paseo\b|plaza\b|barrio\b|pol[ií]gono\b|nave\b|rua\b|via\b|viale\b|piazza\b|rue\b|place\b|avenue\b|boulevard\b|strasse\b|straße\b|landstrasse\b|landstraße\b|weg\b|street\b|st\.\b|road\b|rd\.\b|lane\b|drive\b|väg\b|\p{L}+vägen\b|gata\b|gate\b)/iu;
-const addressAreaMarker=/^(?:zac\b|parc\b|parque\b|park\b|parkea\b|zona\s+(?:industrial|comercial)\b|pol[ií]gono\b)|\b(?:edificio|planta|portal|oficina|local)\b/i;
+const addressAreaMarker=/^(?:zac\b|parc\b|parque\b|park\b|parkea\b|zona\s+(?:industrial|comercial)\b|pol[ií]gono\b)|\b(?:parkea|parque\s+tecnol[oó]gico|technology\s+park|edificio|planta|portal|oficina|local)\b/i;
 
 function looksLikeAddress(value:string){
   const clean=compact(value);
