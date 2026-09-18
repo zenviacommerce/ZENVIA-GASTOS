@@ -100,7 +100,14 @@ function extractSupplier(lines: string[]): string {
   const ignored = /factura|invoice|fecha|date|cif|nif|vat|iva|total|base imponible|direcci[oó]n|tel[eé]fono|email|p[aá]gina|www\.|zenvia commerce/i;
   const candidate = lines.slice(0, 18).find(line => {
     const value = compact(line);
-    return value.length >= 4 && value.length <= 80 && /[A-Za-zÁÉÍÓÚÑáéíóúñ]/.test(value) && !ignored.test(value) && !/^\d[\d\s,./-]+$/.test(value);
+    const letters=(value.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g)||[]).length;
+    const digits=(value.match(/\d/g)||[]).length;
+    return value.length >= 4 && value.length <= 80
+      && letters >= 3
+      && digits <= Math.max(6,Math.round(letters*.8))
+      && !/\d{8,}/.test(value)
+      && !ignored.test(value)
+      && !/^\d[\d\s,./-]+$/.test(value);
   });
   return candidate ? compact(candidate) : '';
 }
