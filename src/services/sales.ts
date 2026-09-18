@@ -140,7 +140,7 @@ function clientRow(input:ClientInput){
   return {name:input.name.trim(),tax_id:nullable(input.taxId),email:nullable(input.email)?.toLowerCase()||null,phone:nullable(input.phone),address_line1:nullable(input.addressLine1),address_line2:nullable(input.addressLine2),postal_code:nullable(input.postalCode),city:nullable(input.city),province:nullable(input.province),country_code:(input.countryCode||'ES').trim().toUpperCase().slice(0,2),payment_terms_days:Math.max(0,Math.round(input.paymentTermsDays||0)),notes:nullable(input.notes)};
 }
 
-export async function addClient(input:ClientInput){const {error}=await supabase.from('clients').insert(clientRow(input));if(error)throw error;}
+export async function addClient(input:ClientInput){const {data,error}=await supabase.from('clients').insert(clientRow(input)).select('id').single();if(error)throw error;return data.id as string;}
 export async function updateClient(id:string,input:ClientInput){const {error}=await supabase.from('clients').update(clientRow(input)).eq('id',id);if(error)throw error;}
 export async function deleteClient(id:string){const {error}=await supabase.from('clients').delete().eq('id',id);if(error){if(error.code==='23503')throw new Error('Este cliente tiene facturas asociadas y no se puede eliminar. Puedes dejarlo registrado y reutilizarlo.');throw error;}}
 
