@@ -218,6 +218,63 @@ async function extractPdfText(file: File): Promise<{ text: string; pdf: any }> {
   return { text: pages.join('\n'), pdf };
 }
 
+function ocrSignalScore(text:string){
+  const normalized=text.toLowerCase();
+  let score=0;
+  if(/\bfactura\b|\binvoice\b/.test(normalized))score+=5;
+  if(/base\s+imponible|subtotal/.test(normalized))score+=4;
+  if(/\biva\b|i\.v\.a\.|\bvat\b/.test(normalized))score+=3;
+  if(/total\s+factura|importe\s+total|a\s+pagar/.test(normalized))score+=4;
+  if(/\b(?:cif|nif|vat)\b/.test(normalized))score+=2;
+  if(/\b\d{1,2}[\/-]\d{1,2}[\/-](?:20)?\d{2}\b/.test(normalized))score+=2;
+  score+=Math.min(6,(text.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g)||[]).length);
+  return score;
+}
+
+function enhanceOcrCanvas(canvas:HTMLCanvasElement){
+  const context=canvas.getContext('2d',{willReadFrequently:true});
+  if(!context)return canvas;
+  const image=context.getImageData(0,0,canvas.width,canvas.height);
+  const data=image.data;
+  for(let index=0;index<data.length;index+=4){
+    const gray=Math.round(data[index]*0.299+data[index+1]*0.587+data[index+2]*0.114);
+    let value=Math.round((gray-128)*1.38+138);
+    if(value>242)value=255;
+    if(value<38)value=0;
+    value=Math.max(0,Math.min(255,value));
+    data[index]=value;data[index+1]=value;data[index+2]=value;
+  }
+  context.putImageData(image,0,0);
+  return canvas;
+}
+
+async function imageFileToEnhancedBlob(file:File):Promise<Blob>{
+  const url=URL.createObjectURL(file);
+  try{
+    const image=await new Promise<HTMLImageElement>((resolve,reject)=>{
+      const element=new Image();
+      element.onload=()=>resolve(element);
+      element.onerror=()=>reject(new Error('No se pudo preparar la imagen para OCR.'));
+      element.src=url;
+    });
+    const longEdge=Math.max(image.naturalWidth||image.width,image.naturalHeight||image.height);
+    const targetLong=Math.min(3200,Math.max(longEdge,longEdge<1800?longEdge*2:longEdge*1.25));
+    const scale=longEdge?targetLong/longEdge:1;
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round((image.naturalWidth||image.width)*scale));
+    canvas.height=Math.max(1,Math.round((image.naturalHeight||image.height)*scale));
+    const context=canvas.getContext('2d',{willReadFrequently:true});
+    if(!context)throw new Error('No se pudo preparar la imagen para OCR.');
+    context.imageSmoothingEnabled=true;
+    context.imageSmoothingQuality='high';
+    context.drawImage(image,0,0,canvas.width,canvas.height);
+    enhanceOcrCanvas(canvas);
+    return await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('No se pudo preparar la imagen para OCR.')),'image/png'));
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+
 async function ocrPdf(pdf: any, onProgress?: (message: string) => void): Promise<string> {
   const { createWorker } = await import('tesseract.js');
   onProgress?.('Iniciando OCR…');
@@ -234,14 +291,15 @@ async function ocrPdf(pdf: any, onProgress?: (message: string) => void): Promise
       const pageNumber = uniquePages[index];
       onProgress?.(`Leyendo página ${pageNumber} (${index + 1} de ${uniquePages.length})…`);
       const page = await pdf.getPage(pageNumber);
-      const viewport = page.getViewport({ scale: 1.7 });
+      const viewport = page.getViewport({ scale: 2.4 });
       const canvas = document.createElement('canvas');
       canvas.width = Math.ceil(viewport.width);
       canvas.height = Math.ceil(viewport.height);
       const context = canvas.getContext('2d');
       if (!context) continue;
       await page.render({ canvasContext: context, viewport } as any).promise;
-      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('No se pudo preparar la página para OCR.')), 'image/jpeg', 0.9));
+      enhanceOcrCanvas(canvas);
+      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('No se pudo preparar la página para OCR.')), 'image/png'));
       const { data } = await worker.recognize(blob);
       pages.push(data.text);
     }
@@ -253,12 +311,25 @@ async function ocrPdf(pdf: any, onProgress?: (message: string) => void): Promise
 
 async function ocrImage(file: File, onProgress?: (message: string) => void): Promise<string> {
   const { createWorker } = await import('tesseract.js');
-  onProgress?.('Iniciando OCR…');
+  onProgress?.('Optimizando foto para lectura…');
   const worker = await createWorker('spa');
   try {
-    onProgress?.('Leyendo imagen…');
-    const { data } = await worker.recognize(file);
-    return data.text;
+    const enhanced=await imageFileToEnhancedBlob(file);
+    onProgress?.('Leyendo foto en alta calidad…');
+    const enhancedResult=await worker.recognize(enhanced);
+    let bestText=enhancedResult.data.text||'';
+    let bestScore=ocrSignalScore(bestText);
+
+    // Si la foto tiene sombras, reflejos o compresión, una segunda lectura sobre
+    // el original puede recuperar caracteres que el realce haya perdido.
+    if(bestScore<16){
+      onProgress?.('Contrastando lectura con la imagen original…');
+      const originalResult=await worker.recognize(file);
+      const originalText=originalResult.data.text||'';
+      const originalScore=ocrSignalScore(originalText);
+      if(originalScore>bestScore){bestText=originalText;bestScore=originalScore;}
+    }
+    return bestText;
   } finally {
     await worker.terminate();
   }
