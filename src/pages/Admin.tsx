@@ -30,7 +30,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
     try { setUsers(await listManagedUsers()); }
-    catch (e) { const message=errorMessage(e,'No se pudieron cargar los usuarios.'); setError(message); showError(message); }
+    catch (e) { setError(errorMessage(e,'No se pudieron cargar los usuarios.')); }
     finally { setLoading(false); }
   }, []);
 
@@ -53,7 +53,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
       });
       await refresh();
       showSuccess(`Usuario ${user.active ? 'desactivado' : 'activado'} correctamente.`);
-    } catch (e) { const message=errorMessage(e,'No se pudo cambiar el acceso.'); setError(message); showError(message); }
+    } catch (e) { showError(errorMessage(e,'No se pudo cambiar el acceso.')); }
     finally { setBusyId(null); }
   };
 
@@ -62,7 +62,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
     if (!window.confirm(`¿Eliminar definitivamente el acceso de ${user.email}?\n\nSi ha subido archivos, Supabase puede impedir el borrado; en ese caso puedes dejarlo desactivado.`)) return;
     setBusyId(user.userId); setError('');
     try { await deleteManagedUser(user.userId); await refresh(); showSuccess('Usuario eliminado correctamente.'); }
-    catch (e) { const message=errorMessage(e,'No se pudo eliminar el usuario.'); setError(message); showError(message); }
+    catch (e) { showError(errorMessage(e,'No se pudo eliminar el usuario.')); }
     finally { setBusyId(null); }
   };
 
@@ -132,7 +132,7 @@ function AuditPanel({users,currentUserId}:{users:ManagedUser[];currentUserId:str
   const refresh=useCallback(async()=>{
     setLoading(true);setError('');
     try{setEntries(await listAuditLogs())}
-    catch(e){const message=errorMessage(e,'No se pudo cargar la auditoría.');setError(message);showError(message)}
+    catch(e){setError(errorMessage(e,'No se pudo cargar la auditoría.'))}
     finally{setLoading(false)}
   },[]);
   useEffect(()=>{void refresh()},[refresh]);
@@ -220,7 +220,7 @@ function UserEditor({ user, onClose, onSaved }: { user: ManagedUser | null; onCl
       }
       await onSaved();
       showSuccess(editing?'Usuario modificado correctamente.':'Usuario creado correctamente.');
-    } catch (e) { const message=errorMessage(e,'No se pudo guardar el usuario.'); setError(message); showError(message); }
+    } catch (e) { setError(errorMessage(e,'No se pudo guardar el usuario.')); }
     finally { setBusy(false); }
   };
 
