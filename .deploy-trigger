@@ -10,3 +10,4 @@ bulk actions clients suppliers products orders
 manual deploy retry 2026-09-18
 retry production build after failed deployment
 deploy retry 2026-09-18 13:33
+deploy after verified build
