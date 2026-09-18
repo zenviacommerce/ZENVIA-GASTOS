@@ -5,7 +5,7 @@ import { Pagination } from '../components/Pagination';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { loadProductSalesMap } from '../services/productEditor';
 import { productMarginMetrics } from '../services/productMetrics';
-import { showError, showOperationResult } from '../services/toast';
+import { showError, showOperationResult, showSuccess } from '../services/toast';
 import '../supplier-actions.css';
 
 const PAGE_SIZE=20;
@@ -71,7 +71,9 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
    const confirmed=window.confirm(`¿Eliminar el producto "${product.name}"?\n\nLas facturas existentes no se borrarán; sus líneas quedarán sin producto asociado.`);
    if(!confirmed)return;
    setBusyId(product.id);setError('');
-   try{await onDelete(product);setSelected(null)}catch(e){setError(e instanceof Error?e.message:'No se pudo eliminar el producto.')}finally{setBusyId(null)}
+   try{await onDelete(product);setSelected(null);showSuccess('Producto eliminado correctamente.')}
+   catch(e){showError(e instanceof Error?e.message:'No se pudo eliminar el producto.')}
+   finally{setBusyId(null)}
  };
  const removeSelected=async()=>{
    if(!selectedProducts.length)return;
