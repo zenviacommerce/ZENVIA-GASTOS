@@ -5,7 +5,7 @@ import { Pagination } from '../components/Pagination';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { loadProductSalesMap } from '../services/productEditor';
 import { productMarginMetrics } from '../services/productMetrics';
-import { showError, showSuccess } from '../services/toast';
+import { showError, showOperationResult } from '../services/toast';
 import '../supplier-actions.css';
 
 const PAGE_SIZE=20;
@@ -85,8 +85,9 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
    setCheckedIds(new Set());
    setBulkBusy(false);
    const removed=selectedProducts.length-failed.length;
-   if(removed)showSuccess(`${removed} producto${removed===1?' eliminado':'s eliminados'}.`);
-   if(failed.length){const message=`${failed.length} no se pudieron eliminar: ${failed.slice(0,3).join(' · ')}`;setError(message);showError(message);}
+   const successMessage=removed?`${removed} producto${removed===1?' eliminado':'s eliminados'} correctamente.`:'';
+   const failureMessage=failed.length?`${failed.length} producto${failed.length===1?' no se pudo eliminar':'s no se pudieron eliminar'}. ${failed.slice(0,3).join(' · ')}`:'';
+   showOperationResult(successMessage,failureMessage);
  };
  const edit=(product:Product)=>{setSelected(null);onEdit(product)};
  return (
