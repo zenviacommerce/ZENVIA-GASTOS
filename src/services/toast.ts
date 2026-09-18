@@ -28,3 +28,14 @@ export function errorMessage(error: unknown, fallback = 'Se ha producido un erro
   if (typeof error === 'string' && error.trim()) return error;
   return fallback;
 }
+
+
+export function showOperationResult(successMessage: string, failureMessage?: string) {
+  const success = successMessage.trim();
+  const failure = failureMessage?.trim() || '';
+  if (failure) {
+    showError([success, failure].filter(Boolean).join(' '));
+    return;
+  }
+  if (success) showSuccess(success);
+}
