@@ -15,7 +15,7 @@ export function showSuccess(message: string, duration = 3800) {
   emit({ kind: 'success', message, duration });
 }
 
-export function showError(message: string, duration = 5200) {
+export function showError(message: string, duration = 9000) {
   emit({ kind: 'error', message, duration });
 }
 
