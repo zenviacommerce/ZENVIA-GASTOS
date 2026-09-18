@@ -81,13 +81,18 @@ function locateBlock(lines:string[],options:Options){
 
 function extractName(block:string[],options:Options){
   const marker=options.role==='supplier'?supplierMarker:recipientMarker;
+  const cleanCandidate=(value:string)=>validName(
+    compact(value)
+      .replace(/\s+(?:n(?:º|°|o)\.?\s*(?:de\s+)?factura|n[uú]mero\s+(?:de\s+)?factura|invoice\s+(?:no\.?|number)|fecha\s+factura|invoice\s+date)\b.*$/i,'')
+      .replace(/\s+FACTURA\s*$/i,''),
+  );
   for(let index=0;index<block.length;index+=1){
     const line=block[index];
-    const inline=line.match(marker)?validName(line.replace(marker,'').replace(/^\s*[:.-]?\s*/,'')):'';
+    const inline=line.match(marker)?cleanCandidate(line.replace(marker,'').replace(/^\s*[:.-]?\s*/,'')):'';
     if(inline)return inline;
     if(marker.test(line)){
-      for(let offset=1;offset<=3;offset+=1){
-        const candidate=validName(block[index+offset]||'');
+      for(let offset=1;offset<=4;offset+=1){
+        const candidate=cleanCandidate(block[index+offset]||'');
         if(candidate)return candidate;
       }
     }
