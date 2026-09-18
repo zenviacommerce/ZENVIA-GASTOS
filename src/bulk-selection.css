@@ -87,3 +87,29 @@
 .bulkSelectedRow:hover>td{background:color-mix(in srgb,#14b8a6 10%,transparent)}
 [data-theme='dark'] .bulkSelectedRow>td{background:color-mix(in srgb,#14b8a6 11%,transparent)}
 [data-theme='dark'] .bulkSelectedRow:hover>td{background:color-mix(in srgb,#14b8a6 15%,transparent)}
+
+.bulkMobileSelectableRow{
+  display:grid;
+  grid-template-columns:22px minmax(0,1fr);
+  align-items:center;
+  gap:8px;
+}
+.bulkMobileSelectableRow>.bulkSelectCheckbox{
+  justify-self:center;
+}
+.bulkMobileSelectableRow>.masterMobileRow,
+.bulkMobileSelectableRow>.ordersMobileRow{
+  width:100%;
+}
+.bulkMobileSelectableRow.selected>.masterMobileRow,
+.bulkMobileSelectableRow.selected>.ordersMobileRow{
+  border-color:#5eead4;
+  background:color-mix(in srgb,#14b8a6 7%,var(--surface,#fff));
+}
+[data-theme='dark'] .bulkMobileSelectableRow.selected>.masterMobileRow,
+[data-theme='dark'] .bulkMobileSelectableRow.selected>.ordersMobileRow{
+  background:color-mix(in srgb,#14b8a6 10%,#111827);
+}
+@media(max-width:700px){
+  .bulkMobileSelectableRow{grid-template-columns:20px minmax(0,1fr);gap:7px}
+}
