@@ -1,5 +1,5 @@
 import { readInvoiceDocumentEnhanced } from './invoiceReaderEnhanced';
-import { addClient, createSalesInvoiceDraft, deleteClientIfUnused, loadClients, updateClient, type Client, type ClientInput, type SalesInvoiceDraftInput, type SalesInvoiceLine } from './sales';
+import { addClient, createSalesInvoiceDraft, deleteClientIfUnused, loadBusinessSettings, loadClients, updateClient, type Client, type ClientInput, type SalesInvoiceDraftInput, type SalesInvoiceLine } from './sales';
 import { updateSalesInvoiceNumber } from './salesInvoiceNumber';
 import { deleteSalesInvoiceDraftSafe } from './salesDraftDelete';
 import { extractInvoiceParty } from './invoicePartyExtractor';
@@ -91,10 +91,21 @@ function mergedImportedClient(existing:Client,input:ClientInput):ClientInput{
 }
 
 async function enrichImportedClient(clientId:string,input:ClientInput){
-  const clients=await loadClients();
+  const [clients,business]=await Promise.all([loadClients(),loadBusinessSettings()]);
   const existing=clients.find(client=>client.id===clientId);
   if(!existing)return;
   const merged=mergedImportedClient(existing,input);
+
+  // Previous importer versions could accidentally copy issuer contact data into
+  // the recipient because PDF.js joins left/right columns on the same baseline.
+  const ownTax=normalize(business.taxId);
+  const ownPhone=normalize(business.phone);
+  const ownEmail=String(business.email||'').trim().toLowerCase();
+  if(ownTax&&normalize(existing.taxId)===ownTax&&!input.taxId)merged.taxId='';
+  if(ownPhone&&normalize(existing.phone)===ownPhone&&!input.phone)merged.phone='';
+  if(ownEmail&&String(existing.email||'').trim().toLowerCase()===ownEmail&&!input.email)merged.email='';
+  if(input.countryCode&&input.countryCode!=='XX')merged.countryCode=input.countryCode;
+
   const changed=
     (merged.taxId||'')!==(existing.taxId||'')
     ||(merged.email||'')!==(existing.email||'')
