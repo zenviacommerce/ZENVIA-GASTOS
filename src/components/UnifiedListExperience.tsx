@@ -128,7 +128,10 @@ function buildMobileCards(table:HTMLTableElement){
 
   const headers=Array.from(table.querySelectorAll<HTMLTableCellElement>('thead th')).map(th=>clean(th.textContent||''));
   const expenseInvoiceTable=Boolean(table.closest('.expenseInvoicesHub'));
-  const signature=rows.map(row=>`${clean(row.textContent||'')}|e:${Boolean(matchingRowAction(row,'edit'))}|d:${Boolean(matchingRowAction(row,'delete'))}`).join('||');
+  const signature=rows.map(row=>{
+    const selection=row.querySelector<HTMLInputElement>('.bulkSelectionCell input[type="checkbox"]');
+    return `${clean(row.textContent||'')}|e:${Boolean(matchingRowAction(row,'edit'))}|d:${Boolean(matchingRowAction(row,'delete'))}|s:${selection?.checked?'1':'0'}|x:${selection?.disabled?'1':'0'}`;
+  }).join('||');
   let list=host.querySelector<HTMLElement>(`:scope > .${LIST_CLASS}`);
   if(list?.dataset.signature===signature)return;
   if(!list){
@@ -153,6 +156,33 @@ function buildMobileCards(table:HTMLTableElement){
     card.setAttribute('role','button');
     card.tabIndex=0;
     card.setAttribute('aria-label',`Abrir ${primary}`);
+
+    const sourceSelection=row.querySelector<HTMLInputElement>('.bulkSelectionCell input[type="checkbox"]');
+    let mobileWrapper:HTMLDivElement|null=null;
+    if(sourceSelection){
+      mobileWrapper=document.createElement('div');
+      mobileWrapper.className=`bulkMobileSelectableRow ${sourceSelection.checked?'selected':''}`;
+
+      const label=document.createElement('label');
+      label.className='bulkSelectCheckbox';
+      label.title=sourceSelection.getAttribute('aria-label')||`Seleccionar ${primary}`;
+      const input=document.createElement('input');
+      input.type='checkbox';
+      input.checked=sourceSelection.checked;
+      input.disabled=sourceSelection.disabled;
+      input.setAttribute('aria-label',label.title);
+      const visual=document.createElement('span');
+      visual.setAttribute('aria-hidden','true');
+      input.addEventListener('click',event=>event.stopPropagation());
+      input.addEventListener('change',event=>{
+        event.stopPropagation();
+        sourceSelection.click();
+        mobileWrapper?.classList.toggle('selected',input.checked);
+      });
+      label.addEventListener('click',event=>event.stopPropagation());
+      label.append(input,visual);
+      mobileWrapper.appendChild(label);
+    }
 
     const top=document.createElement('div');
     top.className='zenviaUnifiedMobileTop';
@@ -215,7 +245,12 @@ function buildMobileCards(table:HTMLTableElement){
     card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
     card.append(top,metrics);
     if(actions.children.length)card.appendChild(actions);
-    list!.appendChild(card);
+    if(mobileWrapper){
+      mobileWrapper.appendChild(card);
+      list!.appendChild(mobileWrapper);
+    }else{
+      list!.appendChild(card);
+    }
   });
 }
 
