@@ -3,6 +3,7 @@ import { FileText, Package, ShoppingCart, Store } from 'lucide-react';
 import type { Product, Supplier } from '../types';
 import { getProductSalesDetails, type ProductInput } from '../services/productEditor';
 import { productMarginMetrics } from '../services/productMetrics';
+import { showSuccess } from '../services/toast';
 import { FormGrid, FormModal, FormSection } from './forms/FormPrimitives';
 import { SearchableSelect } from './forms/SearchableSelect';
 import { SelectField } from './forms/SelectField';
