@@ -1,3 +1,4 @@
 build check
 retry
 after jsx fix
+artifact build
