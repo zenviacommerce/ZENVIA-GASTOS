@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { ChevronRight, RefreshCw, X } from 'lucide-react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { isAmazonConnectivityError, loadAmazonSeries, loadAmazonSummary, type AmazonAnalyticsFilters, type AmazonSummary as AmazonSummaryData } from '../../services/amazon';
+import { isAmazonConnectivityError, loadAmazonDetail, loadAmazonSeries, loadAmazonSummary, type AmazonAnalyticsFilters, type AmazonDetail, type AmazonSummary as AmazonSummaryData } from '../../services/amazon';
 import { errorMessage } from '../../services/toast';
 import { AmazonCompleteness } from './AmazonCompleteness';
 import { AmazonProducts } from './AmazonProducts';
@@ -10,12 +10,17 @@ import { readViewCache, stableCacheKey, writeViewCache } from '../../services/vi
 const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'});
 const integer=new Intl.NumberFormat('es-ES',{maximumFractionDigits:0});
 function spanDays(filters:AmazonAnalyticsFilters){return Math.max(1,Math.round((new Date(`${filters.to}T00:00:00`).getTime()-new Date(`${filters.from}T00:00:00`).getTime())/86400000)+1);}
+function dateRangeLabel(filters:AmazonAnalyticsFilters){const fmt=(value:string)=>new Date(value+'T12:00:00').toLocaleDateString('es-ES');return fmt(filters.from)+' – '+fmt(filters.to);}
+function DetailRow({label,value,note}:{label:string;value:string;note?:string}){return <div className="amazonDetailsRow"><div><span>{label}</span>{note&&<small>{note}</small>}</div><strong>{value}</strong></div>;}
 
 export function AmazonSummary({filters,onLoaded,refreshToken=0}:{filters:AmazonAnalyticsFilters;onLoaded?:(summary:AmazonSummaryData)=>void;refreshToken?:number}){
   const summaryCacheKey=stableCacheKey('amazon:summary',filters);
+  const detailCacheKey=stableCacheKey('amazon:detail',filters);
   const seriesCacheKey=stableCacheKey('amazon:series',{...filters,grain:spanDays(filters)>93?'month':'day'});
   const [summary,setSummary]=useState<AmazonSummaryData|null>(()=>readViewCache<AmazonSummaryData>(summaryCacheKey));
+  const [detail,setDetail]=useState<AmazonDetail|null>(()=>readViewCache<AmazonDetail>(detailCacheKey));
   const [series,setSeries]=useState<any[]>(()=>readViewCache<any[]>(seriesCacheKey)||[]);
+  const [detailsOpen,setDetailsOpen]=useState(false);
   const [loading,setLoading]=useState(()=>!readViewCache<AmazonSummaryData>(summaryCacheKey));
   const [error,setError]=useState('');
   const [retryToken,setRetryToken]=useState(0);
@@ -24,10 +29,13 @@ export function AmazonSummary({filters,onLoaded,refreshToken=0}:{filters:AmazonA
   useEffect(()=>{
     let alive=true;
     const currentSummaryKey=stableCacheKey('amazon:summary',filters);
+    const currentDetailKey=stableCacheKey('amazon:detail',filters);
     const currentSeriesKey=stableCacheKey('amazon:series',{...filters,grain});
     const cachedSummary=readViewCache<AmazonSummaryData>(currentSummaryKey);
+    const cachedDetail=readViewCache<AmazonDetail>(currentDetailKey);
     const cachedSeries=readViewCache<any[]>(currentSeriesKey);
     if(cachedSummary){setSummary(cachedSummary);onLoaded?.(cachedSummary);}
+    if(cachedDetail)setDetail(cachedDetail);
     if(cachedSeries)setSeries(cachedSeries);
     setLoading(!cachedSummary);setError('');
     const run=async()=>{
@@ -35,6 +43,12 @@ export function AmazonSummary({filters,onLoaded,refreshToken=0}:{filters:AmazonA
         const nextSummary=await loadAmazonSummary(filters);
         if(!alive)return;
         setSummary(nextSummary);writeViewCache(currentSummaryKey,nextSummary);onLoaded?.(nextSummary);
+        try{
+          const nextDetail=await loadAmazonDetail(filters);
+          if(alive){setDetail(nextDetail);writeViewCache(currentDetailKey,nextDetail);}
+        }catch(reason){
+          if(alive&&!isAmazonConnectivityError(reason))setError(errorMessage(reason,'No se pudo cargar el detalle de Amazon.'));
+        }
         try{
           const nextSeries=await loadAmazonSeries(filters,grain);
           if(alive){setSeries(nextSeries);writeViewCache(currentSeriesKey,nextSeries);}
@@ -56,25 +70,26 @@ export function AmazonSummary({filters,onLoaded,refreshToken=0}:{filters:AmazonA
   if(!summary)return null;
 
   const cards=[
-    ['Ventas',money.format(summary.grossSales)],
-    ['IVA ventas',money.format(summary.salesVat)],
-    ['Ventas sin IVA',money.format(summary.netSales)],
-    ['Pedidos',integer.format(summary.orders)],
-    ['Pedidos B2B',integer.format(summary.businessOrders||0)],
-    ['Unidades vendidas',integer.format(summary.units)],
-    ['Tarifas Amazon sin IVA',money.format(summary.amazonFees)],
-    ['Publicidad',money.format(summary.adsCost)],
-    ['Reembolsos',money.format(summary.refunds)],
-    ['Coste producto',money.format(summary.productCost)],
-    ['Coste envíos FBM',money.format(summary.fbmShippingCost)],
-    ['Ganancia neta',money.format(summary.netProfit??0)],
-    ['Margen neto',summary.marginPct==null?'—':`${summary.marginPct.toFixed(1)} %`],
+    {label:'Ventas',value:money.format(summary.grossSales)},
+    {label:'IVA ventas',value:money.format(summary.salesVat)},
+    {label:'Ventas sin IVA',value:money.format(summary.netSales)},
+    {label:'Pedidos',value:integer.format(summary.orders)},
+    {label:'Pedidos B2B',value:integer.format(summary.businessOrders||0)},
+    {label:'Unidades vendidas',value:integer.format(summary.units)},
+    {label:'Tarifas Amazon sin IVA',value:money.format(summary.amazonFees)},
+    {label:'Publicidad',value:money.format(summary.adsCost)},
+    {label:'Reembolsos',value:money.format(summary.refunds),note:detail?integer.format(detail.refundTransactions)+' operaciones · '+integer.format(detail.refundOrders)+' pedidos':undefined},
+    {label:'Coste producto',value:money.format(summary.productCost)},
+    {label:'Coste envíos FBM',value:money.format(summary.fbmShippingCost)},
+    {label:'Ganancia neta',value:money.format(summary.netProfit??0),note:!summary.profitComplete?'Provisional':undefined},
+    {label:'Margen neto',value:summary.marginPct==null?'—':summary.marginPct.toFixed(1)+' %',note:!summary.profitComplete?'Provisional':undefined},
   ];
 
   return <div className="amazonSummary">
     {error&&<div className="card amazonQueryError"><span>{error}</span><button className="secondary" onClick={()=>setRetryToken(value=>value+1)}><RefreshCw size={15}/> Reintentar</button></div>}
     <AmazonCompleteness data={summary}/>
-    <div className="amazonKpiGrid">{cards.map(([label,value])=><article className="card amazonKpiCard" key={label}><span>{label}</span><strong>{value}</strong>{(label==='Ganancia neta'||label==='Margen neto')&&!summary.profitComplete&&<small>Provisional</small>}</article>)}</div>
+    <div className="amazonKpiGrid">{cards.map(card=><article className="card amazonKpiCard" key={card.label}><span>{card.label}</span><strong>{card.value}</strong>{card.note&&<small>{card.note}</small>}</article>)}</div>
+    <button className="amazonMoreButton" onClick={()=>setDetailsOpen(true)}>Más detalles <ChevronRight size={15}/></button>
 
     <section className="card amazonChartCard">
       <div className="amazonCardHeading"><div><span className="amazonSectionLabel">EVOLUCIÓN</span><strong>Ventas y ganancia neta</strong></div><span className="amazonCountBadge">{grain==='day'?'Diario':'Mensual'}</span></div>
