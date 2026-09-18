@@ -50,14 +50,14 @@ export function sanitizeDatabaseSingleLine(value: string | null | undefined) {
 }
 
 export function sanitizeDatabaseValue<T>(value: T): T {
-  if (typeof value === 'string') return sanitizeDatabaseText(value) as T;
-  if (Array.isArray(value)) return value.map(item => sanitizeDatabaseValue(item)) as T;
+  if (typeof value === 'string') return sanitizeDatabaseText(value) as unknown as T;
+  if (Array.isArray(value)) return value.map(item => sanitizeDatabaseValue(item)) as unknown as T;
   if (value && typeof value === 'object') {
     const cleaned = Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
         .map(([key, item]) => [key, sanitizeDatabaseValue(item)]),
     );
-    return cleaned as T;
+    return cleaned as unknown as T;
   }
   return value;
 }
