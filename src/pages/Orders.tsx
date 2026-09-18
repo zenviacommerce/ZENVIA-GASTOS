@@ -254,12 +254,12 @@ export function Orders(){
   const handleBlob=async(blob:Blob,order:FulfillmentOrder,mode:'print'|'download')=>{if(mode==='download'){downloadLabel(blob,`${labelPdfBaseName(order)}.pdf`);return}if(printer){try{await printLabelWithClient(blob,printer);showSuccess('Etiqueta enviada a la impresora.');return}catch{/* PDF */}}openLabelForPrint(blob)};
   const createLabel=async(option:ShippingOption|null)=>{if(!labelOrder)return;const order=labelOrder;setBusyOrder(order.id);setLabelOrder(null);try{const result=await createOrderLabel(order.id,option),blob=labelBlob(result);const freshOrders=await listFulfillmentOrders();const fresh=freshOrders.find(item=>item.id===order.id)||order;setOrders(freshOrders);setSelected(fresh);downloadLabel(blob,`${labelPdfBaseName(fresh)}.pdf`);showSuccess(`Etiqueta creada y descargada${result.trackingNumber?` · ${result.trackingNumber}`:''}.`)}catch(e){showError(errorMessage(e,'No se pudo crear la etiqueta.'))}finally{setBusyOrder(null)}};
   const existingLabel=async(order:FulfillmentOrder,mode:'print'|'download')=>{setBusyOrder(order.id);try{const result=await fetchOrderLabel(order.id);await handleBlob(labelBlob(result),order,mode)}catch(e){showError(errorMessage(e,'No se pudo recuperar la etiqueta.'))}finally{setBusyOrder(null)}};
-  const generatePendingLabels=async()=>{
-    if(!pendingOrders.length){showSuccess('No hay pedidos pendientes en el periodo seleccionado.');return;}
-    setBulkGenerating(true);setBulkProgress(`0/${pendingOrders.length}`);setError('');
+  const generateLabels=async(targets:FulfillmentOrder[],scope:'pendientes'|'seleccionadas')=>{
+    if(!targets.length){showSuccess(scope==='seleccionadas'?'No hay pedidos seleccionados que admitan etiqueta.':'No hay pedidos pendientes en el periodo seleccionado.');return;}
+    setBulkGenerating(true);setBulkProgress(`0/${targets.length}`);setError('');
     const zip=new JSZip(),usedNames=new Set<string>(),failed:string[]=[];
     let processed=0,generated=0;
-    for(const order of pendingOrders){
+    for(const order of targets){
       try{
         const local=validateOrderForCarrier(order);if(local.blocking)throw new Error(local.issues[0]?.message||'El pedido necesita revisión antes de generar la etiqueta.');
         const shipping=await getShippingOptions(order.id);
@@ -269,16 +269,18 @@ export function Orders(){
         zip.file(uniqueLabelPdfFilename(order,usedNames),result.base64,{base64:true});
         generated+=1;
       }catch(e){failed.push(`${order.orderNumber||order.orderId||order.id}: ${errorMessage(e,'Error al generar etiqueta')}`)}
-      finally{processed+=1;setBulkProgress(`${processed}/${pendingOrders.length}`)}
+      finally{processed+=1;setBulkProgress(`${processed}/${targets.length}`)}
     }
     try{
-      if(generated){const blob=await zip.generateAsync({type:'blob'});downloadBlob(blob,`etiquetas_pendientes_${iso(new Date())}.zip`)}
-      const freshOrders=await listFulfillmentOrders();setOrders(freshOrders);setSelected(current=>current?freshOrders.find(item=>item.id===current.id)||null:null);
+      if(generated){const blob=await zip.generateAsync({type:'blob'});downloadBlob(blob,`etiquetas_${scope}_${iso(new Date())}.zip`)}
+      const freshOrders=await listFulfillmentOrders();setOrders(freshOrders);setCheckedIds(new Set());setSelected(current=>current?freshOrders.find(item=>item.id===current.id)||null:null);
       if(failed.length){const detail=failed.slice(0,3).join(' · ');const message=`${generated} etiquetas generadas. ${failed.length} no se pudieron generar${detail?`: ${detail}`:''}`;setError(message);showError(message)}
       else showSuccess(`${generated} etiquetas generadas y descargadas en un ZIP.`);
     }catch(e){const message=errorMessage(e,'Las etiquetas se generaron, pero no se pudo preparar el ZIP.');setError(message);showError(message)}
     finally{setBulkGenerating(false);setBulkProgress('')}
   };
+  const generatePendingLabels=()=>generateLabels(pendingOrders,'pendientes');
+  const generateSelectedLabels=()=>generateLabels(selectedOrders,'seleccionadas');
   const detectPrinters=async()=>{setPrinterChecking(true);try{const found=await listLocalPrinters();setPrinters(found);const chosen=printer||found.find(item=>item.default)?.id||found[0]?.id||'';setPrinter(chosen);savePrinter(chosen);showSuccess(found.length?`${found.length} impresora${found.length===1?'':'s'} detectada${found.length===1?'':'s'}.`:'No se han encontrado impresoras.')}catch{setPrinters([]);showError('No se detecta el Print Client de Sendcloud. Puedes imprimir desde PDF.')}finally{setPrinterChecking(false)}};
   const saveManual=async(value:any)=>{setManualSaving(true);try{const result=await createManualOrder(value);await refresh();setManualOpen(false);showSuccess(`Pedido ${result.orderNumber} creado en ZENVIA y Sendcloud.`)}catch(e){showError(errorMessage(e,'No se pudo crear el pedido manual.'))}finally{setManualSaving(false)}};
   const saveEdit=async(value:OrderUpdateInput)=>{if(!editOrder)return;setEditSaving(true);try{await updateFulfillmentOrder(editOrder.id,value);const freshOrders=await listFulfillmentOrders();setOrders(freshOrders);const fresh=freshOrders.find(item=>item.id===editOrder.id)||editOrder;setSelected(fresh);setEditValidationIssues([]);setEditOrder(null);showSuccess('Pedido actualizado en ZENVIA y Sendcloud.')}catch(e){showError(errorMessage(e,'No se pudo actualizar el pedido.'))}finally{setEditSaving(false)}};
