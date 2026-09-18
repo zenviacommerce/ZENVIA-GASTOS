@@ -25,3 +25,11 @@
 .amazonProductThumbPlaceholder{display:grid;place-items:center;color:#94a3b8;background:#f8fafc}
 [data-theme='dark'] .amazonProductThumb{border-color:#334155;background:#0f172a}
 [data-theme='dark'] .amazonProductThumbPlaceholder{color:#64748b}
+
+.amazonRefreshView{display:inline-flex;align-items:center;gap:7px}
+.amazonQueryError{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:12px;font-size:12px}
+.amazonQueryError>span{min-width:0;overflow-wrap:anywhere}
+.amazonQueryError button{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px}
+.amazonQueryErrorInline{margin:0 0 12px}
+[data-theme='dark'] .amazonQueryError{background:#3f1117;border-color:#7f1d1d;color:#fca5a5}
+@media(max-width:520px){.amazonRefreshView{grid-column:1/-1;justify-content:center}.amazonQueryError{align-items:stretch;flex-direction:column}.amazonQueryError button{justify-content:center}}
