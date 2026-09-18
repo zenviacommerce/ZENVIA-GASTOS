@@ -69,13 +69,17 @@ export function extractSupplierV2(lines: string[], fullText: string): string {
 
   const ignored = /factura|invoice|fecha|date|cif|nif|vat|iva|total|base|cliente|customer|direcci[oó]n|tel[eé]fono|telf\.?|fax|mail|email|p[aá]gina|www\.|zenvia commerce|medio ambiente|comprometidos|cordial saludo|atentamente/i;
   const address = /\b(avda\.?|avenida|calle|c\/|ctra\.?|carretera|pol[ií]gono|p\.?\s*i\.?|nave|plaza|camino|c\.p\.?|cp)\b/i;
-  const candidate = lines.slice(0, 30).map(compact).find(value =>
-    value.length >= 4 && value.length <= 90
-    && /[A-Za-zÁÉÍÓÚÑáéíóúñ]/.test(value)
-    && !ignored.test(value)
-    && !address.test(value)
-    && !/^\d[\d\s,./-]+$/.test(value)
-  );
+  const candidate = lines.slice(0, 30).map(compact).find(value => {
+    const letters=(value.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g)||[]).length;
+    const digits=(value.match(/\d/g)||[]).length;
+    return value.length >= 4 && value.length <= 90
+      && letters >= 3
+      && digits <= Math.max(6,Math.round(letters*.8))
+      && !/\d{8,}/.test(value)
+      && !ignored.test(value)
+      && !address.test(value)
+      && !/^\d[\d\s,./-]+$/.test(value);
+  });
   return candidate ? normalizeSupplierCandidate(candidate, fullText) : '';
 }
 
