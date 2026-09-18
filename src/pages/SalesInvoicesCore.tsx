@@ -238,19 +238,20 @@ export function SalesInvoices({
     if(!window.confirm(`¿Emitir ${issuableSelected.length} factura${issuableSelected.length===1?'':'s'} seleccionada${issuableSelected.length===1?'':'s'}?${extra}`))return;
     setBulkIssuing(true);setError('');
     const failed:string[]=[];
-    for(const invoice of issuableSelected){
-      try{await issueSalesInvoice(invoice.id);}
-      catch(e){failed.push(`${invoice.invoiceNumber||invoice.clientName}: ${errorMessage(e,'No se pudo emitir')}`);}
-    }
-    onSelectedIdsChange?.([]);
-    await refresh();
-    setBulkIssuing(false);
-    const issued=issuableSelected.length-failed.length;
-    const successMessage=issued?`${issued} factura${issued===1?' emitida':'s emitidas'} correctamente.`:'';
-    const failures:string[]=[];
-    if(failed.length)failures.push(`${failed.length} factura${failed.length===1?' no se pudo emitir':'s no se pudieron emitir'}. ${failed.slice(0,3).join(' · ')}`);
-    if(blocked)failures.push(`${blocked} factura${blocked===1?' no estaba':'s no estaban'} en borrador y se ${blocked===1?'ha':'han'} mantenido sin cambios.`);
-    showOperationResult(successMessage,failures.join(' '));
+    try{
+      for(const invoice of issuableSelected){
+        try{await issueSalesInvoice(invoice.id);}
+        catch(e){failed.push(`${invoice.invoiceNumber||invoice.clientName}: ${errorMessage(e,'No se pudo emitir')}`);}
+      }
+      onSelectedIdsChange?.([]);
+      await refresh();
+      const issued=issuableSelected.length-failed.length;
+      const successMessage=issued?`${issued} factura${issued===1?' emitida':'s emitidas'} correctamente.`:'';
+      const failures:string[]=[];
+      if(failed.length)failures.push(`${failed.length} factura${failed.length===1?' no se pudo emitir':'s no se pudieron emitir'}. ${failed.slice(0,3).join(' · ')}`);
+      if(blocked)failures.push(`${blocked} factura${blocked===1?' no estaba':'s no estaban'} en borrador y se ${blocked===1?'ha':'han'} mantenido sin cambios.`);
+      showOperationResult(successMessage,failures.join(' '));
+    }finally{setBulkIssuing(false);}
   };
   const removeSelected=async()=>{
     if(!selectedVisible.length)return;
