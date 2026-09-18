@@ -49,17 +49,16 @@ function extractSalesRecipient(text:string,filename:string,invoiceNumber:string)
   const marker=/\b(?:cliente|customer|destinatario|receptor|facturar\s+a|bill\s+to)\b/i;
   const markerIndex=rows.findIndex(line=>marker.test(line));
   const nearby=markerIndex>=0?rows.slice(markerIndex,Math.min(rows.length,markerIndex+10)):[];
-  let name='';
-  if(markerIndex>=0){
-    const sameLine=validClientName(rows[markerIndex].replace(/^.*?\b(?:cliente|customer|destinatario|receptor|facturar\s+a|bill\s+to)\b\s*[:.-]?\s*/i,''));
+  let name=clientNameFromFilename(filename,invoiceNumber);
+  if(!name&&markerIndex>=0){
+    const sameLine=validClientName(rows[markerIndex].replace(/^.*?\b(?:cliente|customer|destinatario|receptor|facturar\s+a|bill\s+to)\b\s*[:.-]?\s*/i,'').split(/\b(?:CIF|NIF|NIE|VAT|Email|Tel[eé]fono|Direcci[oó]n|Address)\b/i)[0]);
     if(sameLine)name=sameLine;
     if(!name){
       name=nearby.slice(1,5).map(line=>validClientName(line)).find(line=>line&&!/^(?:cif|nif|nie|vat|email|tel[eé]fono|direcci[oó]n|address|cp|c\.p\.)\b/i.test(line))||'';
     }
   }
-  if(!name)name=clientNameFromFilename(filename,invoiceNumber);
   if(!name)return null;
-  const scope=(nearby.length?nearby:rows.slice(0,40)).join(' ');
+  const scope=nearby.join(' ');
   const taxMatch=scope.match(/\b(?:CIF|NIF|NIE|VAT(?:\s*(?:ID|NO|NUMBER))?)\s*[:#-]?\s*(ES)?\s*([A-Z0-9][A-Z0-9 .-]{6,16})/i);
   const taxId=((taxMatch?.[1]||'')+(taxMatch?.[2]||'')).replace(/[^A-Z0-9]/gi,'').toUpperCase();
   const email=scope.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]||'';
