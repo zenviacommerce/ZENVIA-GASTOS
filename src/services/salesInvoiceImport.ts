@@ -37,8 +37,7 @@ function clientNameFromFilename(filename:string,invoiceNumber:string){
   let base=filename.replace(/\.[^.]+$/,'').trim();
   const invoice=invoiceNumber.trim();
   if(invoice){
-    const escaped=invoice.replace(/[.*+?^$()|[\]\\{}]/g,'\\function normalizedText(value:string){return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ');}
-');
+    const escaped=invoice.split('').map(char=>'\\.^$*+?()[]{}|'.includes(char)?'\\\\'+char:char).join('');
     base=base.replace(new RegExp('^'+escaped+'[_\\s-]*','i'),'');
   }
   base=base.replace(/^F\d{5,12}[_\s-]*/i,'').replace(/[_]+/g,' ').replace(/\s*-\s*/g,' ');
