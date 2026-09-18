@@ -5,7 +5,8 @@ import { Pagination } from '../components/Pagination';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { loadProductSalesMap } from '../services/productEditor';
 import { productMarginMetrics } from '../services/productMetrics';
-import { showError, showOperationResult, showSuccess } from '../services/toast';
+import { showError, showSuccess } from '../services/toast';
+import { confirmAction, openActionProcess } from '../services/actionDialog';
 import '../supplier-actions.css';
 
 const PAGE_SIZE=20;
@@ -68,7 +69,7 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
    return {count:products.length,withSale,avgMargin:margins.length?margins.reduce((a,b)=>a+b,0)/margins.length:null};
  },[products,salesMap]);
  const remove=async(product:Product)=>{
-   const confirmed=window.confirm(`¿Eliminar el producto "${product.name}"?\n\nLas facturas existentes no se borrarán; sus líneas quedarán sin producto asociado.`);
+   const confirmed=await confirmAction({title:'Eliminar producto',message:`Se eliminará “${product.name}”.`,confirmLabel:'Eliminar',tone:'danger',details:['Las facturas existentes no se borrarán; sus líneas quedarán sin producto asociado.']});
    if(!confirmed)return;
    setBusyId(product.id);setError('');
    try{await onDelete(product);setSelected(null);showSuccess('Producto eliminado correctamente.')}
@@ -77,19 +78,20 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
  };
  const removeSelected=async()=>{
    if(!selectedProducts.length)return;
-   if(!window.confirm(`¿Eliminar ${selectedProducts.length} producto${selectedProducts.length===1?'':'s'} seleccionado${selectedProducts.length===1?'':'s'}?\n\nLas líneas históricas de factura no se borrarán.`))return;
+   const confirmed=await confirmAction({title:`Eliminar ${selectedProducts.length} producto${selectedProducts.length===1?'':'s'}`,message:'Se eliminarán los productos seleccionados.',confirmLabel:'Eliminar seleccionados',tone:'danger',details:['Las líneas históricas de factura no se borrarán.']});
+   if(!confirmed)return;
    setBulkBusy(true);setError('');
-   const failed:string[]=[];
-   for(const product of selectedProducts){
-     try{await onDelete(product);}
-     catch(e){failed.push(`${product.name}: ${e instanceof Error?e.message:'No se pudo eliminar'}`);}
-   }
-   setCheckedIds(new Set());
-   setBulkBusy(false);
-   const removed=selectedProducts.length-failed.length;
-   const successMessage=removed?`${removed} producto${removed===1?' eliminado':'s eliminados'} correctamente.`:'';
-   const failureMessage=failed.length?`${failed.length} producto${failed.length===1?' no se pudo eliminar':'s no se pudieron eliminar'}. ${failed.slice(0,3).join(' · ')}`:'';
-   showOperationResult(successMessage,failureMessage);
+   const process=openActionProcess({title:'Eliminando productos',description:'El resultado permanecerá visible al terminar.',items:selectedProducts.map(product=>({id:product.id,label:product.name}))});
+   let removed=0;let failed=0;
+   try{
+     for(const product of selectedProducts){
+       process.setItem(product.id,'running','Eliminando…');
+       try{await onDelete(product);removed+=1;process.setItem(product.id,'success','Eliminado correctamente.');}
+       catch(e){failed+=1;process.setItem(product.id,'error',e instanceof Error?e.message:'No se pudo eliminar.');}
+     }
+     setCheckedIds(new Set());
+     process.finish(`${removed} eliminado${removed===1?'':'s'}.${failed?` ${failed} con error.`:''}`,failed?(removed?'warning':'error'):'success');
+   }finally{setBulkBusy(false);}
  };
  const edit=(product:Product)=>{setSelected(null);onEdit(product)};
  return (
