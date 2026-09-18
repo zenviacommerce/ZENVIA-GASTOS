@@ -195,6 +195,37 @@ function extractFiscalSummary(lines: string[]): FiscalSummary | null {
   return null;
 }
 
+function extractLooseFiscalSummary(lines:string[]):FiscalSummary|null{
+  for(let marker=lines.length-1;marker>=0;marker-=1){
+    const line=lines[marker];
+    if(!/base\s+imponible/i.test(line))continue;
+    if(!/(?:i\.?v\.?a\.?|iva|importe\s+i\.?v\.?a\.?|total\s+factura)/i.test(line))continue;
+
+    const window=lines.slice(marker,Math.min(lines.length,marker+6)).join(' ');
+    const tokens=[...window.matchAll(moneyToken)].map(match=>parseMoney(match[0])).filter(value=>value>0&&value<10_000_000);
+    if(tokens.length<3)continue;
+
+    for(let baseIndex=0;baseIndex<tokens.length;baseIndex+=1){
+      const subtotal=tokens[baseIndex];
+      if(subtotal<=0)continue;
+      for(let rateIndex=baseIndex+1;rateIndex<tokens.length;rateIndex+=1){
+        const rate=tokens[rateIndex];
+        if(rate<=0||rate>30)continue;
+        for(let vatIndex=rateIndex+1;vatIndex<tokens.length;vatIndex+=1){
+          const vat=tokens[vatIndex];
+          const expectedVat=Math.round(subtotal*rate)/100;
+          const vatTolerance=Math.max(.12,Math.abs(expectedVat)*.02);
+          if(Math.abs(vat-expectedVat)>vatTolerance)continue;
+          const expectedTotal=Math.round((subtotal+vat)*100)/100;
+          const total=tokens.slice(vatIndex+1).find(value=>Math.abs(value-expectedTotal)<=Math.max(.12,expectedTotal*.002))||expectedTotal;
+          return {subtotal,vat,total,rate};
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function normalizedCategoryName(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
@@ -259,7 +290,7 @@ export async function readInvoiceDocumentEnhanced(
   const repaired = repairInvoiceAmounts(base.subtotal, base.vat, base.withholding, base.total, textLines);
   const explicitSubtotal = explicitTaxBase(base.text);
   const reverseCharge = /inv\.?\s*pasivo|reverse\s+charge|inversi[oó]n\s+del\s+sujeto\s+pasivo/i.test(base.text);
-  const fiscalSummary = reverseCharge ? null : extractFiscalSummary(textLines);
+  const fiscalSummary = reverseCharge ? null : extractFiscalSummary(textLines) || extractLooseFiscalSummary(textLines);
   const effectiveSubtotal = retailCorrection
     ? retailCorrection.subtotal
     : fiscalSummary?.subtotal || explicitSubtotal || repaired.subtotal;
