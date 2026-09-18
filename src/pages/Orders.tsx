@@ -205,7 +205,7 @@ export function Orders(){
   const refreshTariffs=useCallback(async()=>{try{setTariffs(await listTransportTariffs())}catch{/* El precio real seleccionado seguirá disponible aunque no haya tarifa estimada. */}},[]);
   useEffect(()=>{(async()=>{setLoading(true);await Promise.all([refresh(),refreshStatus(),refreshTariffs()]);setLoading(false)})()},[refresh,refreshStatus,refreshTariffs]);
 
-  const sync=useCallback(async(silent=false,history=false)=>{if(syncing)return;setSyncing(true);if(!silent)setError('');try{const result=await syncSendcloudOrders(history);setStatus({configured:true,integrations:result.integrations});await refresh();if(history)markHistorySyncDone();if(!silent)showSuccess(`${result.synced} pedidos actualizados desde Sendcloud.`)}catch(e){const message=errorMessage(e,'No se pudieron actualizar los pedidos.');if(!silent){setError(message);showError(message)}}finally{setSyncing(false)}},[refresh,syncing]);
+  const sync=useCallback(async(silent=false,history=false)=>{if(syncing)return;setSyncing(true);if(!silent)setError('');try{const result=await syncSendcloudOrders(history);setStatus({configured:true,integrations:result.integrations});await refresh();if(history)markHistorySyncDone();if(!silent)showSuccess(`${result.synced} pedidos actualizados desde Sendcloud.`)}catch(e){const message=errorMessage(e,'No se pudieron actualizar los pedidos.');if(!silent)showError(message)}finally{setSyncing(false)}},[refresh,syncing]);
   useEffect(()=>{if(!status?.configured)return;void sync(true,shouldRunHistorySync());const timer=window.setInterval(()=>void sync(true,false),60000);return()=>window.clearInterval(timer)},[status?.configured]);
 
   const applyPreset=(preset:Exclude<PeriodPreset,'custom'>)=>{const range=currentRange(preset);setPeriod(preset);setDateFrom(range.from);setDateTo(range.to);};
@@ -274,9 +274,9 @@ export function Orders(){
     try{
       if(generated){const blob=await zip.generateAsync({type:'blob'});downloadBlob(blob,`etiquetas_${scope}_${iso(new Date())}.zip`)}
       const freshOrders=await listFulfillmentOrders();setOrders(freshOrders);setCheckedIds(new Set());setSelected(current=>current?freshOrders.find(item=>item.id===current.id)||null:null);
-      if(failed.length){const detail=failed.slice(0,3).join(' · ');const message=`${generated} etiquetas generadas. ${failed.length} no se pudieron generar${detail?`: ${detail}`:''}`;setError(message);showError(message)}
+      if(failed.length){const detail=failed.slice(0,3).join(' · ');showError(`${generated} etiquetas generadas. ${failed.length} no se pudieron generar${detail?`: ${detail}`:''}`)}
       else showSuccess(`${generated} etiquetas generadas y descargadas en un ZIP.`);
-    }catch(e){const message=errorMessage(e,'Las etiquetas se generaron, pero no se pudo preparar el ZIP.');setError(message);showError(message)}
+    }catch(e){showError(errorMessage(e,'Las etiquetas se generaron, pero no se pudo preparar el ZIP.'))}
     finally{setBulkGenerating(false);setBulkProgress('')}
   };
   const generatePendingLabels=()=>generateLabels(pendingOrders,'pendientes');
