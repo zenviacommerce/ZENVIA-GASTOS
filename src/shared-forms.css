@@ -24,4 +24,4 @@ html[data-theme="dark"] .searchableSelectSearch{background:#0f172a;border-color:
 html[data-theme="dark"] .searchableSelectOption:hover,html[data-theme="dark"] .searchableSelectOption.isActive{background:#172033}
 html[data-theme="dark"] .searchableSelectOption.isSelected{color:#5eead4}
 html[data-theme="dark"] .searchableSelectOption small,html[data-theme="dark"] .searchableSelectEmpty{color:#94a3b8}
-@media(max-width:700px){.formModal{width:min(100%,calc(100vw - 18px));max-height:92vh}.formGrid{grid-template-columns:1fr}.formSpan2{grid-column:auto}.formSection{padding:14px}.formModalActions{padding-bottom:max(2px,env(safe-area-inset-bottom))}}
+@media(max-width:700px){.formModal{width:100%;max-width:none;max-height:calc(100dvh - max(10px,env(safe-area-inset-top)));border-radius:20px 20px 0 0}.formGrid{grid-template-columns:1fr}.formSpan2{grid-column:auto}.formSection{padding:14px}.formModalActions{padding:12px 0 max(8px,env(safe-area-inset-bottom));background:var(--surface,#fff)}}
