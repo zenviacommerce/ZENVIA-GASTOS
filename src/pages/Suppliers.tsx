@@ -143,8 +143,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  };
  const edit=(supplier:Supplier)=>{setSelected(null);onEdit(supplier)};
 
- return (
-  <div className="page masterPage">
+ return <div className="page masterPage">
     <div className="pageHead">
       <div><div className="eyebrow">MAESTRO</div><h1>Proveedores</h1><p>Directorio de proveedores, gasto y actividad de compra por periodo.</p></div>
       <button className="primary" onClick={onAdd}>+ Proveedor</button>
@@ -183,8 +182,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
       {filtered.length?(
         <table className="masterTable">
           <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllSuppliers} label={allFilteredSelected?'Deseleccionar proveedores visibles':'Seleccionar proveedores visibles'}/></th><th>Proveedor</th><th>CIF/VAT</th><th>Tipo</th><th>Contacto</th><th className="right">Facturas</th><th className="right">Gasto periodo</th><th>Última factura</th><th></th></tr></thead>
-          <tbody>{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return (
-            <tr className={`clickableRow ${checkedIds.has(s.id)?'bulkSelectedRow':''}`} key={s.id} onClick={()=>setSelected(s)}>
+          <tbody>{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <tr className={`clickableRow ${checkedIds.has(s.id)?'bulkSelectedRow':''}`} key={s.id} onClick={()=>setSelected(s)}>
               <td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(s.id)} onChange={checked=>toggleSupplier(s.id,checked)} label={`Seleccionar ${s.name}`}/></td>
               <td><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)}</small></div></div></td>
               <td>{s.taxId||<span className="muted">Pendiente</span>}</td>
@@ -194,30 +192,26 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
               <td className="right"><strong>{money(metric.total)}</strong></td>
               <td>{dateLabel(metric.lastDate)}</td>
               <td className="right"><ChevronRight size={17}/></td>
-            </tr>
-          )})}</tbody>
+            </tr>})}</tbody>
         </table>
       ):<div className="emptyState large">No hay proveedores para los filtros seleccionados.</div>}
     </section>
 
     {filtered.length>0&&(
       <div className="masterMobileList">
-        {paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return (
-          <div className={`bulkMobileSelectableRow ${checkedIds.has(s.id)?'selected':''}`} key={s.id}>
+        {paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <div className={`bulkMobileSelectableRow ${checkedIds.has(s.id)?'selected':''}`} key={s.id}>
             <BulkSelectCheckbox checked={checkedIds.has(s.id)} onChange={checked=>toggleSupplier(s.id,checked)} label={`Seleccionar ${s.name}`}/>
             <button className="card masterMobileRow" onClick={()=>setSelected(s)}>
               <div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)} · {s.taxId||'CIF pendiente'}</small></div></div>
               <div className="masterMobileAmounts"><span>Facturas <strong>{metric.count}</strong></span><span>Gasto periodo <strong>{money(metric.total)}</strong></span></div>
               <ChevronRight size={18}/>
             </button>
-          </div>
-        )})}
+          </div>})}
       </div>
     )}
 
     {filtered.length>0&&<Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
     {!suppliers.length&&<div className="card emptyState large">Los proveedores también se crearán automáticamente al registrar facturas nuevas.</div>}
     {selected&&<SupplierDrawer supplier={selected} metric={metrics.get(selected.id)||{count:0,total:0,lastDate:null,recent:[]}} period={periodLabel} onClose={()=>setSelected(null)} onEdit={()=>edit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>}
-  </div>
- );
+  </div>;
 }
