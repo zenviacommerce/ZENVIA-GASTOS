@@ -26,10 +26,10 @@ export function UploadInvoiceModal({open,onClose,onSave,categories,existingInvoi
   },[open]);
   if(!open) return null;
 
-  const runReader = async (prepared: File) => {
+  const runReader = async (prepared: File, analysisFile: File = prepared) => {
     setReading(true);setReaderBlocked(false);setReaderMessage('Analizando factura…');setCandidate(null);
     try {
-      const preparedCandidate=await prepareInvoiceCandidate(prepared,categories,setReaderMessage);
+      const preparedCandidate=await prepareInvoiceCandidate(prepared,categories,setReaderMessage,analysisFile);
       const result=classifyInvoiceCandidate(preparedCandidate,existingInvoices);
       setCandidate(result);
       const percent=Math.round(result.confidence*100);
@@ -66,10 +66,12 @@ export function UploadInvoiceModal({open,onClose,onSave,categories,existingInvoi
     if(!files.length)return;
     setError('');setReaderBlocked(false);setStatus('Preparando documento…');
     try {
-      const prepared=files.every(f=>f.type.startsWith('image/'))?await imageFilesToPdf(files):files[0];
+      const allImages=files.every(f=>f.type.startsWith('image/'));
+      const prepared=allImages?await imageFilesToPdf(files):files[0];
+      const analysisFile=allImages&&files.length===1?files[0]:prepared;
       setFile(prepared);setSource(nextSource);
-      setStatus(nextSource==='camera'?`Escaneo convertido a PDF (${files.length} página${files.length>1?'s':''}).`:'Documento listo.');
-      await runReader(prepared);
+      setStatus(nextSource==='camera'?`Escaneo preparado (${files.length} página${files.length>1?'s':''}) · lectura sobre imagen original.`:'Documento listo.');
+      await runReader(prepared,analysisFile);
     } catch(e){setError(e instanceof Error?e.message:'No se pudo procesar el archivo.');}
   };
 
