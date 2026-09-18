@@ -115,6 +115,69 @@ function nearestTaxRate(subtotal:number,vat:number){
   return Math.abs(nearest-raw)<=1?nearest:0;
 }
 
+function parseSalesNumber(value:string|undefined|null){
+  if(!value)return 0;
+  const cleaned=value.replace(/[^\d,.-]/g,'');
+  if(!cleaned)return 0;
+  const comma=cleaned.lastIndexOf(',');
+  const dot=cleaned.lastIndexOf('.');
+  const normalized=comma>dot?cleaned.replace(/\./g,'').replace(',','.'):dot>comma?cleaned.replace(/,/g,''):cleaned;
+  const parsed=Number(normalized);
+  return Number.isFinite(parsed)?parsed:0;
+}
+
+function salesMoneyValues(line:string){
+  return [...line.matchAll(/-?\d{1,3}(?:\.\d{3})*,\d{2,6}|-?\d+\.\d{2,6}/g)].map(match=>parseSalesNumber(match[0]));
+}
+
+function extractSalesFiscalTotals(text:string){
+  const rows=text.split(/\r?\n/).map(compact).filter(Boolean);
+  let subtotal=0,vat=0,total=0;
+  for(const row of rows){
+    const values=salesMoneyValues(row);
+    if(!values.length)continue;
+    if(!subtotal&&/\bbase\s+imponible\b/i.test(row))subtotal=values.at(-1)||0;
+    else if(!vat&&/^\s*iva\b/i.test(row)&&!/base\s+imponible/i.test(row))vat=values.at(-1)||0;
+    else if(!total&&/^\s*total\b/i.test(row)&&!/subtotal|base\s+imponible/i.test(row))total=values.at(-1)||0;
+  }
+  if(subtotal>0&&total>0){
+    const expected=Math.round((subtotal+vat)*100)/100;
+    if(Math.abs(expected-total)<=Math.max(.03,total*.002))return {subtotal,vat,total};
+  }
+  return null;
+}
+
+function extractSalesConceptLines(text:string,fallbackTaxRate:number):SalesInvoiceLine[]{
+  const rows=text.split(/\r?\n/).map(compact).filter(Boolean);
+  const headerIndex=rows.findIndex(row=>/\bconceptos?\b/i.test(row)&&/\bcant\.?\b/i.test(row)&&/precio\s+uni/i.test(row)&&/\btotal\b/i.test(row));
+  if(headerIndex<0)return [];
+  const result:SalesInvoiceLine[]=[];
+  for(const row of rows.slice(headerIndex+1)){
+    if(/\bbase\s+imponible\b|^\s*iva\b|^\s*total\b/i.test(row))break;
+    const match=row.match(/^(.+?)\s+(\d+(?:[.,]\d+)?)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2,6}|-?\d+[.,]\d{2,6})\s*€?\s+(\d{1,2}(?:[.,]\d+)?)\s*%\s+(-?\d{1,3}(?:\.\d{3})*,\d{2,6}|-?\d+[.,]\d{2,6})\s*€?$/i);
+    if(!match)continue;
+    const quantity=parseSalesNumber(match[2]);
+    const unitPrice=parseSalesNumber(match[3]);
+    const taxRate=parseSalesNumber(match[4])||fallbackTaxRate;
+    const lineTotal=parseSalesNumber(match[5]);
+    if(quantity<=0||unitPrice<0||lineTotal<=0)continue;
+    const expectedGross=Math.round(quantity*unitPrice*(1+taxRate/100)*100)/100;
+    if(Math.abs(expectedGross-lineTotal)>Math.max(.05,lineTotal*.01))continue;
+    result.push({position:result.length+1,description:compact(match[1]).slice(0,250),quantity,unit:'ud',unitPrice,discountPercent:0,taxRate,productId:null,lineTotal});
+  }
+  return result;
+}
+
+function reconcileSalesLines(lines:SalesInvoiceLine[],subtotal:number,vat:number,invoiceNumber:string){
+  if(!subtotal||subtotal<=0)return lines;
+  const lineSubtotal=lines.reduce((sum,line)=>sum+line.quantity*line.unitPrice*(1-(line.discountPercent||0)/100),0);
+  const tolerance=Math.max(.08,subtotal*.01);
+  if(lines.length&&Math.abs(lineSubtotal-subtotal)<=tolerance)return lines;
+  const taxRate=nearestTaxRate(subtotal,vat);
+  const description=lines.find(line=>line.description.trim())?.description||`Conceptos según factura ${invoiceNumber||'importada'}`;
+  return [{position:1,description,quantity:1,unit:'ud',unitPrice:subtotal,discountPercent:0,taxRate,productId:null}];
+}
+
 function salesLineFromRead(line:any,index:number,fallbackTaxRate:number):SalesInvoiceLine{
   const quantity=Number(line?.quantity)>0?Number(line.quantity):1;
   const taxRate=Number.isFinite(Number(line?.taxRate))?Number(line.taxRate):fallbackTaxRate;
@@ -126,17 +189,23 @@ function salesLineFromRead(line:any,index:number,fallbackTaxRate:number):SalesIn
 
 export async function prepareSalesInvoiceImportCandidate(file:File,clients:Client[]):Promise<SalesInvoiceImportCandidate>{
   const read=await readInvoiceDocumentEnhanced(file,[]);
+  const fiscal=extractSalesFiscalTotals(read.text);
+  const subtotal=fiscal?.subtotal||read.subtotal;
+  const vat=fiscal?.vat??read.vat;
+  const total=fiscal?.total||read.total;
   const proposedClient=extractSalesRecipient(read.text,file.name,read.invoiceNumber||'');
   const matched=(proposedClient&&matchClientIdentity(proposedClient,clients))||matchSalesInvoiceClient(read.text,clients);
-  const fallbackTaxRate=nearestTaxRate(read.subtotal,read.vat);
-  let lines=(read.lines||[]).map((line,index)=>salesLineFromRead(line,index,fallbackTaxRate));
-  if(!lines.length&&read.subtotal>0)lines=[{position:1,description:'Concepto importado — revisar descripción',quantity:1,unit:'ud',unitPrice:read.subtotal,discountPercent:0,taxRate:fallbackTaxRate,productId:null}];
+  const fallbackTaxRate=nearestTaxRate(subtotal,vat);
+  const exactLines=extractSalesConceptLines(read.text,fallbackTaxRate);
+  let lines=exactLines.length?exactLines:(read.lines||[]).map((line,index)=>salesLineFromRead(line,index,fallbackTaxRate));
+  lines=reconcileSalesLines(lines,subtotal,vat,read.invoiceNumber||'');
+  if(!lines.length&&subtotal>0)lines=[{position:1,description:'Concepto importado — revisar descripción',quantity:1,unit:'ud',unitPrice:subtotal,discountPercent:0,taxRate:fallbackTaxRate,productId:null}];
   const reasons:string[]=[];
   if(!matched&&!proposedClient)reasons.push('No se ha podido identificar el cliente');
   if(!read.invoiceNumber)reasons.push('Revisa el número de factura');
   if(!read.invoiceDate)reasons.push('Revisa la fecha');
   if(!lines.length)reasons.push('Añade al menos una línea');
-  return {id:crypto.randomUUID(),file,status:'needs_review',clientId:matched?.id||'',proposedClient:matched?null:proposedClient,invoiceNumber:read.invoiceNumber||'',issueDate:read.invoiceDate||'',seriesId:'',taxRegistrationId:null,paymentMethod:'',notes:`Importada desde ${file.name}`,lines,subtotal:read.subtotal,taxAmount:read.vat,totalAmount:read.total,confidence:read.confidence,text:read.text,reviewReason:reasons.length?reasons.join(' · '):matched?'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.':proposedClient?`Se creará automáticamente el cliente ${proposedClient.name}. Revisa los datos antes de guardar.`:'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.'};
+  return {id:crypto.randomUUID(),file,status:'needs_review',clientId:matched?.id||'',proposedClient:matched?null:proposedClient,invoiceNumber:read.invoiceNumber||'',issueDate:read.invoiceDate||'',seriesId:'',taxRegistrationId:null,paymentMethod:'',notes:`Importada desde ${file.name}`,lines,subtotal,taxAmount:vat,totalAmount:total,confidence:read.confidence,text:read.text,reviewReason:reasons.length?reasons.join(' · '):matched?'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.':proposedClient?`Se creará automáticamente el cliente ${proposedClient.name}. Revisa los datos antes de guardar.`:'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.'};
 }
 
 export function recalculateSalesImportCandidate(candidate:SalesInvoiceImportCandidate){
