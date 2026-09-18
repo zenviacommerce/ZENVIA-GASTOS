@@ -214,6 +214,7 @@ export function SalesInvoices({
   const refresh=async()=>{setLoading(true);try{await ensureSalesSeries(new Date().getFullYear());const [nextInvoices,nextClients,nextSettings,nextProducts,nextBranding]=await Promise.all([loadSalesInvoices(),loadClients(),loadBusinessSettings(),loadBillableProducts(),loadCompanyBranding()]);setInvoices(nextInvoices);setClients(nextClients);setSettings(nextSettings);setProducts(nextProducts);setBranding(nextBranding);setDetail(current=>current?nextInvoices.find(item=>item.id===current.id)||null:null);setError('');}catch(e){setError(errorMessage(e,'No se pudo cargar la facturación.'));}finally{setLoading(false);}};
   useEffect(()=>{void refresh();},[]);
   const filtered=useMemo(()=>{const q=query.trim().toLowerCase();return invoices.filter(i=>(status==='all'||i.status===status)&&(!q||[i.invoiceNumber||'borrador',i.clientName,i.clientTaxId||'',i.issuerTaxId||''].some(v=>v.toLowerCase().includes(q))));},[invoices,query,status]);
+  useEffect(()=>{onSelectedIdsChange?.([]);},[query,status]);
   const selectedSet=useMemo(()=>new Set(selectedIds),[selectedIds]);
   const selectedVisible=filtered.filter(invoice=>selectedSet.has(invoice.id));
   const allVisibleSelected=filtered.length>0&&filtered.every(invoice=>selectedSet.has(invoice.id));
