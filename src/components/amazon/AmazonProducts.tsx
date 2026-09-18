@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown, ImageOff, Link2, RefreshCw, Search } from 'lucide-react';
 import { loadAmazonProductImages, loadAmazonProducts, type AmazonAnalyticsFilters, type AmazonPageResult, type AmazonProductAnalytics, type AmazonProductSort, type AmazonSortDirection } from '../../services/amazon';
 import { errorMessage } from '../../services/toast';
-import { AmazonMappingEditor } from './AmazonMappingEditor';
+import { AmazonMappingModal } from './AmazonMappingModal';
 
 const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'});
 const integer=new Intl.NumberFormat('es-ES',{maximumFractionDigits:0});
@@ -94,7 +94,7 @@ export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:
         </tbody>
       </table>
     </div>
-    {editing&&<div className="amazonInlineEditor"><AmazonMappingEditor sellerSku={editing} initialProductId={editingRow?.productId} initialFactor={editingRow?.consumptionFactor||1} allowDelete={Boolean(editingRow?.productId)} onSaved={()=>{setEditing(null);void refresh();}} onCancel={()=>setEditing(null)}/></div>}
+    {editing&&<AmazonMappingModal sellerSku={editing} asin={editingRow?.asin} imageUrl={editingRow?.asin?images[editingRow.asin]||null:null} initialProductId={editingRow?.productId} initialFactor={editingRow?.consumptionFactor||1} allowDelete={Boolean(editingRow?.productId)} onSaved={()=>{setEditing(null);void refresh();}} onClose={()=>setEditing(null)}/>}
     <div className="amazonPagination"><span>{data.total} productos · {Math.min((page-1)*pageSize+1,data.total)}–{Math.min(page*pageSize,data.total)}</span><div><button disabled={page<=1} onClick={()=>setPage(value=>value-1)}>Anterior</button><span>Página {page}</span><button disabled={page*pageSize>=data.total} onClick={()=>setPage(value=>value+1)}>Siguiente</button></div></div>
   </section>;
 }
