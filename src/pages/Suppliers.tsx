@@ -3,6 +3,7 @@ import { Building2, CalendarDays, ChevronRight, FileText, Globe, Mail, MapPin, P
 import { loadAppData } from '../services/repository';
 import type { Invoice, Supplier } from '../types';
 import { Pagination } from '../components/Pagination';
+import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import '../supplier-actions.css';
 
 const PAGE_SIZE=20;
@@ -73,6 +74,8 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  const [query,setQuery]=useState('');
  const [filter,setFilter]=useState<SupplierFilter>('all');
  const [selected,setSelected]=useState<Supplier|null>(null);
+ const [checkedIds,setCheckedIds]=useState<Set<string>>(()=>new Set());
+ const [bulkBusy,setBulkBusy]=useState(false);
  const [invoices,setInvoices]=useState<Invoice[]>([]);
  const [period,setPeriod]=useState<PeriodPreset>('quarter');
  const [dateFrom,setDateFrom]=useState(initialRange.from);
@@ -106,9 +109,13 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
    const matchesFilter=filter==='all'||s.supplierType===filter;
    return matchesQuery&&matchesFilter;
  })},[suppliers,query,filter]);
+ const selectedSuppliers=filtered.filter(supplier=>checkedIds.has(supplier.id));
+ const allFilteredSelected=filtered.length>0&&filtered.every(supplier=>checkedIds.has(supplier.id));
+ const toggleSupplier=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
+ const toggleAllSuppliers=(checked:boolean)=>setCheckedIds(checked?new Set(filtered.map(supplier=>supplier.id)):new Set());
  const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
  const paged=useMemo(()=>filtered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[filtered,page]);
- useEffect(()=>{setPage(1)},[query,filter,period,dateFrom,dateTo]);
+ useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,filter,period,dateFrom,dateTo]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  const totals=useMemo(()=>({spent:suppliers.reduce((sum,s)=>sum+(metrics.get(s.id)?.total||0),0),invoices:suppliers.reduce((sum,s)=>sum+(metrics.get(s.id)?.count||0),0),active:suppliers.filter(s=>(metrics.get(s.id)?.count||0)>0).length}),[suppliers,metrics]);
 
@@ -117,6 +124,20 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
    if(!confirmed)return;
    setBusyId(supplier.id);setError('');
    try{await onDelete(supplier);setSelected(null)}catch(e){setError(e instanceof Error?e.message:'No se pudo eliminar el proveedor.')}finally{setBusyId(null)}
+ };
+ const removeSelected=async()=>{
+   if(!selectedSuppliers.length)return;
+   if(!window.confirm(`¿Eliminar ${selectedSuppliers.length} proveedor${selectedSuppliers.length===1?'':'es'} seleccionado${selectedSuppliers.length===1?'':'s'}?\n\nLas facturas existentes no se borrarán.`))return;
+   setBulkBusy(true);setError('');
+   const failed:string[]=[];
+   for(const supplier of selectedSuppliers){
+     try{await onDelete(supplier);}
+     catch(e){failed.push(`${supplier.name}: ${e instanceof Error?e.message:'No se pudo eliminar'}`);}
+   }
+   setCheckedIds(new Set());
+   setBulkBusy(false);
+   const removed=selectedSuppliers.length-failed.length;
+   if(failed.length)setError(`${removed} eliminados · ${failed.length} con error: ${failed.slice(0,3).join(' · ')}`);
  };
  const edit=(supplier:Supplier)=>{setSelected(null);onEdit(supplier)};
 
@@ -130,9 +151,12 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
 
    <div className="stats masterStats"><div className="stat"><div className="statIcon"><Building2/></div><div><span>Proveedores con actividad</span><strong>{totals.active}</strong><small>de {suppliers.length} registrados · {periodLabel.toLowerCase()}</small></div></div><div className="stat"><div className="statIcon"><ShoppingCart/></div><div><span>Gasto del periodo</span><strong>{money(totals.spent)}</strong><small>{periodLabel}</small></div></div><div className="stat"><div className="statIcon"><FileText/></div><div><span>Facturas recibidas</span><strong>{totals.invoices}</strong><small>{periodLabel}</small></div></div></div>
    <div className="masterToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar proveedor, CIF, email, teléfono o dirección…"/></div><div className="masterFilters"><button className={filter==='all'?'active':''} onClick={()=>setFilter('all')}>Todos</button><button className={filter==='goods'?'active':''} onClick={()=>setFilter('goods')}>Mercancía</button><button className={filter==='service'?'active':''} onClick={()=>setFilter('service')}>Servicios</button><button className={filter==='both'?'active':''} onClick={()=>setFilter('both')}>Ambos</button><button className={filter==='unclassified'?'active':''} onClick={()=>setFilter('unclassified')}>Sin clasificar</button></div></div>
+   {filtered.length>0&&<BulkSelectionToolbar selectedCount={selectedSuppliers.length} totalCount={filtered.length} allSelected={allFilteredSelected} onToggleAll={toggleAllSuppliers} label="proveedores">
+     <button className="secondary dangerText" type="button" disabled={!selectedSuppliers.length||bulkBusy} onClick={()=>void removeSelected()}><Trash2 size={15}/> {bulkBusy?'Eliminando…':`Eliminar seleccionados (${selectedSuppliers.length})`}</button>
+   </BulkSelectionToolbar>
    {error&&<div className="errorBox supplierPageError">{error}</div>}
-   <section className="card tableCard masterTableCard">{filtered.length?<table className="masterTable"><thead><tr><th>Proveedor</th><th>CIF/VAT</th><th>Tipo</th><th>Contacto</th><th className="right">Facturas</th><th className="right">Gasto periodo</th><th>Última factura</th><th></th></tr></thead><tbody>{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <tr className="clickableRow" key={s.id} onClick={()=>setSelected(s)}><td><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)}</small></div></div></td><td>{s.taxId||<span className="muted">Pendiente</span>}</td><td><span className={`masterTypeTag ${s.supplierType}`}>{supplierTypeLabel(s.supplierType)}</span></td><td><div className="masterContactCell"><span>{s.email||'—'}</span><small>{s.phone||''}</small></div></td><td className="right"><strong>{metric.count}</strong></td><td className="right"><strong>{money(metric.total)}</strong></td><td>{dateLabel(metric.lastDate)}</td><td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay proveedores para los filtros seleccionados.</div>}</section>
-   {filtered.length>0&&<div className="masterMobileList">{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <button className="card masterMobileRow" key={s.id} onClick={()=>setSelected(s)}><div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)} · {s.taxId||'CIF pendiente'}</small></div></div><div className="masterMobileAmounts"><span>Facturas <strong>{metric.count}</strong></span><span>Gasto periodo <strong>{money(metric.total)}</strong></span></div><ChevronRight size={18}/></button>})}</div>}
+   <section className="card tableCard masterTableCard">{filtered.length?<table className="masterTable"><thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllSuppliers} label={allFilteredSelected?'Deseleccionar proveedores visibles':'Seleccionar proveedores visibles'}/></th><th>Proveedor</th><th>CIF/VAT</th><th>Tipo</th><th>Contacto</th><th className="right">Facturas</th><th className="right">Gasto periodo</th><th>Última factura</th><th></th></tr></thead><tbody>{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <tr className={`clickableRow ${checkedIds.has(s.id)?'bulkSelectedRow':''}`} key={s.id} onClick={()=>setSelected(s)}><td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(s.id)} onChange={checked=>toggleSupplier(s.id,checked)} label={`Seleccionar ${s.name}`}/></td><td><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)}</small></div></div></td><td>{s.taxId||<span className="muted">Pendiente</span>}</td><td><span className={`masterTypeTag ${s.supplierType}`}>{supplierTypeLabel(s.supplierType)}</span></td><td><div className="masterContactCell"><span>{s.email||'—'}</span><small>{s.phone||''}</small></div></td><td className="right"><strong>{metric.count}</strong></td><td className="right"><strong>{money(metric.total)}</strong></td><td>{dateLabel(metric.lastDate)}</td><td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay proveedores para los filtros seleccionados.</div>}</section>
+   {filtered.length>0&&<div className="masterMobileList">{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <div className={`bulkMobileSelectableRow ${checkedIds.has(s.id)?'selected':''}`} key={s.id}><BulkSelectCheckbox checked={checkedIds.has(s.id)} onChange={checked=>toggleSupplier(s.id,checked)} label={`Seleccionar ${s.name}`}/><button className="card masterMobileRow" onClick={()=>setSelected(s)}><div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)} · {s.taxId||'CIF pendiente'}</small></div></div><div className="masterMobileAmounts"><span>Facturas <strong>{metric.count}</strong></span><span>Gasto periodo <strong>{money(metric.total)}</strong></span></div><ChevronRight size={18}/></button></div>})}</div>}
    {filtered.length>0&&<Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
    {!suppliers.length&&<div className="card emptyState large">Los proveedores también se crearán automáticamente al registrar facturas nuevas.</div>}
    {selected&&<SupplierDrawer supplier={selected} metric={metrics.get(selected.id)||{count:0,total:0,lastDate:null,recent:[]}} period={periodLabel} onClose={()=>setSelected(null)} onEdit={()=>edit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>} 
