@@ -52,7 +52,7 @@ function ClientModal({open,client,onClose,onSaved}:{open:boolean;client:Client|n
       await onSaved();
       showSuccess(client?'Cliente actualizado correctamente.':'Cliente creado correctamente.');
       onClose();
-    }catch(e){const message=errorMessage(e,'No se pudo guardar el cliente.');setError(message);showError(message);}
+    }catch(e){setError(errorMessage(e,'No se pudo guardar el cliente.'));}
     finally{setBusy(false)}
   };
 
