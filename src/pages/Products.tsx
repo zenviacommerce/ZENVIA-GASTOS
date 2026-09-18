@@ -156,5 +156,6 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
       {shown.length>0&&<Pagination page={page} totalItems={shown.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
       {!products.length&&<div className="card emptyState large">Crea el primer producto. El mismo catálogo servirá para compras, costes y facturación de ventas.</div>}
       {selected&&<ProductDrawer product={selected} extra={salesMap.get(selected.id)} onClose={()=>setSelected(null)} onEdit={()=>edit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>}
-    </div>;
+    </div>
+ );
 }
