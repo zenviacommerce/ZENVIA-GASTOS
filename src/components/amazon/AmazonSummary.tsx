@@ -91,6 +91,61 @@ export function AmazonSummary({filters,onLoaded,refreshToken=0}:{filters:AmazonA
     <div className="amazonKpiGrid">{cards.map(card=><article className="card amazonKpiCard" key={card.label}><span>{card.label}</span><strong>{card.value}</strong>{card.note&&<small>{card.note}</small>}</article>)}</div>
     <button className="amazonMoreButton" onClick={()=>setDetailsOpen(true)}>Más detalles <ChevronRight size={15}/></button>
 
+    {detailsOpen&&<div className="amazonDetailsBackdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setDetailsOpen(false)}}>
+      <section className="amazonDetailsModal" role="dialog" aria-modal="true" aria-label="Detalle de Amazon">
+        <header className="amazonDetailsHead">
+          <div><span className="amazonSectionLabel">DETALLE DEL PERIODO</span><h3>Amazon · {dateRangeLabel(filters)}</h3><p>Desglose de los datos que ZENVIA está utilizando en el resumen.</p></div>
+          <button onClick={()=>setDetailsOpen(false)} aria-label="Cerrar"><X size={18}/></button>
+        </header>
+        <div className="amazonDetailsBody">
+          <section><h4>Ventas y actividad</h4>
+            <DetailRow label="Ventas" value={money.format(summary.grossSales)}/>
+            <DetailRow label="Ventas sin IVA" value={money.format(summary.netSales)}/>
+            <DetailRow label="IVA ventas" value={money.format(summary.salesVat)}/>
+            <DetailRow label="Pedidos únicos" value={integer.format(summary.orders)}/>
+            <DetailRow label="Líneas de pedido" value={detail?integer.format(detail.orderLines):'—'} note="Una misma orden puede contener varias líneas/SKU."/>
+            <DetailRow label="Pedidos B2B" value={integer.format(summary.businessOrders||0)}/>
+            <DetailRow label="Unidades vendidas" value={integer.format(summary.units)}/>
+            <DetailRow label="Promociones registradas" value={detail?money.format(-detail.promotionDiscounts):'—'}/>
+            <DetailRow label="Envío cobrado al cliente" value={detail?money.format(detail.shippingCharged):'—'} note="No es el coste logístico."/>
+          </section>
+          <section><h4>Tarifas Amazon</h4>
+            <DetailRow label="Tarifas Amazon sin IVA" value={money.format(summary.amazonFees)}/>
+            <DetailRow label="Comisiones" value={detail?money.format(detail.commissionFees):'—'}/>
+            <DetailRow label="Tarifas FBA" value={detail?money.format(detail.fbaFees):'—'}/>
+            <DetailRow label="Digital Services Fee" value={detail?money.format(detail.digitalServicesFees):'—'}/>
+            <DetailRow label="Almacenamiento" value={detail?money.format(detail.storageFees):'—'}/>
+            <DetailRow label="Otras tarifas Amazon" value={detail?money.format(detail.otherAmazonFees):'—'}/>
+            <DetailRow label="IVA soportado tarifas" value={money.format(summary.amazonFeeVat)}/>
+            <DetailRow label="Publicidad" value={money.format(summary.adsCost)}/>
+          </section>
+          <section><h4>Reembolsos</h4>
+            <DetailRow label="Operaciones de reembolso" value={detail?integer.format(detail.refundTransactions):'—'} note="Transacciones financieras únicas detectadas por Amazon."/>
+            <DetailRow label="Pedidos con reembolso" value={detail?integer.format(detail.refundOrders):'—'}/>
+            <DetailRow label="Impacto neto sin IVA" value={money.format(summary.refunds)}/>
+            <DetailRow label="Impacto bruto" value={detail?money.format(detail.refundGrossImpact):'—'}/>
+            <DetailRow label="IVA asociado" value={detail?money.format(detail.refundTaxImpact):'—'}/>
+          </section>
+          <section><h4>Costes y rentabilidad</h4>
+            <DetailRow label="Coste de producto" value={money.format(summary.productCost)} note={summary.unmappedUnits?integer.format(summary.unmappedUnits)+' uds. todavía sin coste vinculado.':undefined}/>
+            <DetailRow label="Coste envíos FBM" value={money.format(summary.fbmShippingCost)}/>
+            <DetailRow label="Ajustes Amazon" value={money.format(summary.amazonAdjustments)}/>
+            <DetailRow label="Ganancia neta" value={money.format(summary.netProfit??0)} note={!summary.profitComplete?'Provisional por datos pendientes.':undefined}/>
+            <DetailRow label="Margen neto" value={summary.marginPct==null?'—':summary.marginPct.toFixed(2)+' %'}/>
+          </section>
+          <section><h4>Calidad del dato</h4>
+            <DetailRow label="SKU sin vincular" value={integer.format(summary.unmappedSkuCount)}/>
+            <DetailRow label="Unidades sin vincular" value={integer.format(summary.unmappedUnits)}/>
+            <DetailRow label="Pedidos con IVA pendiente" value={integer.format(summary.missingVatOrderCount)}/>
+            <DetailRow label="FBM sin coste de envío" value={integer.format(summary.missingFbmShippingCostCount)}/>
+            <DetailRow label="Sincronizaciones en cola" value={integer.format(summary.syncQueued)}/>
+            <DetailRow label="Sincronizaciones ejecutándose" value={integer.format(summary.syncRunning)}/>
+            <DetailRow label="Sincronizaciones con error" value={integer.format(summary.syncFailed)}/>
+          </section>
+        </div>
+      </section>
+    </div>}
+
     <section className="card amazonChartCard">
       <div className="amazonCardHeading"><div><span className="amazonSectionLabel">EVOLUCIÓN</span><strong>Ventas y ganancia neta</strong></div><span className="amazonCountBadge">{grain==='day'?'Diario':'Mensual'}</span></div>
       <div className="amazonChart"><ResponsiveContainer width="100%" height="100%"><LineChart data={series} margin={{top:8,right:16,bottom:0,left:0}}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="period" tickFormatter={value=>String(value).slice(5)}/><YAxis tickFormatter={value=>`${Math.round(Number(value))}€`}/><Tooltip formatter={(value:any)=>money.format(Number(value))}/><Legend/><Line type="monotone" dataKey="netSales" name="Ventas sin IVA" stroke="currentColor" strokeWidth={2} dot={false}/><Line type="monotone" dataKey="netProfit" name="Ganancia neta" stroke="currentColor" strokeDasharray="6 4" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>
