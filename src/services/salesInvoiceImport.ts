@@ -1,5 +1,5 @@
 import { readInvoiceDocumentEnhanced } from './invoiceReaderEnhanced';
-import { addClient, createSalesInvoiceDraft, deleteClientIfUnused, loadBusinessSettings, loadClients, updateClient, type Client, type ClientInput, type SalesInvoiceDraftInput, type SalesInvoiceLine } from './sales';
+import { addClient, createSalesInvoiceDraft, deleteClientIfUnused, loadBusinessSettings, loadClients, updateClient, updateSalesInvoiceDraft, type Client, type ClientInput, type SalesInvoiceDraftInput, type SalesInvoiceLine } from './sales';
 import { updateSalesInvoiceNumber } from './salesInvoiceNumber';
 import { deleteSalesInvoiceDraftSafe } from './salesDraftDelete';
 import { extractInvoiceParty } from './invoicePartyExtractor';
@@ -26,6 +26,9 @@ export type SalesInvoiceImportCandidate={
   text:string;
   reviewReason?:string;
   error?:string;
+  existingInvoiceId?:string|null;
+  existingInvoiceNumber?:string|null;
+  existingClientId?:string|null;
 };
 
 function normalize(value:string|undefined|null){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');}
@@ -309,6 +312,18 @@ export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoic
     const lines=cleanImportLines(reviewed);
     if(!lines.length)throw new Error('No hay líneas válidas para guardar esta factura.');
     const payload:SalesInvoiceDraftInput={clientId,seriesId:reviewed.seriesId,taxRegistrationId:reviewed.taxRegistrationId||null,issueDate:reviewed.issueDate,paymentMethod:reviewed.paymentMethod||undefined,notes:reviewed.notes||undefined,lines};
+
+    if(reviewed.existingInvoiceId){
+      if(reviewed.existingInvoiceNumber&&reviewed.invoiceNumber.trim()!==reviewed.existingInvoiceNumber){
+        throw new Error('Para reparar un borrador importado conserva su número de factura.');
+      }
+      await updateSalesInvoiceDraft(reviewed.existingInvoiceId,payload);
+      if(reviewed.existingClientId&&reviewed.existingClientId!==clientId){
+        await deleteClientIfUnused(reviewed.existingClientId).catch(()=>{});
+      }
+      return reviewed.existingInvoiceId;
+    }
+
     const id=await createSalesInvoiceDraft(payload);
     try{await updateSalesInvoiceNumber(id,reviewed.invoiceNumber.trim());}
     catch(error){await deleteSalesInvoiceDraftSafe(id).catch(()=>{});throw error;}
