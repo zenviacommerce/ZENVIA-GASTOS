@@ -8,7 +8,8 @@ import { Pagination } from '../components/Pagination';
 import { StatCard } from '../components/StatCard';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { defaultInvoiceFilter, filterInvoices, periodLabel, safeExportLabel } from '../services/filters';
-import { errorMessage, showError, showOperationResult, showSuccess } from '../services/toast';
+import { errorMessage, showError, showSuccess } from '../services/toast';
+import { confirmAction, openActionProcess } from '../services/actionDialog';
 
 const PAGE_SIZE=20;
 const money=(value:number)=>`${value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €`;
@@ -47,26 +48,28 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
  const openFile=async(invoice:Invoice)=>{try{await onOpenFile(invoice)}catch(e){showError(e instanceof Error?e.message:'No se pudo abrir el documento.')}};
  const changeStatus=async(id:string,status:'pending'|'reviewed'|'accounted')=>{try{await onStatusChange(id,status);const labels={pending:'pendiente',reviewed:'revisada',accounted:'contabilizada'} as const;showSuccess(`Factura marcada como ${labels[status]}.`)}catch(e){showError(e instanceof Error?e.message:'No se pudo cambiar el estado de la factura.')}};
  const remove=async(invoice:Invoice)=>{
-   if(!window.confirm(`¿Eliminar la factura ${invoice.invoiceNumber==='—'?'seleccionada':invoice.invoiceNumber} de ${invoice.supplierName}? Esta acción no se puede deshacer.`)) return;
+   const confirmed=await confirmAction({title:'Eliminar factura de gasto',message:`Se eliminará ${invoice.invoiceNumber==='—'?'la factura seleccionada':invoice.invoiceNumber} de ${invoice.supplierName}.`,confirmLabel:'Eliminar',tone:'danger',details:['Esta acción no se puede deshacer.']});
+   if(!confirmed)return;
    setBusyId(invoice.id);
    try{await onDelete(invoice);if(selected?.id===invoice.id)setSelected(null);setCheckedIds(current=>{const next=new Set(current);next.delete(invoice.id);return next});showSuccess('Factura eliminada correctamente.')}catch(e){showError(e instanceof Error?e.message:'No se pudo eliminar la factura.')}finally{setBusyId(null)}
  };
  const removeSelected=async()=>{
    if(!selectedRows.length)return;
-   if(!window.confirm(`¿Eliminar ${selectedRows.length} factura${selectedRows.length===1?'':'s'} de gasto seleccionada${selectedRows.length===1?'':'s'}? Esta acción no se puede deshacer.`))return;
+   const confirmed=await confirmAction({title:`Eliminar ${selectedRows.length} factura${selectedRows.length===1?'':'s'} de gasto`,message:'Se eliminarán las facturas seleccionadas.',confirmLabel:'Eliminar seleccionadas',tone:'danger',details:['Esta acción no se puede deshacer.']});
+   if(!confirmed)return;
    setBulkDeleting(true);
-   const failed:string[]=[];
-   for(const invoice of selectedRows){
-     try{await onDelete(invoice);}
-     catch(e){failed.push(`${invoice.invoiceNumber==='—'?invoice.supplierName:invoice.invoiceNumber}: ${errorMessage(e,'No se pudo eliminar')}`);}
-   }
-   if(selected&&selectedRows.some(invoice=>invoice.id===selected.id))setSelected(null);
-   setCheckedIds(new Set());
-   setBulkDeleting(false);
-   const removed=selectedRows.length-failed.length;
-   const successMessage=removed?`${removed} factura${removed===1?' eliminada':'s eliminadas'} correctamente.`:'';
-   const failureMessage=failed.length?`${failed.length} factura${failed.length===1?' no se pudo eliminar':'s no se pudieron eliminar'}. ${failed.slice(0,3).join(' · ')}`:'';
-   showOperationResult(successMessage,failureMessage);
+   const process=openActionProcess({title:'Eliminando gastos',description:'El resultado permanecerá visible al terminar.',items:selectedRows.map(invoice=>({id:invoice.id,label:`${invoice.invoiceNumber==='—'?invoice.supplierName:invoice.invoiceNumber} · ${invoice.supplierName}`}))});
+   let removed=0;let failed=0;
+   try{
+     for(const invoice of selectedRows){
+       process.setItem(invoice.id,'running','Eliminando…');
+       try{await onDelete(invoice);removed+=1;process.setItem(invoice.id,'success','Eliminada correctamente.');}
+       catch(e){failed+=1;process.setItem(invoice.id,'error',errorMessage(e,'No se pudo eliminar.'));}
+     }
+     if(selected&&selectedRows.some(invoice=>invoice.id===selected.id))setSelected(null);
+     setCheckedIds(new Set());
+     process.finish(`${removed} eliminada${removed===1?'':'s'}.${failed?` ${failed} con error.`:''}`,failed?(removed?'warning':'error'):'success');
+   }finally{setBulkDeleting(false);}
  };
  const changeSupplier=async(invoice:Invoice,supplierId:string)=>{
    setBusyId(invoice.id);
