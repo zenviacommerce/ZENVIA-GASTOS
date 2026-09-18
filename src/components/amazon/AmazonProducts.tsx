@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, ImageOff, Link2, Search } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ImageOff, Link2, RefreshCw, Search } from 'lucide-react';
 import { loadAmazonProductImages, loadAmazonProducts, type AmazonAnalyticsFilters, type AmazonPageResult, type AmazonProductAnalytics, type AmazonProductSort, type AmazonSortDirection } from '../../services/amazon';
 import { errorMessage } from '../../services/toast';
 import { AmazonMappingEditor } from './AmazonMappingEditor';
@@ -26,7 +26,7 @@ function SortIcon({active,direction}:{active:boolean;direction:AmazonSortDirecti
   return direction==='asc'?<ArrowUp size={13}/>:<ArrowDown size={13}/>;
 }
 
-export function AmazonProducts({filters,embedded=false}:{filters:AmazonAnalyticsFilters;embedded?:boolean}){
+export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:AmazonAnalyticsFilters;embedded?:boolean;refreshToken?:number}){
   const [data,setData]=useState<AmazonPageResult<AmazonProductAnalytics>>({items:[],page:1,pageSize:50,total:0});
   const [search,setSearch]=useState('');
   const [page,setPage]=useState(1);
@@ -37,8 +37,8 @@ export function AmazonProducts({filters,embedded=false}:{filters:AmazonAnalytics
   const [images,setImages]=useState<Record<string,string>>({});
   const pageSize=50;
 
-  const refresh=()=>loadAmazonProducts(filters,search,page,pageSize,sortBy,sortDir).then(setData).catch(e=>setError(errorMessage(e,'No se pudieron cargar los productos.')));
-  useEffect(()=>{void refresh();},[filters.from,filters.to,filters.marketplaceIds.join(','),search,page,sortBy,sortDir]);
+  const refresh=()=>{setError('');return loadAmazonProducts(filters,search,page,pageSize,sortBy,sortDir).then(setData).catch(e=>setError(errorMessage(e,'No se pudieron cargar los productos.')));};
+  useEffect(()=>{void refresh();},[filters.from,filters.to,filters.marketplaceIds.join(','),search,page,sortBy,sortDir,refreshToken]);
   useEffect(()=>{const asins=data.items.map(row=>row.asin).filter((value):value is string=>Boolean(value));if(!asins.length){setImages({});return}void loadAmazonProductImages(asins).then(setImages).catch(()=>setImages({}));},[data.items]);
   const editingRow=editing?data.items.find(row=>row.sellerSku===editing):undefined;
 
@@ -57,7 +57,7 @@ export function AmazonProducts({filters,embedded=false}:{filters:AmazonAnalytics
       </div>
       <label className="amazonSearch"><Search size={16}/><input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="Buscar SKU, ASIN o producto"/></label>
     </div>
-    {error&&<p className="amazonError">{error}</p>}
+    {error&&<div className="amazonQueryError amazonQueryErrorInline"><span>{error}</span><button className="secondary" onClick={()=>void refresh()}><RefreshCw size={14}/> Reintentar</button></div>}
     <div className="amazonTableScroll">
       <table className="amazonTable amazonProductTable">
         <thead>
