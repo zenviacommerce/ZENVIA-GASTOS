@@ -89,17 +89,77 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
    if(failed.length){const message=`${failed.length} no se pudieron eliminar: ${failed.slice(0,3).join(' · ')}`;setError(message);showError(message);}
  };
  const edit=(product:Product)=>{setSelected(null);onEdit(product)};
- return <div className="page masterPage"><div className="pageHead"><div><div className="eyebrow">CATÁLOGO · COMPRAS Y VENTAS</div><h1>Productos</h1><p>Coste de compra, precio de venta, margen y datos reutilizables en las facturas.</p></div><button className="primary" onClick={onAdd}>+ Nuevo producto</button></div>
- <div className="stats masterStats"><div className="stat"><div className="statIcon"><Package/></div><div><span>Productos</span><strong>{totals.count}</strong><small>Catálogo activo</small></div></div><div className="stat"><div className="statIcon"><Euro/></div><div><span>Con precio de venta</span><strong>{totals.withSale}</strong><small>de {totals.count} productos</small></div></div><div className="stat"><div className="statIcon"><Percent/></div><div><span>Margen medio</span><strong>{totals.avgMargin==null?'—':`${totals.avgMargin.toLocaleString('es-ES',{minimumFractionDigits:1,maximumFractionDigits:1})} %`}</strong><small>Sobre coste</small></div></div></div>
- {error&&<div className="errorBox supplierPageError">{error}</div>}
- <div className="masterToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar producto, SKU, EAN o proveedor…"/></div><span className="filterResultCount">{shown.length} producto{shown.length===1?'':'s'}</span></div>
- {shown.length>0&&<BulkSelectionToolbar selectedCount={selectedProducts.length} totalCount={shown.length} allSelected={allShownSelected} onToggleAll={toggleAllProducts} label="productos">
-   <button className="secondary dangerText" type="button" disabled={!selectedProducts.length||bulkBusy} onClick={()=>void removeSelected()}><Trash2 size={15}/> {bulkBusy?'Eliminando…':`Eliminar seleccionados (${selectedProducts.length})`}</button>
- </BulkSelectionToolbar>}
- <section className="card tableCard masterTableCard">{shown.length?<table className="masterTable"><thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allShownSelected} onChange={toggleAllProducts} label={allShownSelected?'Deseleccionar productos visibles':'Seleccionar productos visibles'}/></th><th>Producto</th><th>SKU / EAN</th><th>Proveedor</th><th className="right">Coste</th><th className="right">P. venta</th><th className="right">Margen</th><th className="right">Var. coste</th><th></th></tr></thead><tbody>{paged.map(p=>{const extra=salesMap.get(p.id);const metric=productMetrics(p,extra);return <tr key={p.id} className={`clickableRow ${checkedIds.has(p.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(p)}><td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(p.id)} onChange={checked=>toggleProduct(p.id,checked)} label={`Seleccionar ${p.name}`}/></td><td><div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{p.name}</strong><small>{p.category||'Sin categoría'} · por {p.unit}</small></div></div></td><td><span className="mono">{p.sku||'—'}</span>{extra?.ean&&<div className="muted mono">{extra.ean}</div>}</td><td>{p.supplier}</td><td className="right"><strong>{money(metric.cost,metric.cost!=null&&metric.cost<1?3:2)}</strong></td><td className="right"><strong>{money(metric.sale)}</strong></td><td className="right">{metric.margin==null?<span className="muted">—</span>:<><strong>{money(metric.margin)}</strong>{metric.marginPct!=null&&<div className="muted">{metric.marginPct.toFixed(1)} %</div>}</>}</td><td className="right">{metric.delta==null?<span className="muted">Sin histórico</span>:<span className={metric.delta>0?'delta up':'delta down'}>{metric.delta>0?<TrendingUp size={15}/>:<TrendingDown size={15}/>} {metric.delta>0?'+':''}{metric.delta.toFixed(1)}%</span>}</td><td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay productos para la búsqueda seleccionada.</div>}</section>
- {shown.length>0&&<div className="masterMobileList">{paged.map(p=>{const extra=salesMap.get(p.id);const metric=productMetrics(p,extra);return <div className={`bulkMobileSelectableRow ${checkedIds.has(p.id)?'selected':''}`} key={p.id}><BulkSelectCheckbox checked={checkedIds.has(p.id)} onChange={checked=>toggleProduct(p.id,checked)} label={`Seleccionar ${p.name}`}/><button className="card masterMobileRow" onClick={()=>setSelected(p)}><div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{p.name}</strong><small>{p.sku||extra?.ean||'Sin SKU / EAN'} · {p.category||'Sin categoría'}</small></div></div><div className="masterMobileAmounts"><span>Coste <strong>{money(metric.cost,metric.cost!=null&&metric.cost<1?3:2)}</strong></span><span>P. venta <strong>{money(metric.sale)}</strong></span><span>Margen <strong>{metric.marginPct==null?'—':`${metric.marginPct.toFixed(1)} %`}</strong></span></div><ChevronRight size={18}/></button></div>})}</div>}
- {shown.length>0&&<Pagination page={page} totalItems={shown.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
- {!products.length&&<div className="card emptyState large">Crea el primer producto. El mismo catálogo servirá para compras, costes y facturación de ventas.</div>}
- {selected&&<ProductDrawer product={selected} extra={salesMap.get(selected.id)} onClose={()=>setSelected(null)} onEdit={()=>edit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>} 
- </div>
+ return (
+    <div className="page masterPage">
+      <div className="pageHead">
+        <div>
+          <div className="eyebrow">CATÁLOGO · COMPRAS Y VENTAS</div>
+          <h1>Productos</h1>
+          <p>Coste de compra, precio de venta, margen y datos reutilizables en las facturas.</p>
+        </div>
+        <button className="primary" onClick={onAdd}>+ Nuevo producto</button>
+      </div>
+
+      <div className="stats masterStats">
+        <div className="stat"><div className="statIcon"><Package/></div><div><span>Productos</span><strong>{totals.count}</strong><small>Catálogo activo</small></div></div>
+        <div className="stat"><div className="statIcon"><Euro/></div><div><span>Con precio de venta</span><strong>{totals.withSale}</strong><small>de {totals.count} productos</small></div></div>
+        <div className="stat"><div className="statIcon"><Percent/></div><div><span>Margen medio</span><strong>{totals.avgMargin==null?'—':`${totals.avgMargin.toLocaleString('es-ES',{minimumFractionDigits:1,maximumFractionDigits:1})} %`}</strong><small>Sobre coste</small></div></div>
+      </div>
+
+      {error&&<div className="errorBox supplierPageError">{error}</div>}
+
+      <div className="masterToolbar">
+        <div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar producto, SKU, EAN o proveedor…"/></div>
+        <span className="filterResultCount">{shown.length} producto{shown.length===1?'':'s'}</span>
+      </div>
+
+      {shown.length>0&&(
+        <BulkSelectionToolbar selectedCount={selectedProducts.length} totalCount={shown.length} allSelected={allShownSelected} onToggleAll={toggleAllProducts} label="productos">
+          <button className="secondary dangerText" type="button" disabled={!selectedProducts.length||bulkBusy} onClick={()=>void removeSelected()}>
+            <Trash2 size={15}/> {bulkBusy?'Eliminando…':`Eliminar seleccionados (${selectedProducts.length})`}
+          </button>
+        </BulkSelectionToolbar>
+      )}
+
+      <section className="card tableCard masterTableCard">
+        {shown.length?(
+          <table className="masterTable">
+            <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allShownSelected} onChange={toggleAllProducts} label={allShownSelected?'Deseleccionar productos visibles':'Seleccionar productos visibles'}/></th><th>Producto</th><th>SKU / EAN</th><th>Proveedor</th><th className="right">Coste</th><th className="right">P. venta</th><th className="right">Margen</th><th className="right">Var. coste</th><th></th></tr></thead>
+            <tbody>{paged.map(p=>{const extra=salesMap.get(p.id);const metric=productMetrics(p,extra);return (
+              <tr key={p.id} className={`clickableRow ${checkedIds.has(p.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(p)}>
+                <td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(p.id)} onChange={checked=>toggleProduct(p.id,checked)} label={`Seleccionar ${p.name}`}/></td>
+                <td><div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{p.name}</strong><small>{p.category||'Sin categoría'} · por {p.unit}</small></div></div></td>
+                <td><span className="mono">{p.sku||'—'}</span>{extra?.ean&&<div className="muted mono">{extra.ean}</div>}</td>
+                <td>{p.supplier}</td>
+                <td className="right"><strong>{money(metric.cost,metric.cost!=null&&metric.cost<1?3:2)}</strong></td>
+                <td className="right"><strong>{money(metric.sale)}</strong></td>
+                <td className="right">{metric.margin==null?<span className="muted">—</span>:<><strong>{money(metric.margin)}</strong>{metric.marginPct!=null&&<div className="muted">{metric.marginPct.toFixed(1)} %</div>}</>}</td>
+                <td className="right">{metric.delta==null?<span className="muted">Sin histórico</span>:<span className={metric.delta>0?'delta up':'delta down'}>{metric.delta>0?<TrendingUp size={15}/>:<TrendingDown size={15}/>} {metric.delta>0?'+':''}{metric.delta.toFixed(1)}%</span>}</td>
+                <td className="right"><ChevronRight size={17}/></td>
+              </tr>
+            )})}</tbody>
+          </table>
+        ):<div className="emptyState large">No hay productos para la búsqueda seleccionada.</div>}
+      </section>
+
+      {shown.length>0&&(
+        <div className="masterMobileList">
+          {paged.map(p=>{const extra=salesMap.get(p.id);const metric=productMetrics(p,extra);return (
+            <div className={`bulkMobileSelectableRow ${checkedIds.has(p.id)?'selected':''}`} key={p.id}>
+              <BulkSelectCheckbox checked={checkedIds.has(p.id)} onChange={checked=>toggleProduct(p.id,checked)} label={`Seleccionar ${p.name}`}/>
+              <button className="card masterMobileRow" onClick={()=>setSelected(p)}>
+                <div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{p.name}</strong><small>{p.sku||extra?.ean||'Sin SKU / EAN'} · {p.category||'Sin categoría'}</small></div></div>
+                <div className="masterMobileAmounts"><span>Coste <strong>{money(metric.cost,metric.cost!=null&&metric.cost<1?3:2)}</strong></span><span>P. venta <strong>{money(metric.sale)}</strong></span><span>Margen <strong>{metric.marginPct==null?'—':`${metric.marginPct.toFixed(1)} %`}</strong></span></div>
+                <ChevronRight size={18}/>
+              </button>
+            </div>
+          )})}
+        </div>
+      )}
+
+      {shown.length>0&&<Pagination page={page} totalItems={shown.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
+      {!products.length&&<div className="card emptyState large">Crea el primer producto. El mismo catálogo servirá para compras, costes y facturación de ventas.</div>}
+      {selected&&<ProductDrawer product={selected} extra={salesMap.get(selected.id)} onClose={()=>setSelected(null)} onEdit={()=>edit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>}
+    </div>
+  );
 }
