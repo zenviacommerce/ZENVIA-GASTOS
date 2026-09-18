@@ -42,6 +42,11 @@
   box-shadow:0 8px 24px rgba(15,23,42,.065);
   transform:translateY(-1px);
 }
+.bulkInvoiceRow.selected{
+  border-color:#5eead4;
+  background:#f0fdfa;
+  box-shadow:0 0 0 1px rgba(20,184,166,.08);
+}
 .bulkInvoiceRow::before{
   content:'';
   position:absolute;
@@ -59,9 +64,9 @@
 .bulkInvoiceFile{
   min-width:0;
   display:grid;
-  grid-template-columns:38px minmax(0,1fr);
+  grid-template-columns:18px 38px minmax(0,1fr);
   align-items:center;
-  gap:11px;
+  gap:10px;
 }
 .bulkInvoiceFile>svg{
   width:38px;
@@ -168,6 +173,7 @@ html[data-theme='dark'] .bulkInvoiceDrop{
 }
 html[data-theme='dark'] .bulkInvoiceRow:hover{border-color:#43526a;box-shadow:0 10px 28px rgba(0,0,0,.22)}
 html[data-theme='dark'] .bulkInvoiceRow.excluded{background:#0f172a}
+html[data-theme='dark'] .bulkInvoiceRow.selected{background:#102421;border-color:#2dd4bf}
 html[data-theme='dark'] .bulkInvoiceSummary strong,
 html[data-theme='dark'] .bulkInvoiceFile strong,
 html[data-theme='dark'] .bulkInvoiceMeta>span:first-child{color:#e8edf5}
