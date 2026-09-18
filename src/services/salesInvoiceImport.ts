@@ -213,6 +213,51 @@ export function recalculateSalesImportCandidate(candidate:SalesInvoiceImportCand
   return {...candidate,...totals};
 }
 
+function finite(value:number){return Number.isFinite(value)?value:0;}
+function cleanImportLines(candidate:SalesInvoiceImportCandidate){
+  const cleaned=candidate.lines
+    .filter(line=>line.description.trim())
+    .map((line,index)=>({
+      ...line,
+      position:index+1,
+      description:line.description.trim().slice(0,500),
+      quantity:finite(line.quantity),
+      unit:(line.unit||'ud').trim().slice(0,20)||'ud',
+      unitPrice:finite(line.unitPrice),
+      discountPercent:Math.min(100,Math.max(0,finite(line.discountPercent))),
+      taxRate:Math.min(100,Math.max(0,finite(line.taxRate))),
+      productId:null,
+    }))
+    .filter(line=>line.quantity>0&&line.unitPrice>=0);
+
+  const subtotal=finite(candidate.subtotal);
+  const tax=finite(candidate.taxAmount);
+  const total=finite(candidate.totalAmount);
+  const rate=nearestTaxRate(subtotal,tax);
+  const calculated=cleaned.reduce((sum,line)=>sum+line.quantity*line.unitPrice*(1-line.discountPercent/100),0);
+  const totalsCoherent=subtotal>0&&total>0&&Math.abs((subtotal+tax)-total)<=Math.max(.05,total*.01);
+  const linesCoherent=cleaned.length>0&&Math.abs(calculated-subtotal)<=Math.max(.08,subtotal*.01);
+
+  if(linesCoherent)return cleaned;
+  if(totalsCoherent){
+    const description=cleaned.find(line=>line.description)?.description||`Conceptos según factura ${candidate.invoiceNumber||'importada'}`;
+    return [{position:1,description,quantity:1,unit:'ud',unitPrice:subtotal,discountPercent:0,taxRate:rate,productId:null} satisfies SalesInvoiceLine];
+  }
+  return cleaned;
+}
+
+export function friendlySalesImportError(error:unknown){
+  const anyError=error as any;
+  const raw=String(anyError?.message||anyError?.details||anyError||'').trim();
+  if(/precio.*negativo|precios negativos/i.test(raw))return 'Hay una línea con precio negativo o no válido.';
+  if(/quantity.*check|cantidad/i.test(raw)&&/check|constraint/i.test(raw))return 'Hay una línea con cantidad no válida.';
+  if(/tax_rate|iva/i.test(raw)&&/check|constraint/i.test(raw))return 'Hay una línea con un IVA no válido.';
+  if(/discount_percent/i.test(raw))return 'Hay una línea con un descuento fuera del rango permitido.';
+  if(/duplicate key|unique|ya existe/i.test(raw))return 'Ya existe una factura o cliente con esos datos.';
+  if(/foreign key|violates foreign key/i.test(raw))return 'Algún dato vinculado (cliente, serie o producto) ya no existe.';
+  return raw||'No se pudo guardar el borrador.';
+}
+
 export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoiceImportCandidate){
   const reviewed=recalculateSalesImportCandidate(candidate);
   let clientId=reviewed.clientId;
@@ -221,8 +266,8 @@ export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoic
   if(!reviewed.seriesId)throw new Error('Selecciona la serie.');
   if(!reviewed.invoiceNumber.trim())throw new Error('Indica el número de factura.');
   if(!reviewed.issueDate)throw new Error('Indica la fecha de factura.');
-  const lines=reviewed.lines.filter(line=>line.description.trim()&&line.quantity>0);
-  if(!lines.length)throw new Error('Añade al menos una línea.');
+  const lines=cleanImportLines(reviewed);
+  if(!lines.length)throw new Error('No hay líneas válidas para guardar esta factura.');
   const payload:SalesInvoiceDraftInput={clientId,seriesId:reviewed.seriesId,taxRegistrationId:reviewed.taxRegistrationId||null,issueDate:reviewed.issueDate,paymentMethod:reviewed.paymentMethod||undefined,notes:reviewed.notes||undefined,lines};
   const id=await createSalesInvoiceDraft(payload);
   try{await updateSalesInvoiceNumber(id,reviewed.invoiceNumber.trim());}
