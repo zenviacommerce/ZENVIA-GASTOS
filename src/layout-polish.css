@@ -1,0 +1,52 @@
+/* Final layout polish loaded last so it can normalize page-specific overrides. */
+
+.expenseInvoicesHub{width:100%;min-width:0}
+.expenseHubNavShell{
+  width:100%!important;
+  max-width:none!important;
+  margin:0!important;
+  padding:22px 38px 0!important;
+  display:flex!important;
+  justify-content:flex-start!important;
+  align-items:center!important;
+}
+.expenseHubNav{
+  margin:0!important;
+  margin-inline:0!important;
+  justify-content:flex-start!important;
+}
+.expenseInvoicesHub>.page{padding-top:20px}
+
+.amazonOfflineNotice{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:13px 15px;
+  border-color:#fde68a;
+  background:#fffbeb;
+  color:#92400e;
+}
+.amazonOfflineNotice>svg{flex:0 0 auto}
+.amazonOfflineNotice>div{min-width:0;flex:1}
+.amazonOfflineNotice strong{display:block;font-size:13px}
+.amazonOfflineNotice span{display:block;margin-top:2px;font-size:11px;line-height:1.45;color:#78716c}
+.amazonOfflineNotice .secondary{flex:0 0 auto}
+html[data-theme='dark'] .amazonOfflineNotice{background:#2b2112;border-color:#744b14;color:#fbbf24}
+html[data-theme='dark'] .amazonOfflineNotice span{color:#d6c39a}
+
+@media(max-width:760px){
+  .expenseHubNavShell{
+    padding:14px 15px 0!important;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .expenseHubNav{
+    width:max-content!important;
+    min-width:100%;
+    flex:0 0 auto;
+  }
+  .expenseInvoicesHub>.page{padding-top:16px}
+  .amazonOfflineNotice{align-items:flex-start;flex-wrap:wrap}
+  .amazonOfflineNotice>div{flex:1 1 calc(100% - 34px)}
+  .amazonOfflineNotice .secondary{width:100%;justify-content:center}
+}
