@@ -40,6 +40,25 @@ export type AmazonProductOption={id:string;name:string;sku:string|null};
 export type AmazonPageResult<T>={items:T[];page:number;pageSize:number;total:number};
 
 function message(data:any,error:any,fallback:string){const detail=String(data?.error||error?.message||'').trim();return detail||fallback;}
+export const AMAZON_CONNECTIVITY_EVENT='zenvia:amazon-connectivity-error';
+
+export function isAmazonConnectivityError(error:unknown){
+  const detail=String(error instanceof Error?error.message:error||'').toLowerCase();
+  return (typeof navigator!=='undefined'&&!navigator.onLine)
+    || /failed to fetch|fetch failed|networkerror|network error|load failed|connection.*(?:lost|failed|closed)|internet|offline|err_network|timeout.*fetch/.test(detail);
+}
+
+function notifyAmazonConnectivityError(error:unknown){
+  if(typeof window==='undefined'||!isAmazonConnectivityError(error))return;
+  window.dispatchEvent(new CustomEvent(AMAZON_CONNECTIVITY_EVENT,{detail:{message:String(error instanceof Error?error.message:error||'')}}));
+}
+
+function offlineError(){
+  const error=new Error('Sin conexión a Internet. Se mantienen los últimos datos guardados.');
+  error.name='AmazonConnectivityError';
+  notifyAmazonConnectivityError(error);
+  return error;
+}
 function ymd(date:Date){const y=date.getFullYear();const m=String(date.getMonth()+1).padStart(2,'0');const d=String(date.getDate()).padStart(2,'0');return `${y}-${m}-${d}`;}
 function startOfDay(date:Date){return new Date(date.getFullYear(),date.getMonth(),date.getDate());}
 function range(from:Date,to:Date){return {from:ymd(from),to:ymd(to)};}
@@ -57,19 +76,50 @@ export function amazonQuickRange(key:AmazonRangeKey,now=new Date()){
 
 function rpcParams(filters:AmazonAnalyticsFilters){return {from_date:filters.from,to_date:filters.to,marketplace_ids:filters.marketplaceIds.length?filters.marketplaceIds:null};}
 async function rpc<T>(name:string,params:Record<string,unknown>,fallback:string):Promise<T>{
+  if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
   const call=()=>supabase.rpc(name,params);
-  let result=await call();
+  let result;
+  try{result=await call();}
+  catch(error){notifyAmazonConnectivityError(error);throw error;}
   const firstMessage=message(result.data,result.error,'');
   if(result.error&&/statement timeout|canceling statement|57014/i.test(firstMessage)){
     await new Promise(resolve=>setTimeout(resolve,350));
-    result=await call();
+    if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
+    try{result=await call();}
+    catch(error){notifyAmazonConnectivityError(error);throw error;}
   }
-  if(result.error)throw new Error(message(result.data,result.error,fallback));
+  if(result.error){
+    const error=new Error(message(result.data,result.error,fallback));
+    notifyAmazonConnectivityError(error);
+    throw error;
+  }
   return result.data as T;
 }
 
-export async function loadAmazonStatus():Promise<AmazonStatus>{const {data,error}=await supabase.functions.invoke('amazon-status',{body:{}});if(error||!data||data.error)throw new Error(message(data,error,'No se pudo consultar el estado de Amazon.'));return data as AmazonStatus;}
-export async function requestAmazonSync(){const {data,error}=await supabase.functions.invoke('amazon-sync-manual',{body:{}});if(error||!data||data.error)throw new Error(message(data,error,'No se pudo iniciar la sincronización de Amazon.'));return data as {ok:true;accounts:number;jobs:number};}
+export async function loadAmazonStatus():Promise<AmazonStatus>{
+  if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
+  try{
+    const {data,error}=await supabase.functions.invoke('amazon-status',{body:{}});
+    if(error||!data||data.error){
+      const next=new Error(message(data,error,'No se pudo consultar el estado de Amazon.'));
+      notifyAmazonConnectivityError(next);
+      throw next;
+    }
+    return data as AmazonStatus;
+  }catch(error){notifyAmazonConnectivityError(error);throw error;}
+}
+export async function requestAmazonSync(){
+  if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
+  try{
+    const {data,error}=await supabase.functions.invoke('amazon-sync-manual',{body:{}});
+    if(error||!data||data.error){
+      const next=new Error(message(data,error,'No se pudo iniciar la sincronización de Amazon.'));
+      notifyAmazonConnectivityError(next);
+      throw next;
+    }
+    return data as {ok:true;accounts:number;jobs:number};
+  }catch(error){notifyAmazonConnectivityError(error);throw error;}
+}
 export function loadAmazonSummary(filters:AmazonAnalyticsFilters){return rpc<AmazonSummary>('amazon_analytics_summary',rpcParams(filters),'No se pudo cargar el resumen de Amazon.');}
 export function loadAmazonSeries(filters:AmazonAnalyticsFilters,grain:'day'|'month'='day'){return rpc<AmazonSeriesPoint[]>('amazon_analytics_series',{...rpcParams(filters),grain},'No se pudo cargar la evolución de Amazon.');}
 export function loadAmazonProducts(filters:AmazonAnalyticsFilters,search='',page=1,pageSize=50,sortBy:AmazonProductSort='profit_before_ads',sortDir:AmazonSortDirection='desc'){return rpc<AmazonPageResult<AmazonProductAnalytics>>('amazon_analytics_products',{...rpcParams(filters),search:search||null,page,page_size:pageSize,sort_by:sortBy,sort_dir:sortDir},'No se pudieron cargar los productos de Amazon.');}
