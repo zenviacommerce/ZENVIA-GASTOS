@@ -20,7 +20,8 @@ import { downloadSalesInvoicePdf, printSalesInvoicePdf } from '../services/sales
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, validateCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 import { loadTaxRegistrations, type TaxRegistration } from '../services/salesConfig';
 import { SeriesManagerModal, TaxRegistrationsPanel } from '../components/SalesConfigurationModals';
-import { errorMessage, showError, showOperationResult, showSuccess } from '../services/toast';
+import { errorMessage, showError, showSuccess } from '../services/toast';
+import { confirmAction, openActionProcess } from '../services/actionDialog';
 import { ProductCatalogPicker } from '../components/ProductCatalogPicker';
 import { SendInvoiceModal } from '../components/SendInvoiceModal';
 import { PostalAddressFields } from '../components/forms/PostalAddressFields';
@@ -227,60 +228,191 @@ export function SalesInvoices({
   const totals=useMemo(()=>({issued:invoices.filter(i=>i.status!=='draft').reduce((s,i)=>s+i.totalAmount,0),pending:invoices.filter(i=>i.invoiceType==='standard'&&!['draft','paid','rectified'].includes(i.status)).reduce((s,i)=>s+Math.max(0,i.totalAmount-i.paidAmount),0),drafts:invoices.filter(i=>i.status==='draft').length}),[invoices]);
   const openNew=()=>{if(!clients.length){showError('Crea al menos un cliente antes de preparar una factura.');return;}setEditing(null);setModal(true);};
   const edit=(invoice:SalesInvoice)=>{setDetail(null);setEditing(invoice);setModal(true);};
-  const reopenForEdit=async(invoice:SalesInvoice)=>{if(invoice.status!=='issued')return;if(!window.confirm(`¿Editar ${invoice.invoiceNumber}? Volverá a borrador y conservará su número mientras la corriges.`))return;setBusyId(invoice.id);setError('');try{await reopenSalesInvoice(invoice.id);const next=await loadSalesInvoices();setInvoices(next);const draft=next.find(item=>item.id===invoice.id)||null;setDetail(null);if(draft){setEditing(draft);setModal(true);}showSuccess('Factura reabierta. Puedes corregirla, incluido su número, y volver a emitirla.');}catch(e){showError(errorMessage(e,'No se pudo reabrir la factura.'));}finally{setBusyId(null);}};
-  const emit=async(invoice:SalesInvoice)=>{if(!window.confirm(`¿Emitir ${invoice.invoiceType==='rectifying'?'esta rectificativa':'esta factura'}${invoice.invoiceNumber?` con el número ${invoice.invoiceNumber}`:''}? Mientras siga solo como emitida podrás reabrirla o eliminarla.`))return;setBusyId(invoice.id);setError('');try{await issueSalesInvoice(invoice.id);await refresh();showSuccess(invoice.invoiceType==='rectifying'?'Rectificativa emitida correctamente.':'Factura emitida correctamente.');}catch(e){showError(errorMessage(e,'No se pudo emitir la factura.'));}finally{setBusyId(null);}};
-  const remove=async(invoice:SalesInvoice)=>{const issued=invoice.status==='issued';const message=issued?`¿Eliminar completamente ${invoice.invoiceNumber}? Su número quedará libre para reutilizarse.`:'¿Eliminar este borrador? Esta acción no se puede deshacer.';if(!window.confirm(message))return;setBusyId(invoice.id);setError('');try{if(issued)await deleteReversibleSalesInvoice(invoice.id);else await deleteSalesInvoiceDraftSafe(invoice.id);if(detail?.id===invoice.id)setDetail(null);await refresh();showSuccess(issued?'Factura eliminada. Su número queda disponible para reutilizarse.':'Borrador eliminado correctamente.');}catch(e){showError(errorMessage(e,issued?'No se pudo eliminar la factura.':'No se pudo eliminar el borrador.'));}finally{setBusyId(null);}};
+  const reopenForEdit=async(invoice:SalesInvoice)=>{
+    if(invoice.status!=='issued')return;
+    const confirmed=await confirmAction({
+      title:'Editar factura emitida',
+      message:`${invoice.invoiceNumber} volverá a borrador y conservará su número mientras la corriges.`,
+      confirmLabel:'Volver a borrador',
+      tone:'warning',
+      details:['Podrás modificar sus datos y volver a emitirla después.'],
+    });
+    if(!confirmed)return;
+    setBusyId(invoice.id);setError('');
+    try{
+      await reopenSalesInvoice(invoice.id);
+      const next=await loadSalesInvoices();setInvoices(next);
+      const draft=next.find(item=>item.id===invoice.id)||null;
+      setDetail(null);
+      if(draft){setEditing(draft);setModal(true);}
+      showSuccess('Factura reabierta. Puedes corregirla y volver a emitirla.');
+    }catch(e){showError(errorMessage(e,'No se pudo reabrir la factura.'));}
+    finally{setBusyId(null);}
+  };
+  const emit=async(invoice:SalesInvoice)=>{
+    const missingTax=!invoice.clientTaxId?.trim();
+    const confirmed=await confirmAction({
+      title:invoice.invoiceType==='rectifying'?'Emitir rectificativa':'Emitir factura',
+      message:missingTax
+        ?`El cliente ${invoice.clientName} no tiene NIF/CIF informado. Puedes emitirla igualmente, pero conviene revisar si ese dato es obligatorio para esta factura.`
+        :`Se emitirá ${invoice.invoiceNumber||'la factura'} y quedará registrada como emitida.`,
+      confirmLabel:missingTax?'Emitir igualmente':'Emitir',
+      tone:missingTax?'warning':'default',
+      details:[
+        invoice.invoiceNumber?`Número: ${invoice.invoiceNumber}`:'',
+        missingTax?'NIF/CIF del cliente: pendiente':'Datos fiscales del cliente: completos',
+      ].filter(Boolean),
+    });
+    if(!confirmed)return;
+    setBusyId(invoice.id);setError('');
+    try{
+      await issueSalesInvoice(invoice.id);
+      await refresh();
+      showSuccess(invoice.invoiceType==='rectifying'?'Rectificativa emitida correctamente.':'Factura emitida correctamente.');
+    }catch(e){showError(errorMessage(e,'No se pudo emitir la factura.'),9000);}
+    finally{setBusyId(null);}
+  };
+  const remove=async(invoice:SalesInvoice)=>{
+    const issued=invoice.status==='issued';
+    const confirmed=await confirmAction({
+      title:issued?'Eliminar factura emitida':'Eliminar borrador',
+      message:issued
+        ?`Se eliminará completamente ${invoice.invoiceNumber}. Su número quedará libre para reutilizarse.`
+        :'Este borrador se eliminará definitivamente.',
+      confirmLabel:'Eliminar',
+      tone:'danger',
+      details:['Esta acción no se puede deshacer.'],
+    });
+    if(!confirmed)return;
+    setBusyId(invoice.id);setError('');
+    try{
+      if(issued)await deleteReversibleSalesInvoice(invoice.id);else await deleteSalesInvoiceDraftSafe(invoice.id);
+      if(detail?.id===invoice.id)setDetail(null);
+      await refresh();
+      showSuccess(issued?'Factura eliminada. Su número queda disponible para reutilizarse.':'Borrador eliminado correctamente.');
+    }catch(e){showError(errorMessage(e,issued?'No se pudo eliminar la factura.':'No se pudo eliminar el borrador.'));}
+    finally{setBusyId(null);}
+  };
   const issueSelected=async()=>{
     if(!selectedVisible.length)return;
     const blocked=selectedVisible.length-issuableSelected.length;
-    if(!issuableSelected.length){showError('Las facturas seleccionadas no están en borrador y no se pueden emitir.');return;}
-    const extra=blocked?`\n\n${blocked} seleccionada${blocked===1?' no está':'s no están'} en borrador y se omitirá${blocked===1?'':'n'}.`:'';
-    if(!window.confirm(`¿Emitir ${issuableSelected.length} factura${issuableSelected.length===1?'':'s'} seleccionada${issuableSelected.length===1?'':'s'}?${extra}`))return;
+    if(!issuableSelected.length){showError('Las facturas seleccionadas no están en borrador y no se pueden emitir.',9000);return;}
+    const missingTax=issuableSelected.filter(invoice=>!invoice.clientTaxId?.trim());
+    const confirmed=await confirmAction({
+      title:`Emitir ${issuableSelected.length} factura${issuableSelected.length===1?'':'s'}`,
+      message:missingTax.length
+        ?`${missingTax.length} factura${missingTax.length===1?' tiene':'s tienen'} el NIF/CIF del cliente pendiente. Puedes continuar y revisar después los datos fiscales que correspondan.`
+        :'Todas las facturas seleccionadas están listas para emitir.',
+      confirmLabel:missingTax.length?'Emitir igualmente':'Emitir seleccionadas',
+      tone:missingTax.length?'warning':'default',
+      details:[
+        `${issuableSelected.length} borrador${issuableSelected.length===1?'':'es'} se procesará${issuableSelected.length===1?'':'n'}.`,
+        missingTax.length?`${missingTax.length} sin NIF/CIF de cliente.`:'',
+        blocked?`${blocked} selección${blocked===1?'':'es'} no está${blocked===1?'':'n'} en borrador y se omitirá${blocked===1?'':'n'}.`:'',
+      ].filter(Boolean),
+    });
+    if(!confirmed)return;
+
     setBulkIssuing(true);setError('');
-    const failed:string[]=[];
+    const process=openActionProcess({
+      title:'Emitiendo facturas',
+      description:'Puedes seguir el resultado de cada factura. Este panel permanecerá abierto al terminar.',
+      items:selectedVisible.map(invoice=>({id:invoice.id,label:`${invoice.invoiceNumber||'Borrador'} · ${invoice.clientName}`})),
+    });
+    for(const invoice of selectedVisible.filter(item=>item.status!=='draft')){
+      process.setItem(invoice.id,'skipped','No está en borrador; se mantiene sin cambios.');
+    }
+
+    let issued=0;let failed=0;
     try{
       for(const invoice of issuableSelected){
-        try{await issueSalesInvoice(invoice.id);}
-        catch(e){failed.push(`${invoice.invoiceNumber||invoice.clientName}: ${errorMessage(e,'No se pudo emitir')}`);}
+        process.setItem(invoice.id,'running',!invoice.clientTaxId?.trim()?'NIF/CIF pendiente; emitiendo con advertencia fiscal.':'Emitiendo…');
+        try{
+          await issueSalesInvoice(invoice.id);
+          issued+=1;
+          process.setItem(invoice.id,'success','Emitida correctamente.');
+        }catch(e){
+          failed+=1;
+          process.setItem(invoice.id,'error',errorMessage(e,'No se pudo emitir.'));
+        }
       }
       onSelectedIdsChange?.([]);
       await refresh();
-      const issued=issuableSelected.length-failed.length;
-      const successMessage=issued?`${issued} factura${issued===1?' emitida':'s emitidas'} correctamente.`:'';
-      const failures:string[]=[];
-      if(failed.length)failures.push(`${failed.length} factura${failed.length===1?' no se pudo emitir':'s no se pudieron emitir'}. ${failed.slice(0,3).join(' · ')}`);
-      if(blocked)failures.push(`${blocked} factura${blocked===1?' no estaba':'s no estaban'} en borrador y se ${blocked===1?'ha':'han'} mantenido sin cambios.`);
-      showOperationResult(successMessage,failures.join(' '));
+      const summary=[
+        `${issued} factura${issued===1?' emitida':'s emitidas'}.`,
+        failed?`${failed} con error.`:'',
+        blocked?`${blocked} omitida${blocked===1?'':'s'}.`:'',
+      ].filter(Boolean).join(' ');
+      process.finish(summary,failed?(issued?'warning':'error'):'success');
     }finally{setBulkIssuing(false);}
   };
   const removeSelected=async()=>{
     if(!selectedVisible.length)return;
     const blocked=selectedVisible.length-deletableSelected.length;
-    if(!deletableSelected.length){showError('Las facturas seleccionadas no están en un estado eliminable.');return;}
-    const extra=blocked?`\n\n${blocked} seleccionada${blocked===1?' no se puede':'s no se pueden'} eliminar y se omitirá${blocked===1?'':'n'}.`:'';
-    if(!window.confirm(`¿Eliminar ${deletableSelected.length} factura${deletableSelected.length===1?'':'s'} seleccionada${deletableSelected.length===1?'':'s'}? Esta acción no se puede deshacer.${extra}`))return;
+    if(!deletableSelected.length){showError('Las facturas seleccionadas no están en un estado eliminable.',9000);return;}
+    const confirmed=await confirmAction({
+      title:`Eliminar ${deletableSelected.length} factura${deletableSelected.length===1?'':'s'}`,
+      message:'Las facturas seleccionadas se eliminarán de forma definitiva.',
+      confirmLabel:'Eliminar seleccionadas',
+      tone:'danger',
+      details:[
+        'Esta acción no se puede deshacer.',
+        blocked?`${blocked} factura${blocked===1?' no es':'s no son'} eliminable${blocked===1?'':'s'} y se omitirá${blocked===1?'':'n'}.`:'',
+      ].filter(Boolean),
+    });
+    if(!confirmed)return;
+
     setBulkDeleting(true);setError('');
-    const failed:string[]=[];
-    for(const invoice of deletableSelected){
-      try{
-        if(invoice.status==='issued')await deleteReversibleSalesInvoice(invoice.id);
-        else await deleteSalesInvoiceDraftSafe(invoice.id);
-      }catch(e){failed.push(`${invoice.invoiceNumber||invoice.clientName}: ${errorMessage(e,'No se pudo eliminar')}`);}
+    const process=openActionProcess({
+      title:'Eliminando facturas',
+      description:'El resultado permanecerá visible al terminar.',
+      items:selectedVisible.map(invoice=>({id:invoice.id,label:`${invoice.invoiceNumber||'Borrador'} · ${invoice.clientName}`})),
+    });
+    for(const invoice of selectedVisible.filter(item=>!['draft','issued'].includes(item.status))){
+      process.setItem(invoice.id,'skipped','Este estado no permite eliminación directa.');
     }
-    if(detail&&deletableSelected.some(invoice=>invoice.id===detail.id))setDetail(null);
-    onSelectedIdsChange?.([]);
-    await refresh();
-    setBulkDeleting(false);
-    const removed=deletableSelected.length-failed.length;
-    const successMessage=removed?`${removed} factura${removed===1?' eliminada':'s eliminadas'} correctamente.`:'';
-    const failures:string[]=[];
-    if(failed.length)failures.push(`${failed.length} factura${failed.length===1?' no se pudo eliminar':'s no se pudieron eliminar'}. ${failed.slice(0,3).join(' · ')}`);
-    if(blocked)failures.push(`${blocked} factura${blocked===1?' no estaba en un estado eliminable':'s no estaban en un estado eliminable'} y se mantienen.`);
-    showOperationResult(successMessage,failures.join(' '));
+
+    let removed=0;let failed=0;
+    try{
+      for(const invoice of deletableSelected){
+        process.setItem(invoice.id,'running','Eliminando…');
+        try{
+          if(invoice.status==='issued')await deleteReversibleSalesInvoice(invoice.id);
+          else await deleteSalesInvoiceDraftSafe(invoice.id);
+          removed+=1;
+          process.setItem(invoice.id,'success','Eliminada correctamente.');
+        }catch(e){
+          failed+=1;
+          process.setItem(invoice.id,'error',errorMessage(e,'No se pudo eliminar.'));
+        }
+      }
+      if(detail&&deletableSelected.some(invoice=>invoice.id===detail.id))setDetail(null);
+      onSelectedIdsChange?.([]);
+      await refresh();
+      const summary=[
+        `${removed} factura${removed===1?' eliminada':'s eliminadas'}.`,
+        failed?`${failed} con error.`:'',
+        blocked?`${blocked} omitida${blocked===1?'':'s'}.`:'',
+      ].filter(Boolean).join(' ');
+      process.finish(summary,failed?(removed?'warning':'error'):'success');
+    }finally{setBulkDeleting(false);}
   };
   const pdf=(invoice:SalesInvoice)=>{try{downloadSalesInvoicePdf(invoice,settings,branding);showSuccess('PDF generado correctamente.');}catch(e){showError(errorMessage(e,'No se pudo generar el PDF.'));}};
   const printPdf=(invoice:SalesInvoice)=>{try{printSalesInvoicePdf(invoice,settings,branding);showSuccess('PDF preparado para imprimir.');}catch(e){showError(errorMessage(e,'No se pudo abrir la impresión del PDF.'));}};
-  const rectify=async(invoice:SalesInvoice)=>{if(!window.confirm(`Se creará una rectificativa en borrador que anula ${invoice.invoiceNumber}. ¿Continuar?`))return;setBusyId(invoice.id);setError('');try{const id=await createRectifyingInvoice(invoice.id);const next=await loadSalesInvoices();setInvoices(next);const draft=next.find(item=>item.id===id)||null;setDetail(null);showSuccess('Rectificativa creada en borrador.');if(draft){setEditing(draft);setModal(true);}}catch(e){showError(errorMessage(e,'No se pudo crear la rectificativa.'));}finally{setBusyId(null);}};
+  const rectify=async(invoice:SalesInvoice)=>{
+    const confirmed=await confirmAction({
+      title:'Crear rectificativa',
+      message:`Se creará una rectificativa en borrador que anula ${invoice.invoiceNumber}.`,
+      confirmLabel:'Crear rectificativa',
+      tone:'warning',
+      details:['Podrás revisarla antes de emitirla.'],
+    });
+    if(!confirmed)return;
+    setBusyId(invoice.id);setError('');
+    try{const id=await createRectifyingInvoice(invoice.id);const next=await loadSalesInvoices();setInvoices(next);const draft=next.find(item=>item.id===id)||null;setDetail(null);showSuccess('Rectificativa creada en borrador.');if(draft){setEditing(draft);setModal(true);}}
+    catch(e){showError(errorMessage(e,'No se pudo crear la rectificativa.'));}
+    finally{setBusyId(null);}
+  };
   return <div className="page"><div className="pageHead"><div><div className="eyebrow">VENTAS</div><h1>Facturación</h1><p>Borradores, series, registros IVA, emisión, envío por Gmail, cobros y rectificativas desde un único sitio.</p></div><div className="actions"><button className="secondary" onClick={()=>setSeriesModal(true)}><ListOrdered size={17}/> Series</button><button className="secondary" onClick={()=>setBusinessModal(true)}><Settings2 size={17}/> Datos fiscales</button><button className="primary" onClick={openNew}>+ Nueva factura</button></div></div>
     <div className="stats salesStats"><div className="stat"><div className="statIcon"><ReceiptText/></div><div><span>Facturado</span><strong>{money(totals.issued)}</strong><small>Incluye rectificativas</small></div></div><div className="stat"><div className="statIcon"><Banknote/></div><div><span>Pendiente de cobro</span><strong>{money(totals.pending)}</strong><small>Facturas ordinarias vivas</small></div></div><div className="stat"><div className="statIcon"><FilePenLine/></div><div><span>Borradores</span><strong>{totals.drafts}</strong><small>Pendientes de emitir</small></div></div></div>
     <div className="toolbar salesToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente, CIF, VAT o nº factura…"/></div><SelectField value={status} onChange={setStatus} ariaLabel="Estado de factura" options={[{value:'all',label:'Todos los estados'},{value:'draft',label:'Borradores'},{value:'issued',label:'Emitidas'},{value:'sent',label:'Enviadas'},{value:'partially_paid',label:'Cobro parcial'},{value:'paid',label:'Cobradas'},{value:'rectified',label:'Rectificadas'}]}/></div>
