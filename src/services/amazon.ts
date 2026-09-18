@@ -56,7 +56,17 @@ export function amazonQuickRange(key:AmazonRangeKey,now=new Date()){
 }
 
 function rpcParams(filters:AmazonAnalyticsFilters){return {from_date:filters.from,to_date:filters.to,marketplace_ids:filters.marketplaceIds.length?filters.marketplaceIds:null};}
-async function rpc<T>(name:string,params:Record<string,unknown>,fallback:string):Promise<T>{const {data,error}=await supabase.rpc(name,params);if(error)throw new Error(message(data,error,fallback));return data as T;}
+async function rpc<T>(name:string,params:Record<string,unknown>,fallback:string):Promise<T>{
+  const call=()=>supabase.rpc(name,params);
+  let result=await call();
+  const firstMessage=message(result.data,result.error,'');
+  if(result.error&&/statement timeout|canceling statement|57014/i.test(firstMessage)){
+    await new Promise(resolve=>setTimeout(resolve,350));
+    result=await call();
+  }
+  if(result.error)throw new Error(message(result.data,result.error,fallback));
+  return result.data as T;
+}
 
 export async function loadAmazonStatus():Promise<AmazonStatus>{const {data,error}=await supabase.functions.invoke('amazon-status',{body:{}});if(error||!data||data.error)throw new Error(message(data,error,'No se pudo consultar el estado de Amazon.'));return data as AmazonStatus;}
 export async function requestAmazonSync(){const {data,error}=await supabase.functions.invoke('amazon-sync-manual',{body:{}});if(error||!data||data.error)throw new Error(message(data,error,'No se pudo iniciar la sincronización de Amazon.'));return data as {ok:true;accounts:number;jobs:number};}
