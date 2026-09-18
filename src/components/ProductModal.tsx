@@ -84,7 +84,7 @@ export function ProductModal({open,product,suppliers,onClose,onSave}:{open:boole
    if(Number.isNaN(parsedSalePrice)){setError('Indica un precio de venta válido igual o superior a 0.');return;}
    if(!Number.isFinite(parsedTax)||parsedTax<0||parsedTax>100){setError('El IVA de venta debe estar entre 0 y 100.');return;}
    setBusy(true);setError('');
-   try{await onSave({name,sku,ean,category,unit,price:parsedPrice,salePrice:parsedSalePrice,salesTaxRate:parsedTax,invoiceDescription,supplierId:supplierId||null});onClose();}
+   try{await onSave({name,sku,ean,category,unit,price:parsedPrice,salePrice:parsedSalePrice,salesTaxRate:parsedTax,invoiceDescription,supplierId:supplierId||null});showSuccess(product?'Producto modificado correctamente.':'Producto creado correctamente.');onClose();}
    catch(e){setError(e instanceof Error?e.message:'Error');}
    finally{setBusy(false)}
  };
