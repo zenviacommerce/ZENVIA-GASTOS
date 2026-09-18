@@ -12,7 +12,7 @@ import {
   createManualOrder, createOrderLabel, fetchOrderLabel, getSavedPrinter,
   getSendcloudStatus, getShippingOptions, labelBlob, listFulfillmentOrders, listLocalPrinters,
   markHistorySyncDone, openLabelForPrint, printLabelWithClient, savePrinter,
-  shouldRunHistorySync, syncSendcloudOrders, updateFulfillmentOrder, validateOrderAddress,
+  shouldRunHistorySync, syncSendcloudOrders, updateFulfillmentOrder,
   type FulfillmentOrder, type LocalPrinter, type ManualOrderItem, type OrderUpdateInput,
   type SendcloudStatus, type ShippingOption,
 } from '../services/orders';
@@ -233,16 +233,15 @@ export function Orders(){
   const prepare=async(order:FulfillmentOrder)=>{
     if(!canPrepareOrder(order)){showError('Este pedido ya no admite una nueva etiqueta.');return}
     const local=validateOrderForCarrier(order);
-    if(local.blocking){setEditValidationIssues(local.issues);setEditOrder(order);showError('El pedido tiene datos que impedirían generar la etiqueta. Revísalos antes de continuar.');return}
-    try{
-      const remote=await validateOrderAddress(order.id,defaultCarrierCode(order));
-      if(remote.inputAddressIsValid===false){
-        const issues:OrderValidationIssue[]=[...local.issues,{field:'address',severity:'error',message:remote.reasons[0]||'Sendcloud no valida esta dirección para el transportista seleccionado.'}];
-        setEditValidationIssues(issues);setEditOrder(order);showError('Sendcloud ha detectado un problema con la dirección. Revísala antes de generar la etiqueta.');return;
-      }
-    }catch{/* Si el validador no está disponible, la cotización seguirá aplicando las comprobaciones del transportista. */}
+    if(local.blocking){setEditValidationIssues(local.issues);setEditOrder(order);showError('El pedido tiene datos obligatorios incompletos. Revísalos antes de continuar.');return}
     setLabelOrder(order);setOptions([]);setOptionsLoading(true);
-    try{const result=await getShippingOptions(order.id);setOptions(result.options)}catch(e){showError(errorMessage(e,'No se pudieron consultar los servicios y precios.'))}finally{setOptionsLoading(false)}
+    try{
+      const result=await getShippingOptions(order.id);
+      setOptions(result.options);
+      if(!result.options.length)showError('Sendcloud no devuelve servicios disponibles para este pedido.');
+    }catch(e){
+      showError(errorMessage(e,'No se pudieron consultar los servicios y precios.'));
+    }finally{setOptionsLoading(false)}
   };
   const handleBlob=async(blob:Blob,order:FulfillmentOrder,mode:'print'|'download')=>{if(mode==='download'){downloadLabel(blob,`${labelPdfBaseName(order)}.pdf`);return}if(printer){try{await printLabelWithClient(blob,printer);showSuccess('Etiqueta enviada a la impresora.');return}catch{/* PDF */}}openLabelForPrint(blob)};
   const createLabel=async(option:ShippingOption|null)=>{if(!labelOrder)return;const order=labelOrder;setBusyOrder(order.id);setLabelOrder(null);try{const result=await createOrderLabel(order.id,option),blob=labelBlob(result);const freshOrders=await listFulfillmentOrders();const fresh=freshOrders.find(item=>item.id===order.id)||order;setOrders(freshOrders);setSelected(fresh);downloadLabel(blob,`${labelPdfBaseName(fresh)}.pdf`);showSuccess(`Etiqueta creada y descargada${result.trackingNumber?` · ${result.trackingNumber}`:''}.`)}catch(e){showError(errorMessage(e,'No se pudo crear la etiqueta.'))}finally{setBusyOrder(null)}};
@@ -255,7 +254,6 @@ export function Orders(){
     for(const order of pendingOrders){
       try{
         const local=validateOrderForCarrier(order);if(local.blocking)throw new Error(local.issues[0]?.message||'El pedido necesita revisión antes de generar la etiqueta.');
-        const remote=await validateOrderAddress(order.id,defaultCarrierCode(order));if(remote.inputAddressIsValid===false)throw new Error(remote.reasons[0]||'Sendcloud no valida la dirección.');
         const shipping=await getShippingOptions(order.id);
         const option=selectAutomaticShippingOption(order,shipping.options);
         if(!option)throw new Error('No se encontró el servicio automático MRW 19:00 / Correos Baleares.');
