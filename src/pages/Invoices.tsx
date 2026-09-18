@@ -8,7 +8,7 @@ import { Pagination } from '../components/Pagination';
 import { StatCard } from '../components/StatCard';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { defaultInvoiceFilter, filterInvoices, periodLabel, safeExportLabel } from '../services/filters';
-import { errorMessage, showError, showOperationResult } from '../services/toast';
+import { errorMessage, showError, showOperationResult, showSuccess } from '../services/toast';
 
 const PAGE_SIZE=20;
 const money=(value:number)=>`${value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €`;
@@ -45,11 +45,11 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
  const exportRows=selectedRows.length?selectedRows:filtered;
  const doExport=async()=>{setExporting(true);try{const label=selectedRows.length?`${selectedRows.length} seleccionadas`:selectionLabel;const blob=await exportInvoices(exportRows,label);const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`ZENVIA_Gastos_${safeExportLabel(label)||'seleccion'}.zip`;a.click();URL.revokeObjectURL(url);}catch(e){showError(e instanceof Error?e.message:'No se pudo preparar la exportación.')}finally{setExporting(false)}};
  const openFile=async(invoice:Invoice)=>{try{await onOpenFile(invoice)}catch(e){showError(e instanceof Error?e.message:'No se pudo abrir el documento.')}};
- const changeStatus=async(id:string,status:'pending'|'reviewed'|'accounted')=>{try{await onStatusChange(id,status)}catch(e){showError(e instanceof Error?e.message:'No se pudo cambiar el estado de la factura.')}};
+ const changeStatus=async(id:string,status:'pending'|'reviewed'|'accounted')=>{try{await onStatusChange(id,status);const labels={pending:'pendiente',reviewed:'revisada',accounted:'contabilizada'} as const;showSuccess(`Factura marcada como ${labels[status]}.`)}catch(e){showError(e instanceof Error?e.message:'No se pudo cambiar el estado de la factura.')}};
  const remove=async(invoice:Invoice)=>{
    if(!window.confirm(`¿Eliminar la factura ${invoice.invoiceNumber==='—'?'seleccionada':invoice.invoiceNumber} de ${invoice.supplierName}? Esta acción no se puede deshacer.`)) return;
    setBusyId(invoice.id);
-   try{await onDelete(invoice);if(selected?.id===invoice.id)setSelected(null);setCheckedIds(current=>{const next=new Set(current);next.delete(invoice.id);return next})}catch(e){showError(e instanceof Error?e.message:'No se pudo eliminar la factura.')}finally{setBusyId(null)}
+   try{await onDelete(invoice);if(selected?.id===invoice.id)setSelected(null);setCheckedIds(current=>{const next=new Set(current);next.delete(invoice.id);return next});showSuccess('Factura eliminada correctamente.')}catch(e){showError(e instanceof Error?e.message:'No se pudo eliminar la factura.')}finally{setBusyId(null)}
  };
  const removeSelected=async()=>{
    if(!selectedRows.length)return;
@@ -70,11 +70,11 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
  };
  const changeSupplier=async(invoice:Invoice,supplierId:string)=>{
    setBusyId(invoice.id);
-   try{await onSupplierChange(invoice.id,supplierId);const supplier=suppliers.find(s=>s.id===supplierId);if(supplier)setSelected(current=>current?.id===invoice.id?{...current,supplierId,supplierName:supplier.name}:current)}catch(e){throw e instanceof Error?e:new Error('No se pudo cambiar el proveedor de la factura.')}finally{setBusyId(null)}
+   try{await onSupplierChange(invoice.id,supplierId);const supplier=suppliers.find(s=>s.id===supplierId);if(supplier)setSelected(current=>current?.id===invoice.id?{...current,supplierId,supplierName:supplier.name}:current);showSuccess('Proveedor de la factura actualizado correctamente.')}catch(e){throw e instanceof Error?e:new Error('No se pudo cambiar el proveedor de la factura.')}finally{setBusyId(null)}
  };
  const changeCategory=async(invoice:Invoice,categoryId:string)=>{
    setActionError('');setBusyId(invoice.id);
-   try{await onCategoryChange(invoice.id,categoryId);const category=categories.find(c=>c.id===categoryId);if(category)setSelected(current=>current?.id===invoice.id?{...current,categoryId,category:category.name}:current)}catch(e){throw e instanceof Error?e:new Error('No se pudo cambiar la categoría de la factura.')}finally{setBusyId(null)}
+   try{await onCategoryChange(invoice.id,categoryId);const category=categories.find(c=>c.id===categoryId);if(category)setSelected(current=>current?.id===invoice.id?{...current,categoryId,category:category.name}:current);showSuccess('Categoría de la factura actualizada correctamente.')}catch(e){throw e instanceof Error?e:new Error('No se pudo cambiar la categoría de la factura.')}finally{setBusyId(null)}
  };
  return <div className="page"><div className="pageHead"><div><div className="eyebrow">DOCUMENTACIÓN · {periodLabel(filter)}</div><h1>Facturas de gastos</h1><p>Consulta el histórico completo, filtra y exporta cualquier periodo.</p></div><div className="actions"><button className="secondary" onClick={doExport} disabled={exporting||!exportRows.length}><Download size={17}/> {exporting?'Preparando…':selectedRows.length?`Exportar seleccionadas (${selectedRows.length})`:`Exportar (${filtered.length})`}</button><button className="secondary" onClick={onBulkUpload}><Files size={17}/> Importar facturas</button><button className="primary" onClick={onUpload}>+ Nueva factura</button></div></div>
  <InvoiceFilters filter={filter} onChange={setFilter} invoices={invoices} suppliers={suppliers}/>
