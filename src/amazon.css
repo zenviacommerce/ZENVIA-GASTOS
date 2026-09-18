@@ -54,3 +54,66 @@
 [data-theme='dark'] .amazonMappingModalIdentity strong{color:#f8fafc}
 [data-theme='dark'] .amazonMappingModalThumb,[data-theme='dark'] .amazonMappingModalClose{background:#0f172a;border-color:#334155;color:#cbd5e1}
 @media(max-width:620px){.amazonMappingModalBackdrop{padding:10px;place-items:end center}.amazonMappingModal{width:100%;max-height:88vh;border-radius:18px 18px 0 0}.amazonMappingModal .amazonMappingEditor{grid-template-columns:1fr}.amazonMappingModal .amazonMappingPicker,.amazonMappingModal .amazonMappingActions{grid-column:auto}.amazonMappingModal .amazonMappingActions{justify-content:stretch}.amazonMappingModal .amazonMappingActions button{flex:1 1 auto;justify-content:center}.amazonMappingModalIdentity strong{max-width:220px}}
+
+
+/* Amazon mobile layout: no page-level horizontal overflow; controls reflow instead of clipping. */
+.amazonPage,.amazonSummary,.amazonFilters,.amazonTableCard,.amazonChartCard,.amazonMiniCard{min-width:0;max-width:100%}
+.amazonTableScroll{max-width:100%;overscroll-behavior-x:contain}
+.amazonQualityBanner>div{min-width:0}
+.amazonQualityBanner p{overflow-wrap:anywhere}
+@media(max-width:760px){
+  .amazonPage{width:100%;max-width:100%;overflow-x:hidden;padding-inline:12px}
+  .amazonPage>*{min-width:0;max-width:100%}
+  .amazonPageHead{gap:12px}
+  .amazonPageHead>div:first-child{min-width:0}
+  .amazonPageHead h1{font-size:28px}
+  .amazonPageHead p{font-size:13px;line-height:1.45}
+  .amazonExternalLinks{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%;margin-top:14px!important}
+  .amazonExternalLinks>a,.amazonExternalLinks>button{width:100%;min-width:0;min-height:48px;padding:10px 8px;justify-content:center;text-align:center;white-space:normal}
+  .amazonRefreshView,.amazonSyncButton{grid-column:auto!important}
+  .amazonCompactStatus{padding:13px 14px;gap:10px}
+  .amazonCompactState{width:100%;min-width:0}
+  .amazonCompactState span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .amazonCompactMeta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;width:100%}
+  .amazonCompactMeta span{white-space:normal;line-height:1.3}
+  .amazonFilters{padding:12px;overflow:hidden}
+  .amazonFilterPresets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;overflow:visible;padding:0}
+  .amazonFilterPresets button{width:100%;min-width:0;white-space:normal;line-height:1.2;padding:8px 5px}
+  .amazonMarketplaceFilter{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;overflow:visible}
+  .amazonMarketplaceFilter>span{grid-column:1/-1;margin:0 0 2px}
+  .amazonMarketplaceFilter button{width:100%;min-width:0;padding:8px 3px;justify-content:center}
+  .amazonDateRange{align-items:stretch;flex-direction:column}
+  .amazonDateRange label,.amazonDateRange input{width:100%}
+  .amazonTabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;overflow:visible;margin:0;padding:0}
+  .amazonTabs button{width:100%;min-width:0;justify-content:center;white-space:normal;padding:8px 5px;line-height:1.2}
+  .amazonSummary{overflow:hidden}
+  .amazonQualityBanner{grid-template-columns:auto minmax(0,1fr);padding:12px;overflow:hidden}
+  .amazonQualityBanner p{font-size:11px;line-height:1.4}
+  .amazonKpiGrid{grid-template-columns:1fr;gap:10px}
+  .amazonKpiCard{padding:14px}
+  .amazonKpiCard strong{font-size:22px}
+  .amazonChartCard,.amazonMiniCard,.amazonTableCard{padding:13px;overflow:hidden}
+  .amazonCardHeading,.amazonTableToolbar{min-width:0}
+  .amazonChart{height:230px;min-width:0}
+  .amazonTableScroll{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .amazonCostRowsGrid{grid-template-columns:1fr}
+  .amazonSearch{width:100%;min-width:0}
+  .amazonSearch input{width:100%;min-width:0}
+  .amazonPagination{align-items:flex-start;flex-direction:column}
+  .amazonPagination>div{width:100%;justify-content:space-between}
+  .amazonQueryError{max-width:100%;overflow:hidden}
+}
+/* Mapping modal follows the same desktop/mobile modal geometry as all other dialogs. */
+.amazonMappingModalBackdrop{padding:24px}
+.amazonMappingModal{width:min(760px,calc(100vw - 48px));max-height:calc(100dvh - 48px)}
+@media(max-width:760px){
+  .amazonMappingModalBackdrop{padding:max(10px,env(safe-area-inset-top)) 0 0;place-items:end center}
+  .amazonMappingModal{width:100%;max-width:none;max-height:calc(100dvh - max(10px,env(safe-area-inset-top)));border-radius:20px 20px 0 0;margin:0}
+  .amazonMappingModalHead{padding:14px 16px}
+  .amazonMappingModalBody{padding:16px 16px max(16px,env(safe-area-inset-bottom))}
+  .amazonMappingModal .amazonMappingEditor{grid-template-columns:1fr}
+  .amazonMappingModal .amazonMappingPicker,.amazonMappingModal .amazonMappingActions{grid-column:auto}
+  .amazonMappingModal .amazonMappingActions{display:grid;grid-template-columns:1fr;gap:8px}
+  .amazonMappingModal .amazonMappingActions button{width:100%;justify-content:center;min-height:44px}
+  .amazonMappingModalIdentity strong{max-width:210px}
+}
