@@ -20,6 +20,11 @@ export type AmazonSummary=AmazonCompleteness&{
   amazonFees:number;amazonFeeVat:number;refunds:number;adsCost:number;amazonAdjustments:number;
   productCost:number;fbmShippingCost:number;netProfit:number|null;marginPct:number|null;
 };
+export type AmazonDetail={
+  orderLines:number;promotionDiscounts:number;shippingCharged:number;shippingTax:number;
+  refundTransactions:number;refundOrders:number;refundGrossImpact:number;refundTaxImpact:number;
+  commissionFees:number;fbaFees:number;digitalServicesFees:number;storageFees:number;otherAmazonFees:number;
+};
 export type AmazonSeriesPoint={
   period:string;grossSales:number;salesVat:number;netSales:number;amazonFees:number;refunds:number;adsCost:number;
   productCost:number;fbmShippingCost:number;netProfit:number|null;orders:number;units:number;profitComplete:boolean;
@@ -121,6 +126,7 @@ export async function requestAmazonSync(){
   }catch(error){notifyAmazonConnectivityError(error);throw error;}
 }
 export function loadAmazonSummary(filters:AmazonAnalyticsFilters){return rpc<AmazonSummary>('amazon_analytics_summary',rpcParams(filters),'No se pudo cargar el resumen de Amazon.');}
+export function loadAmazonDetail(filters:AmazonAnalyticsFilters){return rpc<AmazonDetail>('amazon_analytics_detail',rpcParams(filters),'No se pudo cargar el detalle de Amazon.');}
 export function loadAmazonSeries(filters:AmazonAnalyticsFilters,grain:'day'|'month'='day'){return rpc<AmazonSeriesPoint[]>('amazon_analytics_series',{...rpcParams(filters),grain},'No se pudo cargar la evolución de Amazon.');}
 export function loadAmazonProducts(filters:AmazonAnalyticsFilters,search='',page=1,pageSize=50,sortBy:AmazonProductSort='profit_before_ads',sortDir:AmazonSortDirection='desc'){return rpc<AmazonPageResult<AmazonProductAnalytics>>('amazon_analytics_products',{...rpcParams(filters),search:search||null,page,page_size:pageSize,sort_by:sortBy,sort_dir:sortDir},'No se pudieron cargar los productos de Amazon.');}
 export function loadAmazonMarketplaces(filters:AmazonAnalyticsFilters){return rpc<{items:AmazonMarketplaceAnalytics[]}>('amazon_analytics_marketplaces',rpcParams(filters),'No se pudieron cargar los marketplaces de Amazon.');}
