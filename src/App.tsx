@@ -115,13 +115,13 @@ export default function App(){
 
  const navigate=(next:Page)=>{if(allowedPages.includes(next))setPage(next)};
  const toggleTheme=()=>setTheme(current=>current==='dark'?'light':'dark');
- const runAction=async(work:()=>Promise<void>,success:string,fallback:string)=>{
-   try{await work();showSuccess(success)}
+ const runAction=async(work:()=>Promise<void>,fallback:string)=>{
+   try{await work()}
    catch(e){throw new Error(errorMessage(e,fallback));}
  };
  const saveInvoice=async(input:NewInvoiceInput)=>{
    if(!can('invoices'))throw new Error('No tienes permiso para crear facturas de gastos.');
-   await runAction(async()=>{await createInvoice(input);await refresh()},'Factura guardada correctamente.','No se pudo guardar la factura.');
+   await runAction(async()=>{await createInvoice(input);await refresh()},'No se pudo guardar la factura.');
  };
  const saveBulkInvoice=async(input:NewInvoiceInput)=>{
    if(!can('invoices'))throw new Error('No tienes permiso para crear facturas de gastos.');
@@ -131,19 +131,19 @@ export default function App(){
  const changeStatus=async(id:string,status:'pending'|'reviewed'|'accounted')=>{
    if(!can('invoices'))throw new Error('No tienes permiso para modificar facturas.');
    const labels={pending:'pendiente',reviewed:'revisada',accounted:'contabilizada'} as const;
-   await runAction(async()=>{await updateInvoiceStatus(id,status);await refresh()},`Factura marcada como ${labels[status]}.`,'No se pudo cambiar el estado de la factura.');
+   await runAction(async()=>{await updateInvoiceStatus(id,status);await refresh()},'No se pudo cambiar el estado de la factura.');
  };
  const changeInvoiceSupplier=async(invoiceId:string,supplierId:string)=>{
    if(!can('invoices'))throw new Error('No tienes permiso para modificar facturas.');
-   await runAction(async()=>{await updateInvoiceSupplier(invoiceId,supplierId);await refresh()},'Proveedor de la factura actualizado correctamente.','No se pudo cambiar el proveedor de la factura.');
+   await runAction(async()=>{await updateInvoiceSupplier(invoiceId,supplierId);await refresh()},'No se pudo cambiar el proveedor de la factura.');
  };
  const changeInvoiceCategory=async(invoiceId:string,categoryId:string)=>{
    if(!can('invoices'))throw new Error('No tienes permiso para modificar facturas.');
-   await runAction(async()=>{await updateInvoiceCategory(invoiceId,categoryId);await refresh()},'Categoría de la factura actualizada correctamente.','No se pudo cambiar la categoría de la factura.');
+   await runAction(async()=>{await updateInvoiceCategory(invoiceId,categoryId);await refresh()},'No se pudo cambiar la categoría de la factura.');
  };
  const removeInvoice=async(invoice:Invoice)=>{
    if(!can('invoices'))throw new Error('No tienes permiso para eliminar facturas.');
-   await runAction(async()=>{await deleteInvoiceWithGmailRecovery(invoice.id,invoice.filePath);await refresh()},'Factura eliminada correctamente.','No se pudo eliminar la factura.');
+   await runAction(async()=>{await deleteInvoiceWithGmailRecovery(invoice.id,invoice.filePath);await refresh()},'No se pudo eliminar la factura.');
  };
  const openInvoice=async(invoice:Invoice)=>{
    if(!invoice.filePath) throw new Error('Esta factura no tiene un documento asociado.');
@@ -161,11 +161,11 @@ export default function App(){
    await runAction(async()=>{
      if(productToEdit) await updateProduct(productToEdit.id,input); else await addProduct(input);
      await refresh();
-   },editing?'Producto modificado correctamente.':'Producto creado correctamente.','No se pudo guardar el producto.');
+   },'No se pudo guardar el producto.');
  };
  const removeProduct=async(product:Product)=>{
    if(!can('products'))throw new Error('No tienes permiso para eliminar productos.');
-   await runAction(async()=>{await deleteProduct(product.id);await refresh()},'Producto eliminado correctamente.','No se pudo eliminar el producto.');
+   await runAction(async()=>{await deleteProduct(product.id);await refresh()},'No se pudo eliminar el producto.');
  };
  const openNewSupplier=()=>{if(can('suppliers')){setSupplierToEdit(null);setSupplierModal(true)}};
  const openEditSupplier=(supplier:Supplier)=>{if(can('suppliers')){setSupplierToEdit(supplier);setSupplierModal(true)}};
@@ -176,11 +176,11 @@ export default function App(){
    await runAction(async()=>{
      if(supplierToEdit) await updateSupplier(supplierToEdit.id,input); else await addSupplier(input);
      await refresh();
-   },editing?'Proveedor modificado correctamente.':'Proveedor creado correctamente.','No se pudo guardar el proveedor.');
+   },'No se pudo guardar el proveedor.');
  };
  const removeSupplier=async(supplier:Supplier)=>{
    if(!can('suppliers'))throw new Error('No tienes permiso para eliminar proveedores.');
-   await runAction(async()=>{await deleteSupplier(supplier.id);await refresh()},'Proveedor eliminado correctamente.','No se pudo eliminar el proveedor.');
+   await runAction(async()=>{await deleteSupplier(supplier.id);await refresh()},'No se pudo eliminar el proveedor.');
  };
 
  return <div className="app"><ToastHost/><Sidebar page={page} onChange={navigate} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme} allowedPages={allowedPages} isAdmin={access.role==='admin'} user={{fullName:access.fullName,email:access.email||session.user.email||'',role:access.role}}/><main>
