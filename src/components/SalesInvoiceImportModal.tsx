@@ -5,7 +5,7 @@ import { createSalesInvoiceDraftFromCandidate, friendlySalesImportError, prepare
 import { SearchableSelect } from './forms/SearchableSelect';
 import { SelectField } from './forms/SelectField';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from './BulkSelectionToolbar';
-import { showError, showSuccess } from '../services/toast';
+import { showError, showOperationResult, showSuccess } from '../services/toast';
 
 const ANALYSIS_CONCURRENCY=2;
 type Item={id:string;file:File;candidate?:SalesInvoiceImportCandidate;series:SalesInvoiceSeries[];status:'analyzing'|'needs_review'|'ready'|'duplicate'|'importing'|'imported'|'error';error?:string;excluded?:boolean};
@@ -112,8 +112,9 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
       return {...item,status:'ready',error:undefined,candidate:{...recalculateSalesImportCandidate(item.candidate),status:'ready',reviewReason:undefined}};
     }));
     setCheckedIds(new Set());
-    if(valid)showSuccess(`${valid} factura${valid===1?'':'s'} validada${valid===1?'':'s'}.`);
-    if(invalid)showError(`${invalid} factura${invalid===1?' necesita':'s necesitan'} revisión manual.`);
+    const successMessage=valid?`${valid} factura${valid===1?' validada':'s validadas'}.`:'';
+    const failureMessage=invalid?`${invalid} factura${invalid===1?' necesita':'s necesitan'} revisión manual.`:'';
+    showOperationResult(successMessage,failureMessage);
   };
   const validateSelected=()=>validateMany(selectedBulkItems);
   const validateAll=()=>validateMany(selectableItems);
