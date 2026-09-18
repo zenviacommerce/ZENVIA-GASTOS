@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Building2, CalendarDays, ChevronRight, FileText, Globe, Mail, MapPin, Package, Pencil, Phone, Search, ShoppingCart, Trash2, X } from 'lucide-react';
 import { loadAppData } from '../services/repository';
-import { showError, showOperationResult } from '../services/toast';
+import { showError, showOperationResult, showSuccess } from '../services/toast';
 import type { Invoice, Supplier } from '../types';
 import { Pagination } from '../components/Pagination';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
@@ -124,7 +124,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
    const confirmed=window.confirm(`¿Eliminar el proveedor "${supplier.name}"?\n\nLas facturas existentes no se borrarán; quedarán sin proveedor asignado.`);
    if(!confirmed)return;
    setBusyId(supplier.id);setError('');
-   try{await onDelete(supplier);setSelected(null)}
+   try{await onDelete(supplier);setSelected(null);showSuccess('Proveedor eliminado correctamente.')}
    catch(e){showError(e instanceof Error?e.message:'No se pudo eliminar el proveedor.')}
    finally{setBusyId(null)}
  };
