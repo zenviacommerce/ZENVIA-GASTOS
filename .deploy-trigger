@@ -14,3 +14,4 @@ deploy after verified build
 final production retry after green build
 deploy after green build check
 production deploy after green build
+retry after validated build and bulk delete
