@@ -5,6 +5,7 @@ import { Pagination } from '../components/Pagination';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { loadProductSalesMap } from '../services/productEditor';
 import { productMarginMetrics } from '../services/productMetrics';
+import { showError, showSuccess } from '../services/toast';
 import '../supplier-actions.css';
 
 const PAGE_SIZE=20;
@@ -84,7 +85,8 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
    setCheckedIds(new Set());
    setBulkBusy(false);
    const removed=selectedProducts.length-failed.length;
-   if(failed.length)setError(`${removed} eliminados · ${failed.length} con error: ${failed.slice(0,3).join(' · ')}`);
+   if(removed)showSuccess(`${removed} producto${removed===1?' eliminado':'s eliminados'}.`);
+   if(failed.length){const message=`${failed.length} no se pudieron eliminar: ${failed.slice(0,3).join(' · ')}`;setError(message);showError(message);}
  };
  const edit=(product:Product)=>{setSelected(null);onEdit(product)};
  return <div className="page masterPage"><div className="pageHead"><div><div className="eyebrow">CATÁLOGO · COMPRAS Y VENTAS</div><h1>Productos</h1><p>Coste de compra, precio de venta, margen y datos reutilizables en las facturas.</p></div><button className="primary" onClick={onAdd}>+ Nuevo producto</button></div>
