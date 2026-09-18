@@ -114,10 +114,10 @@
   overscroll-behavior-x:contain;
 }
 .amazonTableScroll>.amazonTable{
-  width:max-content;
+  width:100%;
 }
 .amazonProductTable{
-  width:max-content!important;
+  width:100%!important;
   min-width:1500px;
 }
 @media(max-width:760px){
