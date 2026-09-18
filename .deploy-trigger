@@ -23,3 +23,4 @@ deploy client-name hardening and draft repair
 deploy spaced postcode client extraction fix
 deploy explicit issue invoice action
 deploy bulk issue selected invoices
+retry deploy bulk issue selected invoices
