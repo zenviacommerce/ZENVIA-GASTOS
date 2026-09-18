@@ -77,6 +77,12 @@ export default function App(){
  },[]);
 
  useEffect(()=>{
+   const onProductsChanged=()=>{void refresh();};
+   window.addEventListener('zenvia:products-changed',onProductsChanged);
+   return()=>window.removeEventListener('zenvia:products-changed',onProductsChanged);
+ },[refresh]);
+
+ useEffect(()=>{
    supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)});
    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{setSession(next);setAuthReady(true)});
    return ()=>subscription.unsubscribe();
