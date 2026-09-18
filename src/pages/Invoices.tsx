@@ -8,6 +8,7 @@ import { Pagination } from '../components/Pagination';
 import { StatCard } from '../components/StatCard';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { defaultInvoiceFilter, filterInvoices, periodLabel, safeExportLabel } from '../services/filters';
+import { errorMessage, showError, showSuccess } from '../services/toast';
 
 const PAGE_SIZE=20;
 const money=(value:number)=>`${value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €`;
@@ -18,6 +19,7 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
  const [selected,setSelected]=useState<Invoice|null>(null);
  const [checkedIds,setCheckedIds]=useState<Set<string>>(()=>new Set());
  const [busyId,setBusyId]=useState<string|null>(null);
+ const [bulkDeleting,setBulkDeleting]=useState(false);
  const [actionError,setActionError]=useState('');
  const [page,setPage]=useState(1);
  const filtered=useMemo(()=>{
@@ -49,6 +51,22 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
    setActionError(''); setBusyId(invoice.id);
    try{await onDelete(invoice);if(selected?.id===invoice.id)setSelected(null);setCheckedIds(current=>{const next=new Set(current);next.delete(invoice.id);return next})}catch(e){setActionError(e instanceof Error?e.message:'No se pudo eliminar la factura.')}finally{setBusyId(null)}
  };
+ const removeSelected=async()=>{
+   if(!selectedRows.length)return;
+   if(!window.confirm(`¿Eliminar ${selectedRows.length} factura${selectedRows.length===1?'':'s'} de gasto seleccionada${selectedRows.length===1?'':'s'}? Esta acción no se puede deshacer.`))return;
+   setBulkDeleting(true);setActionError('');
+   const failed:string[]=[];
+   for(const invoice of selectedRows){
+     try{await onDelete(invoice);}
+     catch(e){failed.push(`${invoice.invoiceNumber==='—'?invoice.supplierName:invoice.invoiceNumber}: ${errorMessage(e,'No se pudo eliminar')}`);}
+   }
+   if(selected&&selectedRows.some(invoice=>invoice.id===selected.id))setSelected(null);
+   setCheckedIds(new Set());
+   setBulkDeleting(false);
+   const removed=selectedRows.length-failed.length;
+   if(removed)showSuccess(`${removed} factura${removed===1?' eliminada':'s eliminadas'}.`);
+   if(failed.length){const message=`${failed.length} no se pudieron eliminar: ${failed.slice(0,3).join(' · ')}`;setActionError(message);showError(message);}
+ };
  const changeSupplier=async(invoice:Invoice,supplierId:string)=>{
    setActionError('');setBusyId(invoice.id);
    try{await onSupplierChange(invoice.id,supplierId);const supplier=suppliers.find(s=>s.id===supplierId);if(supplier)setSelected(current=>current?.id===invoice.id?{...current,supplierId,supplierName:supplier.name}:current)}catch(e){const text=e instanceof Error?e.message:'No se pudo cambiar el proveedor de la factura.';setActionError(text);throw e}finally{setBusyId(null)}
@@ -62,7 +80,8 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
  <div className="stats expenseStats"><StatCard label="Gasto total" value={money(expenseTotal)} sub={selectionLabel} icon={<Euro/>}/><StatCard label="IVA soportado" value={money(vatTotal)} sub={selectionLabel} icon={<BadgeEuro/>}/><StatCard label="Nº de facturas" value={String(invoiceCount)} sub={selectionLabel} icon={<ReceiptText/>}/><StatCard label="Pendientes de revisar" value={String(pendingReview)} sub={pendingReview?`${pendingReview} pendiente${pendingReview===1?'':'s'}`:'Todo revisado'} icon={<Clock3/>}/><StatCard label="Ticket medio" value={money(averageTicket)} sub="Media por factura" icon={<Calculator/>}/><StatCard label="Proveedores distintos" value={String(supplierCount)} sub={selectionLabel} icon={<Building2/>}/></div>
  <div className="toolbar invoiceSearchToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar proveedor, nº factura, categoría…"/></div><span className="filterResultCount">{filtered.length} factura{filtered.length===1?'':'s'} · {selectionLabel}</span></div>
  {filtered.length>0&&<BulkSelectionToolbar selectedCount={selectedRows.length} totalCount={filtered.length} allSelected={allFilteredSelected} onToggleAll={toggleAllFiltered} label="gastos visibles">
-   <button className="primary" type="button" disabled={!selectedRows.length||exporting} onClick={doExport}><Download size={15}/> Exportar seleccionados ({selectedRows.length})</button>
+   <button className="secondary dangerText" type="button" disabled={!selectedRows.length||bulkDeleting||exporting} onClick={()=>void removeSelected()}><Trash2 size={15}/> {bulkDeleting?'Eliminando…':`Eliminar seleccionados (${selectedRows.length})`}</button>
+   <button className="primary" type="button" disabled={!selectedRows.length||exporting||bulkDeleting} onClick={doExport}><Download size={15}/> Exportar seleccionados ({selectedRows.length})</button>
  </BulkSelectionToolbar>}
  {actionError&&<div className="errorBox tableError"><AlertCircle size={18}/>{actionError}</div>}
  <section className="card tableCard">{filtered.length?<><table><thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllFiltered} label={allFilteredSelected?'Deseleccionar gastos visibles':'Seleccionar gastos visibles'}/></th><th>Fecha</th><th>Proveedor</th><th>Factura</th><th>Categoría</th><th>Origen</th><th>Estado</th><th className="right">IVA</th><th className="right">Total</th><th className="right">Acciones</th></tr></thead><tbody>{paged.map(i=><tr key={i.id} className={`clickableRow ${checkedIds.has(i.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(i)}><td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(i.id)} onChange={checked=>toggleChecked(i.id,checked)} label={`Seleccionar gasto ${i.invoiceNumber==='—'?i.supplierName:i.invoiceNumber}`}/></td><td>{new Date(`${i.invoiceDate}T12:00:00`).toLocaleDateString('es-ES')}</td><td><strong>{i.supplierName}</strong></td><td>{i.invoiceNumber}</td><td><span className="tag">{i.category}</span></td><td>{i.source==='camera'?<><Camera size={14}/> Cámara</>:i.source==='manual'?<><FileUp size={14}/> Archivo</>:'Gmail'}</td><td><div className="statusActions" onClick={e=>e.stopPropagation()}><button title="Pendiente" className={i.status==='pending'?'statusBtn active warnBtn':'statusBtn'} onClick={()=>onStatusChange(i.id,'pending')}>P</button><button title="Revisada" className={i.status==='reviewed'?'statusBtn active okBtn':'statusBtn'} onClick={()=>onStatusChange(i.id,'reviewed')}><CheckCircle2 size={13}/></button><button title="Contabilizada" className={i.status==='accounted'?'statusBtn active accountBtn':'statusBtn'} onClick={()=>onStatusChange(i.id,'accounted')}><CircleDollarSign size={13}/></button></div></td><td className="right">{i.vat.toLocaleString('es-ES',{minimumFractionDigits:2})} €</td><td className="right"><strong>{i.total.toLocaleString('es-ES',{minimumFractionDigits:2})} €</strong></td><td className="right"><div className="invoiceActions" onClick={e=>e.stopPropagation()}><button className="iconBtn" title="Abrir factura" disabled={!i.filePath} onClick={()=>openFile(i)}><Eye size={16}/></button><button className="iconBtn dangerIcon" title="Eliminar factura" disabled={busyId===i.id} onClick={()=>remove(i)}><Trash2 size={16}/></button></div></td></tr>)}</tbody></table><Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage}/></>:<div className="emptyState large">No hay facturas para los filtros seleccionados.</div>}</section>
