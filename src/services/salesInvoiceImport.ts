@@ -2,6 +2,7 @@ import { readInvoiceDocumentEnhanced } from './invoiceReaderEnhanced';
 import { addClient, createSalesInvoiceDraft, loadClients, type Client, type ClientInput, type SalesInvoiceDraftInput, type SalesInvoiceLine } from './sales';
 import { updateSalesInvoiceNumber } from './salesInvoiceNumber';
 import { deleteSalesInvoiceDraftSafe } from './salesDraftDelete';
+import { extractInvoiceParty } from './invoicePartyExtractor';
 
 export type SalesInvoiceImportStatus='needs_review'|'ready'|'importing'|'imported'|'error'|'duplicate';
 
@@ -44,37 +45,25 @@ function clientNameFromFilename(filename:string,invoiceNumber:string){
   return validClientName(titleCase(base));
 }
 
-function extractSalesRecipient(text:string,filename:string,invoiceNumber:string):ClientInput|null{
-  const rows=text.split(/\r?\n/).map(compact).filter(Boolean);
-  const marker=/\b(?:cliente|customer|destinatario|receptor|facturar\s+a|bill\s+to)\b/i;
-  const markerIndex=rows.findIndex(line=>marker.test(line));
-  const nearby=markerIndex>=0?rows.slice(markerIndex,Math.min(rows.length,markerIndex+10)):[];
-  let name=clientNameFromFilename(filename,invoiceNumber);
-  if(!name&&markerIndex>=0){
-    const sameLine=validClientName(rows[markerIndex].replace(/^.*?\b(?:cliente|customer|destinatario|receptor|facturar\s+a|bill\s+to)\b\s*[:.-]?\s*/i,'').split(/\b(?:CIF|NIF|NIE|VAT|Email|Tel[eé]fono|Direcci[oó]n|Address)\b/i)[0]);
-    if(sameLine)name=sameLine;
-    if(!name){
-      name=nearby.slice(1,5).map(line=>validClientName(line)).find(line=>line&&!/^(?:cif|nif|nie|vat|email|tel[eé]fono|direcci[oó]n|address|cp|c\.p\.)\b/i.test(line))||'';
-    }
-  }
+function extractSalesRecipient(text:string,filename:string,invoiceNumber:string,invoiceDate=''):ClientInput|null{
+  const nameHint=clientNameFromFilename(filename,invoiceNumber);
+  const party=extractInvoiceParty(text,{role:'recipient',nameHint,invoiceNumber,invoiceDate});
+  const name=party.name||nameHint;
   if(!name)return null;
-  const scope=nearby.join(' ');
-  const taxMatch=scope.match(/\b(?:CIF|NIF|NIE|VAT(?:\s*(?:ID|NO|NUMBER))?)\s*[:#-]?\s*((?:ES)?(?:[ABCDEFGHJNPQRSUVW]\d{7}[0-9A-J]|\d{8}[A-Z]|[XYZ]\d{7}[A-Z]|[A-Z]{2}[A-Z0-9]{8,12}))\b/i);
-  const taxId=(taxMatch?.[1]||'').replace(/[^A-Z0-9]/gi,'').toUpperCase();
-  const email=scope.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]||'';
-  const phone=(scope.match(/(?:\+34\s*)?(?:\d[\s.-]?){9}\b/)?.[0]||'').replace(/[\s.-]/g,'');
-  const postalMatch=scope.match(/\b(\d{5})\b\s+([A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ .'-]{2,50})/);
-  const postalCode=postalMatch?.[1]||'';
-  const city=postalMatch?.[2]?.trim().replace(/\s+(?:CIF|NIF|VAT|Tel[eé]fono|Email).*$/i,'')||'';
-  let addressLine1='';
-  if(postalCode&&nearby.length){
-    const postalIndex=nearby.findIndex(line=>line.includes(postalCode));
-    if(postalIndex>0){
-      const candidate=nearby[postalIndex-1];
-      if(!marker.test(candidate)&&!/(?:CIF|NIF|VAT|email|tel[eé]fono)/i.test(candidate))addressLine1=candidate;
-    }
-  }
-  return {name,taxId,email,phone,addressLine1,addressLine2:'',postalCode,city,province:'',countryCode:'ES',paymentTermsDays:0,notes:'Creado automáticamente desde una factura importada.'};
+  return {
+    name,
+    taxId:party.taxId||'',
+    email:party.email||'',
+    phone:party.phone||'',
+    addressLine1:party.addressLine1||'',
+    addressLine2:'',
+    postalCode:party.postalCode||'',
+    city:party.city||'',
+    province:party.province||'',
+    countryCode:party.countryCode||'XX',
+    paymentTermsDays:0,
+    notes:'',
+  };
 }
 
 function matchClientIdentity(input:ClientInput,clients:Client[]){
@@ -193,7 +182,7 @@ export async function prepareSalesInvoiceImportCandidate(file:File,clients:Clien
   const subtotal=fiscal?.subtotal||read.subtotal;
   const vat=fiscal?.vat??read.vat;
   const total=fiscal?.total||read.total;
-  const proposedClient=extractSalesRecipient(read.text,file.name,read.invoiceNumber||'');
+  const proposedClient=extractSalesRecipient(read.text,file.name,read.invoiceNumber||'',read.invoiceDate||'');
   const matched=(proposedClient&&matchClientIdentity(proposedClient,clients))||matchSalesInvoiceClient(read.text,clients);
   const fallbackTaxRate=nearestTaxRate(subtotal,vat);
   const exactLines=extractSalesConceptLines(read.text,fallbackTaxRate);
@@ -205,7 +194,7 @@ export async function prepareSalesInvoiceImportCandidate(file:File,clients:Clien
   if(!read.invoiceNumber)reasons.push('Revisa el número de factura');
   if(!read.invoiceDate)reasons.push('Revisa la fecha');
   if(!lines.length)reasons.push('Añade al menos una línea');
-  return {id:crypto.randomUUID(),file,status:'needs_review',clientId:matched?.id||'',proposedClient:matched?null:proposedClient,invoiceNumber:read.invoiceNumber||'',issueDate:read.invoiceDate||'',seriesId:'',taxRegistrationId:null,paymentMethod:'',notes:`Importada desde ${file.name}`,lines,subtotal,taxAmount:vat,totalAmount:total,confidence:read.confidence,text:read.text,reviewReason:reasons.length?reasons.join(' · '):matched?'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.':proposedClient?`Se creará automáticamente el cliente ${proposedClient.name}. Revisa los datos antes de guardar.`:'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.'};
+  return {id:crypto.randomUUID(),file,status:'needs_review',clientId:matched?.id||'',proposedClient:matched?null:proposedClient,invoiceNumber:read.invoiceNumber||'',issueDate:read.invoiceDate||'',seriesId:'',taxRegistrationId:null,paymentMethod:'',notes:'',lines,subtotal,taxAmount:vat,totalAmount:total,confidence:read.confidence,text:read.text,reviewReason:reasons.length?reasons.join(' · '):matched?'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.':proposedClient?`Se creará automáticamente el cliente ${proposedClient.name}. Revisa los datos antes de guardar.`:'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.'};
 }
 
 export function recalculateSalesImportCandidate(candidate:SalesInvoiceImportCandidate){
