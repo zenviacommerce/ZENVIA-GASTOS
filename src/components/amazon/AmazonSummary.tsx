@@ -5,29 +5,39 @@ import { loadAmazonSeries, loadAmazonSummary, type AmazonAnalyticsFilters, type 
 import { errorMessage } from '../../services/toast';
 import { AmazonCompleteness } from './AmazonCompleteness';
 import { AmazonProducts } from './AmazonProducts';
+import { readViewCache, stableCacheKey, writeViewCache } from '../../services/viewCache';
 
 const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'});
 const integer=new Intl.NumberFormat('es-ES',{maximumFractionDigits:0});
 function spanDays(filters:AmazonAnalyticsFilters){return Math.max(1,Math.round((new Date(`${filters.to}T00:00:00`).getTime()-new Date(`${filters.from}T00:00:00`).getTime())/86400000)+1);}
 
 export function AmazonSummary({filters,onLoaded,refreshToken=0}:{filters:AmazonAnalyticsFilters;onLoaded?:(summary:AmazonSummaryData)=>void;refreshToken?:number}){
-  const [summary,setSummary]=useState<AmazonSummaryData|null>(null);
-  const [series,setSeries]=useState<any[]>([]);
-  const [loading,setLoading]=useState(true);
+  const summaryCacheKey=stableCacheKey('amazon:summary',filters);
+  const seriesCacheKey=stableCacheKey('amazon:series',{...filters,grain:spanDays(filters)>93?'month':'day'});
+  const [summary,setSummary]=useState<AmazonSummaryData|null>(()=>readViewCache<AmazonSummaryData>(summaryCacheKey));
+  const [series,setSeries]=useState<any[]>(()=>readViewCache<any[]>(seriesCacheKey)||[]);
+  const [loading,setLoading]=useState(()=>!readViewCache<AmazonSummaryData>(summaryCacheKey));
   const [error,setError]=useState('');
   const [retryToken,setRetryToken]=useState(0);
   const grain=spanDays(filters)>93?'month':'day';
 
   useEffect(()=>{
-    let alive=true;setLoading(true);setError('');
+    let alive=true;
+    const currentSummaryKey=stableCacheKey('amazon:summary',filters);
+    const currentSeriesKey=stableCacheKey('amazon:series',{...filters,grain});
+    const cachedSummary=readViewCache<AmazonSummaryData>(currentSummaryKey);
+    const cachedSeries=readViewCache<any[]>(currentSeriesKey);
+    if(cachedSummary){setSummary(cachedSummary);onLoaded?.(cachedSummary);}
+    if(cachedSeries)setSeries(cachedSeries);
+    setLoading(!cachedSummary);setError('');
     const run=async()=>{
       try{
         const nextSummary=await loadAmazonSummary(filters);
         if(!alive)return;
-        setSummary(nextSummary);onLoaded?.(nextSummary);
+        setSummary(nextSummary);writeViewCache(currentSummaryKey,nextSummary);onLoaded?.(nextSummary);
         try{
           const nextSeries=await loadAmazonSeries(filters,grain);
-          if(alive)setSeries(nextSeries);
+          if(alive){setSeries(nextSeries);writeViewCache(currentSeriesKey,nextSeries);}
         }catch(reason){
           if(alive)setError(errorMessage(reason,'No se pudo cargar la evolución de Amazon.'));
         }
