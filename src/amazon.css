@@ -83,3 +83,58 @@
   .amazonKpiGrid{grid-template-columns:1fr}
   .amazonKpiCard:last-child:nth-child(odd){grid-column:auto}
 }
+
+
+/* Isolate wide Amazon tables so only the table viewport scrolls horizontally. */
+.amazonPage,
+.amazonSummary,
+.amazonSummary>*,
+.amazonTableCard,
+.amazonEmbeddedProducts{
+  min-width:0;
+  max-width:100%;
+  width:100%;
+}
+.amazonPage,
+.amazonSummary{
+  overflow-x:clip;
+}
+.amazonTableCard,
+.amazonEmbeddedProducts{
+  overflow:hidden;
+}
+.amazonTableScroll{
+  display:block;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow-x:auto;
+  overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-x:contain;
+}
+.amazonTableScroll>.amazonTable{
+  width:max-content;
+}
+.amazonProductTable{
+  width:max-content!important;
+  min-width:1500px;
+}
+@media(max-width:760px){
+  .amazonPage,
+  .amazonSummary,
+  .amazonKpiGrid,
+  .amazonChartCard,
+  .amazonMiniCard,
+  .amazonQualityBanner,
+  .amazonFilters,
+  .amazonCompactStatus,
+  .amazonTabs{
+    min-width:0;
+    max-width:100%;
+  }
+  .amazonTableCard{
+    width:100%;
+    max-width:100%;
+  }
+}
