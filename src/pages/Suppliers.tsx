@@ -143,24 +143,81 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  };
  const edit=(supplier:Supplier)=>{setSelected(null);onEdit(supplier)};
 
- return <div className="page masterPage">
-   <div className="pageHead"><div><div className="eyebrow">MAESTRO</div><h1>Proveedores</h1><p>Directorio de proveedores, gasto y actividad de compra por periodo.</p></div><button className="primary" onClick={onAdd}>+ Proveedor</button></div>
+ return (
+  <div className="page masterPage">
+    <div className="pageHead">
+      <div><div className="eyebrow">MAESTRO</div><h1>Proveedores</h1><p>Directorio de proveedores, gasto y actividad de compra por periodo.</p></div>
+      <button className="primary" onClick={onAdd}>+ Proveedor</button>
+    </div>
 
-   <div className="masterPeriodPanel">
-     <div className="masterPeriodTop"><div><CalendarDays size={17}/><div><strong>Periodo de análisis</strong><span>{periodLabel}</span></div></div><div className="masterPeriodQuick"><button className={period==='today'?'active':''} onClick={()=>applyPreset('today')}>Hoy</button><button className={period==='month'?'active':''} onClick={()=>applyPreset('month')}>Mes actual</button><button className={period==='quarter'?'active':''} onClick={()=>applyPreset('quarter')}>Trimestre actual</button><button className={period==='year'?'active':''} onClick={()=>applyPreset('year')}>Año actual</button><button className={period==='all'?'active':''} onClick={()=>applyPreset('all')}>Todo</button></div></div>
-     <div className="masterPeriodDates"><label>Desde<input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPeriod('custom')}}/></label><label>Hasta<input type="date" value={dateTo} min={dateFrom||undefined} onChange={e=>{setDateTo(e.target.value);setPeriod('custom')}}/></label>{period==='custom'&&<button className="secondary" onClick={()=>applyPreset('quarter')}>Restablecer trimestre</button>}</div>
-   </div>
+    <div className="masterPeriodPanel">
+      <div className="masterPeriodTop">
+        <div><CalendarDays size={17}/><div><strong>Periodo de análisis</strong><span>{periodLabel}</span></div></div>
+        <div className="masterPeriodQuick"><button className={period==='today'?'active':''} onClick={()=>applyPreset('today')}>Hoy</button><button className={period==='month'?'active':''} onClick={()=>applyPreset('month')}>Mes actual</button><button className={period==='quarter'?'active':''} onClick={()=>applyPreset('quarter')}>Trimestre actual</button><button className={period==='year'?'active':''} onClick={()=>applyPreset('year')}>Año actual</button><button className={period==='all'?'active':''} onClick={()=>applyPreset('all')}>Todo</button></div>
+      </div>
+      <div className="masterPeriodDates"><label>Desde<input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPeriod('custom')}}/></label><label>Hasta<input type="date" value={dateTo} min={dateFrom||undefined} onChange={e=>{setDateTo(e.target.value);setPeriod('custom')}}/></label>{period==='custom'&&<button className="secondary" onClick={()=>applyPreset('quarter')}>Restablecer trimestre</button>}</div>
+    </div>
 
-   <div className="stats masterStats"><div className="stat"><div className="statIcon"><Building2/></div><div><span>Proveedores con actividad</span><strong>{totals.active}</strong><small>de {suppliers.length} registrados · {periodLabel.toLowerCase()}</small></div></div><div className="stat"><div className="statIcon"><ShoppingCart/></div><div><span>Gasto del periodo</span><strong>{money(totals.spent)}</strong><small>{periodLabel}</small></div></div><div className="stat"><div className="statIcon"><FileText/></div><div><span>Facturas recibidas</span><strong>{totals.invoices}</strong><small>{periodLabel}</small></div></div></div>
-   <div className="masterToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar proveedor, CIF, email, teléfono o dirección…"/></div><div className="masterFilters"><button className={filter==='all'?'active':''} onClick={()=>setFilter('all')}>Todos</button><button className={filter==='goods'?'active':''} onClick={()=>setFilter('goods')}>Mercancía</button><button className={filter==='service'?'active':''} onClick={()=>setFilter('service')}>Servicios</button><button className={filter==='both'?'active':''} onClick={()=>setFilter('both')}>Ambos</button><button className={filter==='unclassified'?'active':''} onClick={()=>setFilter('unclassified')}>Sin clasificar</button></div></div>
-   {filtered.length>0&&<BulkSelectionToolbar selectedCount={selectedSuppliers.length} totalCount={filtered.length} allSelected={allFilteredSelected} onToggleAll={toggleAllSuppliers} label="proveedores">
-     <button className="secondary dangerText" type="button" disabled={!selectedSuppliers.length||bulkBusy} onClick={()=>void removeSelected()}><Trash2 size={15}/> {bulkBusy?'Eliminando…':`Eliminar seleccionados (${selectedSuppliers.length})`}</button>
-   </BulkSelectionToolbar>}
-   {error&&<div className="errorBox supplierPageError">{error}</div>}
-   <section className="card tableCard masterTableCard">{filtered.length?<table className="masterTable"><thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllSuppliers} label={allFilteredSelected?'Deseleccionar proveedores visibles':'Seleccionar proveedores visibles'}/></th><th>Proveedor</th><th>CIF/VAT</th><th>Tipo</th><th>Contacto</th><th className="right">Facturas</th><th className="right">Gasto periodo</th><th>Última factura</th><th></th></tr></thead><tbody>{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <tr className={`clickableRow ${checkedIds.has(s.id)?'bulkSelectedRow':''}`} key={s.id} onClick={()=>setSelected(s)}><td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(s.id)} onChange={checked=>toggleSupplier(s.id,checked)} label={`Seleccionar ${s.name}`}/></td><td><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)}</small></div></div></td><td>{s.taxId||<span className="muted">Pendiente</span>}</td><td><span className={`masterTypeTag ${s.supplierType}`}>{supplierTypeLabel(s.supplierType)}</span></td><td><div className="masterContactCell"><span>{s.email||'—'}</span><small>{s.phone||''}</small></div></td><td className="right"><strong>{metric.count}</strong></td><td className="right"><strong>{money(metric.total)}</strong></td><td>{dateLabel(metric.lastDate)}</td><td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay proveedores para los filtros seleccionados.</div>}</section>
-   {filtered.length>0&&<div className="masterMobileList">{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <div className={`bulkMobileSelectableRow ${checkedIds.has(s.id)?'selected':''}`} key={s.id}><BulkSelectCheckbox checked={checkedIds.has(s.id)} onChange={checked=>toggleSupplier(s.id,checked)} label={`Seleccionar ${s.name}`}/><button className="card masterMobileRow" onClick={()=>setSelected(s)}><div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)} · {s.taxId||'CIF pendiente'}</small></div></div><div className="masterMobileAmounts"><span>Facturas <strong>{metric.count}</strong></span><span>Gasto periodo <strong>{money(metric.total)}</strong></span></div><ChevronRight size={18}/></button></div>})}</div>}
-   {filtered.length>0&&<Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
-   {!suppliers.length&&<div className="card emptyState large">Los proveedores también se crearán automáticamente al registrar facturas nuevas.</div>}
-   {selected&&<SupplierDrawer supplier={selected} metric={metrics.get(selected.id)||{count:0,total:0,lastDate:null,recent:[]}} period={periodLabel} onClose={()=>setSelected(null)} onEdit={()=>edit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>} 
- </div>
+    <div className="stats masterStats">
+      <div className="stat"><div className="statIcon"><Building2/></div><div><span>Proveedores con actividad</span><strong>{totals.active}</strong><small>de {suppliers.length} registrados · {periodLabel.toLowerCase()}</small></div></div>
+      <div className="stat"><div className="statIcon"><ShoppingCart/></div><div><span>Gasto del periodo</span><strong>{money(totals.spent)}</strong><small>{periodLabel}</small></div></div>
+      <div className="stat"><div className="statIcon"><FileText/></div><div><span>Facturas recibidas</span><strong>{totals.invoices}</strong><small>{periodLabel}</small></div></div>
+    </div>
+
+    <div className="masterToolbar">
+      <div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar proveedor, CIF, email, teléfono o dirección…"/></div>
+      <div className="masterFilters"><button className={filter==='all'?'active':''} onClick={()=>setFilter('all')}>Todos</button><button className={filter==='goods'?'active':''} onClick={()=>setFilter('goods')}>Mercancía</button><button className={filter==='service'?'active':''} onClick={()=>setFilter('service')}>Servicios</button><button className={filter==='both'?'active':''} onClick={()=>setFilter('both')}>Ambos</button><button className={filter==='unclassified'?'active':''} onClick={()=>setFilter('unclassified')}>Sin clasificar</button></div>
+    </div>
+
+    {filtered.length>0&&(
+      <BulkSelectionToolbar selectedCount={selectedSuppliers.length} totalCount={filtered.length} allSelected={allFilteredSelected} onToggleAll={toggleAllSuppliers} label="proveedores">
+        <button className="secondary dangerText" type="button" disabled={!selectedSuppliers.length||bulkBusy} onClick={()=>void removeSelected()}>
+          <Trash2 size={15}/> {bulkBusy?'Eliminando…':`Eliminar seleccionados (${selectedSuppliers.length})`}
+        </button>
+      </BulkSelectionToolbar>
+    )}
+
+    {error&&<div className="errorBox supplierPageError">{error}</div>}
+
+    <section className="card tableCard masterTableCard">
+      {filtered.length?(
+        <table className="masterTable">
+          <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllSuppliers} label={allFilteredSelected?'Deseleccionar proveedores visibles':'Seleccionar proveedores visibles'}/></th><th>Proveedor</th><th>CIF/VAT</th><th>Tipo</th><th>Contacto</th><th className="right">Facturas</th><th className="right">Gasto periodo</th><th>Última factura</th><th></th></tr></thead>
+          <tbody>{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return (
+            <tr className={`clickableRow ${checkedIds.has(s.id)?'bulkSelectedRow':''}`} key={s.id} onClick={()=>setSelected(s)}>
+              <td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(s.id)} onChange={checked=>toggleSupplier(s.id,checked)} label={`Seleccionar ${s.name}`}/></td>
+              <td><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)}</small></div></div></td>
+              <td>{s.taxId||<span className="muted">Pendiente</span>}</td>
+              <td><span className={`masterTypeTag ${s.supplierType}`}>{supplierTypeLabel(s.supplierType)}</span></td>
+              <td><div className="masterContactCell"><span>{s.email||'—'}</span><small>{s.phone||''}</small></div></td>
+              <td className="right"><strong>{metric.count}</strong></td>
+              <td className="right"><strong>{money(metric.total)}</strong></td>
+              <td>{dateLabel(metric.lastDate)}</td>
+              <td className="right"><ChevronRight size={17}/></td>
+            </tr>
+          )})}</tbody>
+        </table>
+      ):<div className="emptyState large">No hay proveedores para los filtros seleccionados.</div>}
+    </section>
+
+    {filtered.length>0&&(
+      <div className="masterMobileList">
+        {paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return (
+          <div className={`bulkMobileSelectableRow ${checkedIds.has(s.id)?'selected':''}`} key={s.id}>
+            <BulkSelectCheckbox checked={checkedIds.has(s.id)} onChange={checked=>toggleSupplier(s.id,checked)} label={`Seleccionar ${s.name}`}/>
+            <button className="card masterMobileRow" onClick={()=>setSelected(s)}>
+              <div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)} · {s.taxId||'CIF pendiente'}</small></div></div>
+              <div className="masterMobileAmounts"><span>Facturas <strong>{metric.count}</strong></span><span>Gasto periodo <strong>{money(metric.total)}</strong></span></div>
+              <ChevronRight size={18}/>
+            </button>
+          </div>
+        )})}
+      </div>
+    )}
+
+    {filtered.length>0&&<Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
+    {!suppliers.length&&<div className="card emptyState large">Los proveedores también se crearán automáticamente al registrar facturas nuevas.</div>}
+    {selected&&<SupplierDrawer supplier={selected} metric={metrics.get(selected.id)||{count:0,total:0,lastDate:null,recent:[]}} period={periodLabel} onClose={()=>setSelected(null)} onEdit={()=>edit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>}
+  </div>
+ );
 }
