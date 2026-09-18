@@ -86,7 +86,7 @@
   font-size:13px;
   line-height:1.3;
 }
-.bulkInvoiceFile span{
+.bulkInvoiceFile>div span{
   display:inline-flex;
   align-items:center;
   width:max-content;
@@ -101,11 +101,11 @@
   line-height:1;
   letter-spacing:.02em;
 }
-.bulkInvoiceRow.ready .bulkInvoiceFile span,.bulkInvoiceRow.imported .bulkInvoiceFile span{background:#ecfdf5;color:#047857}
-.bulkInvoiceRow.needs_review .bulkInvoiceFile span{background:#fff7ed;color:#b45309}
-.bulkInvoiceRow.duplicate .bulkInvoiceFile span{background:#f1f5f9;color:#64748b}
-.bulkInvoiceRow.error .bulkInvoiceFile span{background:#fef2f2;color:#b91c1c}
-.bulkInvoiceRow.importing .bulkInvoiceFile span,.bulkInvoiceRow.analyzing .bulkInvoiceFile span{background:#eff6ff;color:#1d4ed8}
+.bulkInvoiceRow.ready .bulkInvoiceFile>div span,.bulkInvoiceRow.imported .bulkInvoiceFile>div span{background:#ecfdf5;color:#047857}
+.bulkInvoiceRow.needs_review .bulkInvoiceFile>div span{background:#fff7ed;color:#b45309}
+.bulkInvoiceRow.duplicate .bulkInvoiceFile>div span{background:#f1f5f9;color:#64748b}
+.bulkInvoiceRow.error .bulkInvoiceFile>div span{background:#fef2f2;color:#b91c1c}
+.bulkInvoiceRow.importing .bulkInvoiceFile>div span,.bulkInvoiceRow.analyzing .bulkInvoiceFile>div span{background:#eff6ff;color:#1d4ed8}
 .bulkInvoiceMeta{
   min-width:0;
   display:grid;
