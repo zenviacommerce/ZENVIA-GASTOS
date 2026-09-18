@@ -102,9 +102,24 @@ Deno.serve(async(req:Request)=>{
         const recommended=results.find((item:any)=>item?.recommended)||results[0]||null;
         const reasons=results.flatMap((item:any)=>Array.isArray(item?.analysis?.validation_result?.reasons)?item.analysis.validation_result.reasons:[]).map(clean).filter(Boolean);
         const invalidAttributes=results.flatMap((item:any)=>Array.isArray(item?.analysis?.invalid_attributes)?item.analysis.invalid_attributes:[]).map(clean).filter(Boolean);
-        return response({ok:true,inputAddressIsValid:data?.input_address_is_valid??null,recommendedAddress:recommended?.address||null,reasons,invalidAttributes});
+        // Sendcloud address validation is advisory. A false result can still
+        // produce valid shipping options and labels, so only expose definitive
+        // success. Shipping-options and label creation remain authoritative.
+        return response({
+          ok:true,
+          inputAddressIsValid:data?.input_address_is_valid===true?true:null,
+          recommendedAddress:recommended?.address||null,
+          reasons,
+          invalidAttributes,
+        });
       }catch(validationError){
-        return response({ok:true,inputAddressIsValid:false,recommendedAddress:null,reasons:[validationError instanceof Error?validationError.message:String(validationError)],invalidAttributes:[]});
+        return response({
+          ok:true,
+          inputAddressIsValid:null,
+          recommendedAddress:null,
+          reasons:[validationError instanceof Error?validationError.message:String(validationError)],
+          invalidAttributes:[],
+        });
       }
     }
 
