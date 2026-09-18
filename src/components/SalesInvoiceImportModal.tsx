@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, FileText, LoaderCircle, Plus, Trash2, Upload, X } from 'lucide-react';
 import { ensureSalesSeries, type Client, type SalesInvoice, type SalesInvoiceSeries } from '../services/sales';
-import { createSalesInvoiceDraftFromCandidate, prepareSalesInvoiceImportCandidate, recalculateSalesImportCandidate, type SalesInvoiceImportCandidate } from '../services/salesInvoiceImport';
+import { createSalesInvoiceDraftFromCandidate, friendlySalesImportError, prepareSalesInvoiceImportCandidate, recalculateSalesImportCandidate, type SalesInvoiceImportCandidate } from '../services/salesInvoiceImport';
 import { SearchableSelect } from './forms/SearchableSelect';
 import { SelectField } from './forms/SelectField';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from './BulkSelectionToolbar';
@@ -82,7 +82,8 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
     if(!current.invoiceNumber.trim())return 'Indica el número de factura.';
     if(!current.invoiceNumber.startsWith(selectedSeries.prefix))return `El número debe comenzar por ${selectedSeries.prefix}.`;
     if(existingInvoices.some(invoice=>invoice.invoiceNumber===current.invoiceNumber))return 'Ya existe una factura con este número.';
-    if(!current.lines.some(line=>line.description.trim()&&line.quantity>0))return 'Añade al menos una línea válida.';
+    if(!current.lines.some(line=>line.description.trim()&&Number.isFinite(line.quantity)&&line.quantity>0))return 'Añade al menos una línea válida.';
+    if(current.lines.some(line=>!Number.isFinite(line.quantity)||!Number.isFinite(line.unitPrice)||!Number.isFinite(line.taxRate)))return 'Hay una línea con valores numéricos no válidos.';
     return '';
   };
 
@@ -132,7 +133,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
       for(const item of ready){
         patch(item.id,{status:'importing'});
         try{await createSalesInvoiceDraftFromCandidate(item.candidate!);patch(item.id,{status:'imported',candidate:{...item.candidate!,status:'imported'}});}
-        catch(error){patch(item.id,{status:'error',error:error instanceof Error?error.message:'No se pudo guardar el borrador.'});}
+        catch(error){patch(item.id,{status:'error',error:friendlySalesImportError(error)});}
       }
       await onFinished();
     }finally{setBusy(false);}
