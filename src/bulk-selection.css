@@ -1,0 +1,83 @@
+.bulkSelectionToolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:0 0 12px;
+  padding:10px 12px;
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:12px;
+  background:var(--surface-soft,#f8fafc);
+}
+.bulkSelectionToggle,.bulkSelectionActions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.bulkSelectionActions{justify-content:flex-end;flex-wrap:wrap}
+.bulkSelectionTextButton{
+  border:0;
+  padding:0;
+  background:transparent;
+  color:var(--text-primary,#172033);
+  font-size:11px;
+  font-weight:800;
+  cursor:pointer;
+}
+.bulkSelectionTextButton:hover{text-decoration:underline}
+.bulkSelectionCount{
+  padding-left:4px;
+  color:var(--text-secondary,#64748b);
+  font-size:10.5px;
+}
+.bulkSelectCheckbox{
+  position:relative;
+  width:18px;
+  height:18px;
+  flex:0 0 18px;
+  display:inline-grid;
+  place-items:center;
+  cursor:pointer;
+}
+.bulkSelectCheckbox input{
+  position:absolute;
+  inset:0;
+  width:18px;
+  height:18px;
+  margin:0;
+  opacity:0;
+  cursor:inherit;
+}
+.bulkSelectCheckbox span{
+  width:18px;
+  height:18px;
+  border:1.5px solid #cbd5e1;
+  border-radius:5px;
+  background:var(--surface,#fff);
+  box-shadow:inset 0 0 0 2px transparent;
+  transition:.14s ease;
+}
+.bulkSelectCheckbox input:checked+span{
+  border-color:#0f766e;
+  background:#0f766e;
+  box-shadow:inset 0 0 0 3px #0f766e;
+}
+.bulkSelectCheckbox input:checked+span::after{
+  content:'';
+  display:block;
+  width:8px;
+  height:4px;
+  margin:4px 0 0 3px;
+  border-left:2px solid #fff;
+  border-bottom:2px solid #fff;
+  transform:rotate(-45deg);
+}
+.bulkSelectCheckbox input:focus-visible+span{outline:2px solid #5eead4;outline-offset:2px}
+.bulkSelectCheckbox input:disabled+span{opacity:.38;cursor:not-allowed}
+[data-theme='dark'] .bulkSelectionToolbar{background:#111827;border-color:#2d394b}
+[data-theme='dark'] .bulkSelectCheckbox span{background:#0f172a;border-color:#475569}
+@media(max-width:700px){
+  .bulkSelectionToolbar{align-items:flex-start;flex-direction:column}
+  .bulkSelectionActions{width:100%;justify-content:stretch}
+  .bulkSelectionActions>button{flex:1}
+}
