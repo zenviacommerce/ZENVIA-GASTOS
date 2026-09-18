@@ -41,9 +41,10 @@ export async function prepareInvoiceCandidate(
   file:File,
   categories:ExpenseCategory[],
   onProgress?:(message:string)=>void,
+  analysisFile:File=file,
 ):Promise<InvoiceImportCandidate>{
   const [read,fileHash]=await Promise.all([
-    readInvoiceDocumentEnhanced(file,categories,onProgress),
+    readInvoiceDocumentEnhanced(analysisFile,categories,onProgress),
     sha256File(file),
   ]);
   const repairedAmounts=repairInvoiceAmounts(read.text,{subtotal:read.subtotal,vat:read.vat,total:read.total});
