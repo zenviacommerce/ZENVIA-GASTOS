@@ -25,7 +25,7 @@ import { addSupplier, updateSupplier, type SupplierInput } from './services/supp
 import { updateInvoiceCategory, updateInvoiceSupplier } from './services/invoiceEditor';
 import { addProduct, updateProduct, type ProductInput } from './services/productEditor';
 import { deleteInvoiceWithGmailRecovery } from './services/invoiceLifecycle';
-import { errorMessage, showError, showSuccess } from './services/toast';
+import { errorMessage, showSuccess } from './services/toast';
 import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './types';
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
@@ -116,7 +116,8 @@ export default function App(){
  const navigate=(next:Page)=>{if(allowedPages.includes(next))setPage(next)};
  const toggleTheme=()=>setTheme(current=>current==='dark'?'light':'dark');
  const runAction=async(work:()=>Promise<void>,success:string,fallback:string)=>{
-   try{await work();showSuccess(success)}catch(e){showError(errorMessage(e,fallback));throw e}
+   try{await work();showSuccess(success)}
+   catch(e){throw new Error(errorMessage(e,fallback));}
  };
  const saveInvoice=async(input:NewInvoiceInput)=>{
    if(!can('invoices'))throw new Error('No tienes permiso para crear facturas de gastos.');
