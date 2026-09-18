@@ -1,5 +1,5 @@
 import { readInvoiceDocumentEnhanced } from './invoiceReaderEnhanced';
-import { addClient, createSalesInvoiceDraft, loadClients, type Client, type ClientInput, type SalesInvoiceDraftInput, type SalesInvoiceLine } from './sales';
+import { addClient, createSalesInvoiceDraft, loadClients, updateClient, type Client, type ClientInput, type SalesInvoiceDraftInput, type SalesInvoiceLine } from './sales';
 import { updateSalesInvoiceNumber } from './salesInvoiceNumber';
 import { deleteSalesInvoiceDraftSafe } from './salesDraftDelete';
 import { extractInvoiceParty } from './invoicePartyExtractor';
@@ -73,16 +73,49 @@ function matchClientIdentity(input:ClientInput,clients:Client[]){
   return clients.find(client=>normalize(client.name)===name)||null;
 }
 
+function mergedImportedClient(existing:Client,input:ClientInput):ClientInput{
+  return {
+    name:existing.name,
+    taxId:existing.taxId||input.taxId||'',
+    email:existing.email||input.email||'',
+    phone:existing.phone||input.phone||'',
+    addressLine1:existing.addressLine1||input.addressLine1||'',
+    addressLine2:existing.addressLine2||input.addressLine2||'',
+    postalCode:existing.postalCode||input.postalCode||'',
+    city:existing.city||input.city||'',
+    province:existing.province||input.province||'',
+    countryCode:existing.countryCode&&existing.countryCode!=='XX'?existing.countryCode:(input.countryCode||'XX'),
+    paymentTermsDays:existing.paymentTermsDays||input.paymentTermsDays||0,
+    notes:existing.notes||'',
+  };
+}
+
+async function enrichImportedClient(clientId:string,input:ClientInput){
+  const clients=await loadClients();
+  const existing=clients.find(client=>client.id===clientId);
+  if(!existing)return;
+  const merged=mergedImportedClient(existing,input);
+  const changed=
+    (merged.taxId||'')!==(existing.taxId||'')
+    ||(merged.email||'')!==(existing.email||'')
+    ||(merged.phone||'')!==(existing.phone||'')
+    ||(merged.addressLine1||'')!==(existing.addressLine1||'')
+    ||(merged.postalCode||'')!==(existing.postalCode||'')
+    ||(merged.city||'')!==(existing.city||'')
+    ||merged.countryCode!==existing.countryCode;
+  if(changed)await updateClient(clientId,merged);
+}
+
 async function ensureImportedClient(input:ClientInput){
   let clients=await loadClients();
   const existing=matchClientIdentity(input,clients);
-  if(existing)return existing.id;
+  if(existing){await enrichImportedClient(existing.id,input);return existing.id;}
   try{return await addClient(input);}
   catch(error:any){
     if(error?.code!=='23505')throw error;
     clients=await loadClients();
     const raced=matchClientIdentity(input,clients);
-    if(raced)return raced.id;
+    if(raced){await enrichImportedClient(raced.id,input);return raced.id;}
     throw error;
   }
 }
@@ -194,7 +227,7 @@ export async function prepareSalesInvoiceImportCandidate(file:File,clients:Clien
   if(!read.invoiceNumber)reasons.push('Revisa el número de factura');
   if(!read.invoiceDate)reasons.push('Revisa la fecha');
   if(!lines.length)reasons.push('Añade al menos una línea');
-  return {id:crypto.randomUUID(),file,status:'needs_review',clientId:matched?.id||'',proposedClient:matched?null:proposedClient,invoiceNumber:read.invoiceNumber||'',issueDate:read.invoiceDate||'',seriesId:'',taxRegistrationId:null,paymentMethod:'',notes:'',lines,subtotal,taxAmount:vat,totalAmount:total,confidence:read.confidence,text:read.text,reviewReason:reasons.length?reasons.join(' · '):matched?'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.':proposedClient?`Se creará automáticamente el cliente ${proposedClient.name}. Revisa los datos antes de guardar.`:'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.'};
+  return {id:crypto.randomUUID(),file,status:'needs_review',clientId:matched?.id||'',proposedClient,invoiceNumber:read.invoiceNumber||'',issueDate:read.invoiceDate||'',seriesId:'',taxRegistrationId:null,paymentMethod:'',notes:'',lines,subtotal,taxAmount:vat,totalAmount:total,confidence:read.confidence,text:read.text,reviewReason:reasons.length?reasons.join(' · '):matched?'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.':proposedClient?`Se creará automáticamente el cliente ${proposedClient.name}. Revisa los datos antes de guardar.`:'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.'};
 }
 
 export function recalculateSalesImportCandidate(candidate:SalesInvoiceImportCandidate){
@@ -250,6 +283,7 @@ export function friendlySalesImportError(error:unknown){
 export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoiceImportCandidate){
   const reviewed=recalculateSalesImportCandidate(candidate);
   let clientId=reviewed.clientId;
+  if(clientId&&reviewed.proposedClient?.name)await enrichImportedClient(clientId,reviewed.proposedClient);
   if(!clientId&&reviewed.proposedClient?.name)clientId=await ensureImportedClient(reviewed.proposedClient);
   if(!clientId)throw new Error('Selecciona el cliente o revisa los datos detectados.');
   if(!reviewed.seriesId)throw new Error('Selecciona la serie.');
