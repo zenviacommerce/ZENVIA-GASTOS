@@ -152,3 +152,101 @@
   color:#64748b;
   opacity:1;
 }
+
+
+/* Amazon summary drill-down. */
+.amazonMoreButton{
+  justify-self:center;
+  border:0;
+  background:transparent;
+  color:#2563eb;
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  padding:2px 8px;
+}
+.amazonMoreButton:hover{text-decoration:underline}
+.amazonDetailsBackdrop{
+  position:fixed;
+  inset:0;
+  z-index:1300;
+  display:grid;
+  place-items:center;
+  padding:24px;
+  background:rgba(15,23,42,.52);
+  backdrop-filter:blur(2px);
+}
+.amazonDetailsModal{
+  width:min(620px,calc(100vw - 48px));
+  max-height:calc(100dvh - 48px);
+  overflow:hidden;
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr);
+  border:1px solid #e2e8f0;
+  border-radius:18px;
+  background:#fff;
+  box-shadow:0 24px 70px rgba(15,23,42,.28);
+}
+.amazonDetailsHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  padding:18px 20px 15px;
+  border-bottom:1px solid #e2e8f0;
+}
+.amazonDetailsHead h3{margin:4px 0 3px;color:#172033;font-size:18px}
+.amazonDetailsHead p{margin:0;color:#64748b;font-size:11px;line-height:1.45}
+.amazonDetailsHead>button{
+  width:36px;height:36px;flex:0 0 36px;
+  display:grid;place-items:center;
+  border:1px solid #e2e8f0;border-radius:10px;
+  background:#fff;color:#64748b;cursor:pointer;
+}
+.amazonDetailsBody{overflow:auto;padding:4px 20px 20px;overscroll-behavior:contain}
+.amazonDetailsBody section{padding-top:16px}
+.amazonDetailsBody section+section{margin-top:4px}
+.amazonDetailsBody h4{
+  margin:0 0 7px;
+  color:#0f766e;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+.amazonDetailsRow{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  padding:9px 0;
+  border-bottom:1px solid #eef2f7;
+}
+.amazonDetailsRow>div{min-width:0}
+.amazonDetailsRow span{display:block;color:#475569;font-size:12px}
+.amazonDetailsRow small{display:block;margin-top:2px;color:#94a3b8;font-size:9.5px;line-height:1.35}
+.amazonDetailsRow strong{flex:0 0 auto;color:#172033;font-size:12px;text-align:right}
+[data-theme='dark'] .amazonDetailsModal,
+[data-theme='dark'] .amazonDetailsHead{background:#111827;border-color:#334155}
+[data-theme='dark'] .amazonDetailsHead h3,
+[data-theme='dark'] .amazonDetailsRow strong{color:#f8fafc}
+[data-theme='dark'] .amazonDetailsHead>button{background:#0f172a;border-color:#334155;color:#cbd5e1}
+[data-theme='dark'] .amazonDetailsRow{border-color:#263449}
+[data-theme='dark'] .amazonDetailsRow span{color:#cbd5e1}
+[data-theme='dark'] .amazonDetailsRow small{color:#64748b}
+[data-theme='dark'] .amazonMoreButton{color:#60a5fa}
+@media(max-width:760px){
+  .amazonDetailsBackdrop{padding:max(10px,env(safe-area-inset-top)) 0 0;place-items:end center}
+  .amazonDetailsModal{
+    width:100%;
+    max-width:none;
+    max-height:calc(100dvh - max(10px,env(safe-area-inset-top)));
+    border-radius:20px 20px 0 0;
+    margin:0;
+  }
+  .amazonDetailsHead{padding:15px 16px 13px}
+  .amazonDetailsBody{padding:2px 16px max(18px,env(safe-area-inset-bottom))}
+}
