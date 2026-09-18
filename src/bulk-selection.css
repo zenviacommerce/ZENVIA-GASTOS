@@ -81,3 +81,9 @@
   .bulkSelectionActions{width:100%;justify-content:stretch}
   .bulkSelectionActions>button{flex:1}
 }
+
+.bulkSelectionCell{width:38px;min-width:38px;padding-left:10px!important;padding-right:6px!important;text-align:center}
+.bulkSelectedRow>td{background:color-mix(in srgb,#14b8a6 7%,transparent)}
+.bulkSelectedRow:hover>td{background:color-mix(in srgb,#14b8a6 10%,transparent)}
+[data-theme='dark'] .bulkSelectedRow>td{background:color-mix(in srgb,#14b8a6 11%,transparent)}
+[data-theme='dark'] .bulkSelectedRow:hover>td{background:color-mix(in srgb,#14b8a6 15%,transparent)}
