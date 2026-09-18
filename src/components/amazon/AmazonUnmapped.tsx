@@ -3,10 +3,11 @@ import { ImageOff, RefreshCw, Search } from 'lucide-react';
 import { loadAmazonProductImages, loadAmazonUnmapped, type AmazonPageResult, type AmazonUnmappedSku } from '../../services/amazon';
 import { errorMessage } from '../../services/toast';
 import { AmazonMappingModal } from './AmazonMappingModal';
+import { readViewCache, stableCacheKey, writeViewCache } from '../../services/viewCache';
 const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'});
 export function AmazonUnmapped({onChanged,refreshToken=0}:{onChanged?:()=>void;refreshToken?:number}){
- const [data,setData]=useState<AmazonPageResult<AmazonUnmappedSku>>({items:[],page:1,pageSize:25,total:0});const [search,setSearch]=useState('');const [page,setPage]=useState(1);const [editing,setEditing]=useState<string|null>(null);const [error,setError]=useState('');const [images,setImages]=useState<Record<string,string>>({});
- const refresh=()=>{setError('');return loadAmazonUnmapped(search,page,25).then(setData).catch(e=>setError(errorMessage(e,'No se pudieron cargar los SKU sin vincular.')));};
+ const [search,setSearch]=useState('');const [page,setPage]=useState(1);const initialKey=stableCacheKey('amazon:unmapped',{search:'',page:1,pageSize:25});const [data,setData]=useState<AmazonPageResult<AmazonUnmappedSku>>(()=>readViewCache<AmazonPageResult<AmazonUnmappedSku>>(initialKey)||{items:[],page:1,pageSize:25,total:0});const [editing,setEditing]=useState<string|null>(null);const [error,setError]=useState('');const [images,setImages]=useState<Record<string,string>>({});
+ const refresh=()=>{const key=stableCacheKey('amazon:unmapped',{search,page,pageSize:25});const cached=readViewCache<AmazonPageResult<AmazonUnmappedSku>>(key);if(cached)setData(cached);setError('');return loadAmazonUnmapped(search,page,25).then(next=>{setData(next);writeViewCache(key,next);}).catch(e=>setError(errorMessage(e,'No se pudieron cargar los SKU sin vincular.')));};
  useEffect(()=>{void refresh();},[search,page,refreshToken]);
  useEffect(()=>{const asins=data.items.map(row=>row.asin).filter((value):value is string=>Boolean(value));if(!asins.length){setImages({});return}void loadAmazonProductImages(asins).then(setImages).catch(()=>setImages({}));},[data.items]);
  const editingRow=editing?data.items.find(row=>row.sellerSku===editing):undefined;
