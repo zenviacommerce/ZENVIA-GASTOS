@@ -61,7 +61,7 @@ export function SalesInvoiceNumberEditor(){
       await updateSalesInvoiceNumber(editing.id,clean);
       showSuccess(`Número actualizado: ${previous} → ${clean}`);
       window.location.reload();
-    }catch(e){const message=errorMessage(e,'No se pudo actualizar el número de factura.');setError(message);showError(message);setSaving(false);}
+    }catch(e){setError(errorMessage(e,'No se pudo actualizar el número de factura.'));setSaving(false);}
   };
 
   const filtered=useMemo(()=>{const q=query.trim().toLowerCase();if(!q)return invoices;return invoices.filter(invoice=>[invoice.invoiceNumber||'borrador',invoice.clientName,invoice.clientTaxId||'',invoice.seriesName,statusLabel(invoice.status)].some(value=>value.toLowerCase().includes(q)));},[invoices,query]);
