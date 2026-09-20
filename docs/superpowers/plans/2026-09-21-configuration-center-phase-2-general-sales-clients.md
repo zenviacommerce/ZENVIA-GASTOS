@@ -62,11 +62,27 @@ If `website` is absent, add it through a generated migration and map it in `Busi
 
 Reuse existing form components and `companyBranding` validation. Show current logo and allow replace/remove.
 
-- [ ] **Step 5: Save structured and modular values transactionally at UI level**
+- [ ] **Step 5: Make every General behavioral field effective**
+
+Create a shared pure formatting service (for example `src/services/formatting.ts`) consumed by pages/PDF generation rather than leaving date/currency settings decorative:
+
+- `general.currencyCode` is the fallback currency for new records that do not have an explicit currency;
+- `general.timezone` is passed to date/time formatting and never changes stored timestamps;
+- `general.dateFormat` supports explicit approved formats such as `DD/MM/YYYY`, `DD-MM-YYYY`, and `YYYY-MM-DD`;
+- `general.documentLanguage` drives an invoice-document label dictionary; only languages with a complete dictionary may appear in the selector;
+- `general.startPage` is used when `user_preferences.startPage` is null, then access control selects the first permitted fallback if that page is unavailable.
+
+Add tests proving explicit document currency/date data overrides general fallbacks where appropriate.
+
+- [ ] **Step 6: Audit structured General changes**
+
+Extend database auditing for `business_settings` and branding metadata changes so admin changes appear under module `settings`. Do not log logo file bytes or secret material.
+
+- [ ] **Step 7: Save structured and modular values transactionally at UI level**
 
 Do not display success until both writes succeed. On partial failure, retain the form and show which save failed; do not pretend rollback occurred unless a database transaction/RPC actually provides it.
 
-- [ ] **Step 6: Run test and build**
+- [ ] **Step 8: Run test and build**
 
 ```bash
 node --test scripts/settings-general.test.mjs
@@ -75,10 +91,10 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/pages/Settings.tsx src/services/sales.ts src/services/companyBranding.ts src/services/settingsSchema.ts supabase/migrations scripts/settings-general.test.mjs
+git add src/pages/Settings.tsx src/services/sales.ts src/services/companyBranding.ts src/services/settingsSchema.ts src/services/formatting.ts supabase/migrations scripts/settings-general.test.mjs
 git commit -m "feat: add general configuration"
 ```
 
