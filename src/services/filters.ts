@@ -2,10 +2,13 @@ import type { Invoice } from '../types';
 
 export type PeriodPreset = 'today' | 'current_month' | 'current_quarter' | 'current_year' | 'all' | 'custom' | `quarter:${number}:${number}`;
 
-export interface InvoiceFilter {
+export interface DateRangeFilter {
   preset: PeriodPreset;
   from: string;
   to: string;
+}
+
+export interface InvoiceFilter extends DateRangeFilter {
   supplierId: string;
 }
 
@@ -45,9 +48,17 @@ export function rangeForPreset(preset: PeriodPreset, now = new Date()) {
   return { from: '', to: '' };
 }
 
-export function filterForPreset(preset: PeriodPreset, supplierId = '', now = new Date()): InvoiceFilter {
+export function dateFilterForPreset(preset: PeriodPreset, now = new Date()): DateRangeFilter {
   const range = rangeForPreset(preset, now);
-  return { preset, from: range?.from || '', to: range?.to || '', supplierId };
+  return { preset, from: range?.from || '', to: range?.to || '' };
+}
+
+export function defaultDateFilter(): DateRangeFilter {
+  return dateFilterForPreset('current_quarter');
+}
+
+export function filterForPreset(preset: PeriodPreset, supplierId = '', now = new Date()): InvoiceFilter {
+  return { ...dateFilterForPreset(preset, now), supplierId };
 }
 
 export function defaultInvoiceFilter(): InvoiceFilter {
@@ -85,7 +96,7 @@ function formatDate(date: string) {
   return `${day}/${month}/${year}`;
 }
 
-export function periodLabel(filter: InvoiceFilter, now = new Date()) {
+export function periodLabel(filter: DateRangeFilter, now = new Date()) {
   if (filter.preset === 'today') return 'Hoy';
   if (filter.preset === 'current_month') {
     const label = now.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
