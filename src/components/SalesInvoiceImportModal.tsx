@@ -6,11 +6,13 @@ import { SearchableSelect } from './forms/SearchableSelect';
 import { SelectField } from './forms/SelectField';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from './BulkSelectionToolbar';
 import { showError, showOperationResult, showSuccess } from '../services/toast';
+import { normalizeTaxId, taxIdError } from '../services/validation';
 
 const ANALYSIS_CONCURRENCY=2;
 type Item={id:string;file:File;candidate?:SalesInvoiceImportCandidate;series:SalesInvoiceSeries[];status:'analyzing'|'needs_review'|'ready'|'duplicate'|'importing'|'imported'|'error';error?:string;excluded?:boolean};
 type Props={open:boolean;onClose:()=>void;clients:Client[];existingInvoices:SalesInvoice[];onFinished:()=>Promise<void>|void};
 const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+const addDays=(date:string,days:number)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return '';const value=new Date(`${date}T12:00:00`);value.setDate(value.getDate()+days);return value.toISOString().slice(0,10);};
 
 function bestSeries(series:SalesInvoiceSeries[],invoiceNumber:string){
   const standards=series.filter(item=>item.kind==='standard'&&item.active);
@@ -28,6 +30,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
   useEffect(()=>{if(!open){setItems([]);setSelectedId(null);setCheckedIds(new Set());setBusy(false);}},[open]);
   const patch=(id:string,change:Partial<Item>)=>setItems(current=>current.map(item=>item.id===id?{...item,...change}:item));
   const patchCandidate=(id:string,change:Partial<SalesInvoiceImportCandidate>)=>setItems(current=>current.map(item=>item.id===id&&item.candidate?{...item,status:item.status==='duplicate'?'duplicate':'needs_review',candidate:recalculateSalesImportCandidate({...item.candidate,...change,status:'needs_review'})}:item));
+  const patchProposedClient=(id:string,change:Partial<NonNullable<SalesInvoiceImportCandidate['proposedClient']>>)=>setItems(current=>current.map(item=>item.id===id&&item.candidate?.proposedClient?{...item,status:item.status==='duplicate'?'duplicate':'needs_review',candidate:{...item.candidate,status:'needs_review',proposedClient:{...item.candidate.proposedClient,...change}}}:item));
 
   const prepareFile=async(item:Item)=>{
     try{
@@ -64,7 +67,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
 
   const changeDate=async(value:string)=>{
     if(!selected||!candidate)return;
-    patchCandidate(selected.id,{issueDate:value});
+    patchCandidate(selected.id,{issueDate:value,dueDate:addDays(value,30)});
     if(!/^\d{4}-/.test(value))return;
     try{
       const rows=(await ensureSalesSeries(Number(value.slice(0,4)))).filter(row=>row.kind==='standard'&&row.active);
@@ -83,6 +86,9 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
     const selectedSeries=item.series.find(series=>series.id===current.seriesId);
     if(!current.clientId&&!current.proposedClient?.name)return 'Selecciona el cliente o revisa el cliente detectado.';
     if(!current.issueDate)return 'Indica la fecha de factura.';
+    if(!current.dueDate)return 'Indica la fecha de vencimiento.';
+    if(current.dueDate<current.issueDate)return 'El vencimiento no puede ser anterior a la fecha de factura.';
+    if(current.proposedClient?.taxId&&taxIdError(current.proposedClient.taxId,false))return 'Revisa el DNI/CIF/VAT detectado del cliente.';
     if(!current.seriesId||!selectedSeries)return 'Selecciona la serie.';
     if(!current.invoiceNumber.trim())return 'Indica el número de factura.';
     if(!current.invoiceNumber.startsWith(selectedSeries.prefix))return `El número debe comenzar por ${selectedSeries.prefix}.`;
@@ -171,11 +177,20 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
 
     {selected&&candidate&&<div className="bulkInvoiceReview salesImportReview"><div className="bulkInvoiceReviewHead"><div><strong>Revisar factura</strong><span>{selected.file.name}</span></div><button className="iconBtn" onClick={()=>setSelectedId(null)}><X size={16}/></button></div>
       <div className="salesFormGrid">
-        <label>Cliente *<SearchableSelect value={candidate.clientId} options={clientOptions} onChange={value=>patchCandidate(selected.id,{clientId:value,proposedClient:value?null:candidate.proposedClient})} placeholder={candidate.proposedClient?.name?`Nuevo: ${candidate.proposedClient.name}`:'Selecciona cliente'} searchPlaceholder="Buscar cliente, CIF, email…" ariaLabel="Cliente importado"/>{!candidate.clientId&&candidate.proposedClient?.name&&<small className="salesImportedClientHint">Se creará automáticamente: <strong>{candidate.proposedClient.name}</strong>{candidate.proposedClient.taxId?` · ${candidate.proposedClient.taxId}`:''}</small>}</label>
+        <label>Cliente *<SearchableSelect value={candidate.clientId} options={clientOptions} onChange={value=>patchCandidate(selected.id,{clientId:value,proposedClient:value&&value!==candidate.clientId?null:candidate.proposedClient})} placeholder={candidate.proposedClient?.name?`Nuevo: ${candidate.proposedClient.name}`:'Selecciona cliente'} searchPlaceholder="Buscar cliente, CIF, email…" ariaLabel="Cliente importado"/>{candidate.proposedClient?.name&&<small className="salesImportedClientHint">{candidate.clientId?'Datos detectados para completar el cliente':'Se creará automáticamente'}: <strong>{candidate.proposedClient.name}</strong>{candidate.proposedClient.taxId?` · ${candidate.proposedClient.taxId}`:' · sin DNI/CIF/VAT en el PDF'}</small>}</label>
         <label>Serie *<SearchableSelect value={candidate.seriesId} options={seriesOptions} onChange={value=>patchCandidate(selected.id,{seriesId:value})} placeholder="Selecciona serie" searchPlaceholder="Buscar serie…" ariaLabel="Serie importada"/></label>
         <label>Número de factura *<input value={candidate.invoiceNumber} disabled={Boolean(candidate.existingInvoiceId)} onChange={event=>patchCandidate(selected.id,{invoiceNumber:event.target.value})}/>{candidate.existingInvoiceId&&<small className="salesImportedClientHint">Se actualizará el borrador existente, conservando este número.</small>}</label>
         <label>Fecha factura *<input type="date" value={candidate.issueDate} onChange={event=>void changeDate(event.target.value)}/></label>
+        <label>Vencimiento *<input type="date" min={candidate.issueDate||undefined} value={candidate.dueDate} onChange={event=>patchCandidate(selected.id,{dueDate:event.target.value})}/><small className="salesImportedClientHint">Por defecto, 30 días después de la fecha de factura.</small></label>
       </div>
+      {candidate.proposedClient&&<section className="salesImportedClientEditor">
+        <div className="salesImportedClientEditorHead"><div><strong>Datos fiscales detectados del cliente</strong><span>Se guardarán al crear el cliente o completarán los datos que falten.</span></div></div>
+        <div className="salesFormGrid">
+          <label className="salesSpan2">Nombre / razón social<input value={candidate.proposedClient.name} onChange={event=>patchProposedClient(selected.id,{name:event.target.value})}/></label>
+          <label>DNI / CIF / VAT<input value={candidate.proposedClient.taxId||''} onChange={event=>patchProposedClient(selected.id,{taxId:normalizeTaxId(event.target.value)})} placeholder="B12345678 / 12345678Z / FR…"/><small className="salesImportedClientHint">{candidate.proposedClient.taxId?'Detectado o revisado':'No aparece en el PDF; puedes completarlo si lo conoces.'}</small></label>
+          <label>País<input maxLength={2} value={candidate.proposedClient.countryCode||'XX'} onChange={event=>patchProposedClient(selected.id,{countryCode:event.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,2)})}/></label>
+        </div>
+      </section>}
       <div className="salesLinesEditor"><div className="salesLinesHead"><div><strong>Líneas detectadas</strong><span>Comprueba descripción, cantidad, precio e IVA</span></div><button className="secondary" type="button" onClick={addLine}><Plus size={15}/> Añadir línea</button></div>
         {candidate.lines.map((line,index)=><div className="salesLine salesLineCard" key={`${candidate.id}-${index}`}><label className="salesLineDescription">Descripción<input value={line.description} onChange={event=>updateLine(index,{description:event.target.value})}/></label><label>Cantidad<input type="number" min="0.001" step="0.001" value={line.quantity} onChange={event=>updateLine(index,{quantity:Number(event.target.value)})}/></label><label>Unidad<input value={line.unit} onChange={event=>updateLine(index,{unit:event.target.value})}/></label><label>Precio unit.<input type="number" step="0.01" value={line.unitPrice} onChange={event=>updateLine(index,{unitPrice:Number(event.target.value)})}/></label><label>IVA %<SelectField value={String(line.taxRate)} onChange={value=>updateLine(index,{taxRate:Number(value)})} ariaLabel={`IVA línea ${index+1}`} options={[{value:'21',label:'21 %'},{value:'10',label:'10 %'},{value:'4',label:'4 %'},{value:'0',label:'0 %'}]}/></label><button className="iconAction danger" type="button" onClick={()=>removeLine(index)}><Trash2 size={16}/></button></div>)}
       </div>
