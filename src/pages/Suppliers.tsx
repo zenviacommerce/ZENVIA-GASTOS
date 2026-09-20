@@ -6,39 +6,16 @@ import { confirmAction, openActionProcess } from '../services/actionDialog';
 import type { Invoice, Supplier } from '../types';
 import { Pagination } from '../components/Pagination';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
+import { defaultDateFilter, periodLabel } from '../services/filters';
 import '../supplier-actions.css';
 
 const PAGE_SIZE=20;
 const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
 const normalize=(value:string)=>value.trim().toLowerCase().replace(/\s+/g,' ');
-const iso=(value:Date)=>{const year=value.getFullYear();const month=String(value.getMonth()+1).padStart(2,'0');const day=String(value.getDate()).padStart(2,'0');return `${year}-${month}-${day}`;};
-
 type SupplierFilter='all'|'goods'|'service'|'both'|'unclassified';
-type PeriodPreset='today'|'month'|'quarter'|'year'|'all'|'custom';
 type SupplierMetric={count:number;total:number;lastDate:string|null;recent:Invoice[]};
-
-function currentRange(preset:Exclude<PeriodPreset,'custom'>){
-  const now=new Date();
-  if(preset==='all')return {from:'',to:''};
-  if(preset==='today'){const today=iso(now);return {from:today,to:today};}
-  if(preset==='month')return {from:iso(new Date(now.getFullYear(),now.getMonth(),1)),to:iso(new Date(now.getFullYear(),now.getMonth()+1,0))};
-  if(preset==='year')return {from:`${now.getFullYear()}-01-01`,to:`${now.getFullYear()}-12-31`};
-  const quarterStart=Math.floor(now.getMonth()/3)*3;
-  return {from:iso(new Date(now.getFullYear(),quarterStart,1)),to:iso(new Date(now.getFullYear(),quarterStart+3,0))};
-}
-
-function periodText(preset:PeriodPreset,from:string,to:string){
-  if(preset==='today')return 'Hoy';
-  if(preset==='month')return 'Mes actual';
-  if(preset==='quarter')return 'Trimestre actual';
-  if(preset==='year')return 'Año actual';
-  if(preset==='all')return 'Todo el histórico';
-  if(from&&to)return `${dateLabel(from)} – ${dateLabel(to)}`;
-  if(from)return `Desde ${dateLabel(from)}`;
-  if(to)return `Hasta ${dateLabel(to)}`;
-  return 'Periodo personalizado';
-}
 
 function supplierTypeLabel(type: Supplier['supplierType']) {
   if(type==='goods') return 'Mercancía';
@@ -70,7 +47,6 @@ function SupplierDrawer({supplier,metric,period,onClose,onEdit,onDelete,busy}:{s
 }
 
 export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[];onAdd:()=>void;onEdit:(supplier:Supplier)=>void;onDelete:(supplier:Supplier)=>Promise<void>}){
- const initialRange=currentRange('quarter');
  const [busyId,setBusyId]=useState<string|null>(null);
  const [error,setError]=useState('');
  const [query,setQuery]=useState('');
@@ -79,16 +55,13 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  const [checkedIds,setCheckedIds]=useState<Set<string>>(()=>new Set());
  const [bulkBusy,setBulkBusy]=useState(false);
  const [invoices,setInvoices]=useState<Invoice[]>([]);
- const [period,setPeriod]=useState<PeriodPreset>('quarter');
- const [dateFrom,setDateFrom]=useState(initialRange.from);
- const [dateTo,setDateTo]=useState(initialRange.to);
+ const [dateFilter,setDateFilter]=useState(defaultDateFilter);
  const [page,setPage]=useState(1);
 
  useEffect(()=>{let cancelled=false;loadAppData().then(data=>{if(!cancelled)setInvoices(data.invoices)}).catch(()=>{});return()=>{cancelled=true}},[suppliers]);
 
- const applyPreset=(preset:Exclude<PeriodPreset,'custom'>)=>{const range=currentRange(preset);setPeriod(preset);setDateFrom(range.from);setDateTo(range.to);};
- const periodLabel=periodText(period,dateFrom,dateTo);
- const periodInvoices=useMemo(()=>invoices.filter(invoice=>(!dateFrom||invoice.invoiceDate>=dateFrom)&&(!dateTo||invoice.invoiceDate<=dateTo)),[invoices,dateFrom,dateTo]);
+ const selectedPeriod=periodLabel(dateFilter);
+ const periodInvoices=useMemo(()=>invoices.filter(invoice=>(!dateFilter.from||invoice.invoiceDate>=dateFilter.from)&&(!dateFilter.to||invoice.invoiceDate<=dateFilter.to)),[invoices,dateFilter]);
 
  const metrics=useMemo(()=>{
    const map=new Map<string,SupplierMetric>();
@@ -117,7 +90,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  const toggleAllSuppliers=(checked:boolean)=>setCheckedIds(checked?new Set(filtered.map(supplier=>supplier.id)):new Set());
  const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
  const paged=useMemo(()=>filtered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[filtered,page]);
- useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,filter,period,dateFrom,dateTo]);
+ useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,filter,dateFilter]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  const totals=useMemo(()=>({spent:filtered.reduce((sum,s)=>sum+(metrics.get(s.id)?.total||0),0),invoices:filtered.reduce((sum,s)=>sum+(metrics.get(s.id)?.count||0),0),active:filtered.filter(s=>(metrics.get(s.id)?.count||0)>0).length}),[filtered,metrics]);
 
@@ -154,18 +127,12 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
       <button className="primary" onClick={onAdd}>+ Proveedor</button>
     </div>
 
-    <div className="masterPeriodPanel">
-      <div className="masterPeriodTop">
-        <div><CalendarDays size={17}/><div><strong>Periodo de análisis</strong><span>{periodLabel}</span></div></div>
-        <div className="masterPeriodQuick"><button className={period==='today'?'active':''} onClick={()=>applyPreset('today')}>Hoy</button><button className={period==='month'?'active':''} onClick={()=>applyPreset('month')}>Mes actual</button><button className={period==='quarter'?'active':''} onClick={()=>applyPreset('quarter')}>Trimestre actual</button><button className={period==='year'?'active':''} onClick={()=>applyPreset('year')}>Año actual</button><button className={period==='all'?'active':''} onClick={()=>applyPreset('all')}>Todo</button></div>
-      </div>
-      <div className="masterPeriodDates"><label>Desde<input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPeriod('custom')}}/></label><label>Hasta<input type="date" value={dateTo} min={dateFrom||undefined} onChange={e=>{setDateTo(e.target.value);setPeriod('custom')}}/></label>{period==='custom'&&<button className="secondary" onClick={()=>applyPreset('quarter')}>Restablecer trimestre</button>}</div>
-    </div>
+    <PeriodFilterPanel filter={dateFilter} onChange={setDateFilter} title="Periodo de análisis"/>
 
     <div className="stats masterStats">
       <div className="stat"><div className="statIcon"><Building2/></div><div><span>Proveedores con actividad</span><strong>{totals.active}</strong><small>de {filtered.length} visibles · {periodLabel.toLowerCase()}</small></div></div>
-      <div className="stat"><div className="statIcon"><ShoppingCart/></div><div><span>Gasto del periodo</span><strong>{money(totals.spent)}</strong><small>{periodLabel}</small></div></div>
-      <div className="stat"><div className="statIcon"><FileText/></div><div><span>Facturas recibidas</span><strong>{totals.invoices}</strong><small>{periodLabel}</small></div></div>
+      <div className="stat"><div className="statIcon"><ShoppingCart/></div><div><span>Gasto del periodo</span><strong>{money(totals.spent)}</strong><small>{selectedPeriod}</small></div></div>
+      <div className="stat"><div className="statIcon"><FileText/></div><div><span>Facturas recibidas</span><strong>{totals.invoices}</strong><small>{selectedPeriod}</small></div></div>
     </div>
 
     <div className="masterToolbar">
@@ -217,6 +184,6 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
 
     {filtered.length>0&&<Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
     {!suppliers.length&&<div className="card emptyState large">Los proveedores también se crearán automáticamente al registrar facturas nuevas.</div>}
-    {selected&&<SupplierDrawer supplier={selected} metric={metrics.get(selected.id)||{count:0,total:0,lastDate:null,recent:[]}} period={periodLabel} onClose={()=>setSelected(null)} onEdit={()=>edit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>}
+    {selected&&<SupplierDrawer supplier={selected} metric={metrics.get(selected.id)||{count:0,total:0,lastDate:null,recent:[]}} period={selectedPeriod} onClose={()=>setSelected(null)} onEdit={()=>edit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>}
   </div>;
 }
