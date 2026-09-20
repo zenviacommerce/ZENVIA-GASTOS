@@ -18,7 +18,7 @@ const money=(value:number|null,decimals=2)=>value==null?'—':`${value.toLocaleS
 const dateLabel=(value?:string|null)=>value?new Date(`${value.slice(0,10)}T12:00:00`).toLocaleDateString('es-ES'):'—';
 
 type ProductSalesInfo={salePrice:number|null;salesTaxRate:number;invoiceDescription:string;ean:string};
-type ProductScope='all'|'with_sale'|'without_sale'|'cost_up'|'cost_down';
+type ProductScope='all'|'with_sale'|'without_sale'|'missing_cost'|'negative_margin'|'cost_up'|'cost_down';
 
 function productMetrics(product:Product,extra?:ProductSalesInfo){
   const cost=product.lastPrice??null;
@@ -56,6 +56,7 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
  const [categoryFilter,setCategoryFilter]=useState('all');
  const [supplierFilter,setSupplierFilter]=useState('all');
  const [scope,setScope]=useState<ProductScope>('all');
+ const [taxFilter,setTaxFilter]=useState('all');
  const [busyId,setBusyId]=useState<string|null>(null);
  const [error,setError]=useState('');
  const [page,setPage]=useState(1);
@@ -73,6 +74,7 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
    const values=[...new Set(products.map(product=>product.supplier?.trim()).filter(value=>Boolean(value)&&value!=='—'))].sort((a,b)=>a.localeCompare(b,'es')).map(value=>({value,label:value}));
    return products.some(product=>!product.supplier?.trim()||product.supplier==='—')?[...values,{value:'__none__',label:'Sin proveedor'}]:values;
  },[products]);
+ const taxOptions=useMemo(()=>[...new Set([...salesMap.values()].map(item=>Number(item.salesTaxRate)).filter(value=>Number.isFinite(value)))].sort((a,b)=>a-b).map(value=>({value:String(value),label:`${value.toLocaleString('es-ES')} %`})),[salesMap]);
  const periodProducts=useMemo(()=>products.filter(product=>{
    if(dateFilter.preset==='all')return true;
    const date=(product.lastPurchaseDate||'').slice(0,10);
@@ -95,21 +97,24 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
        if(supplierFilter==='__none__'&&hasSupplier)return false;
        if(supplierFilter!=='__none__'&&(product.supplier||'')!==supplierFilter)return false;
      }
+     if(taxFilter!=='all'&&String(extra?.salesTaxRate??'')!==taxFilter)return false;
      if(scope==='with_sale'&&extra?.salePrice==null)return false;
      if(scope==='without_sale'&&extra?.salePrice!=null)return false;
+     if(scope==='missing_cost'&&metric.cost!=null)return false;
+     if(scope==='negative_margin'&&!(metric.margin!=null&&metric.margin<0))return false;
      if(scope==='cost_up'&&!(metric.delta!=null&&metric.delta>0))return false;
      if(scope==='cost_down'&&!(metric.delta!=null&&metric.delta<0))return false;
      if(q&&![product.name,product.sku??'',extra?.ean??'',product.supplier,product.category??''].some(value=>value.toLowerCase().includes(q)))return false;
      return true;
    });
- },[periodProducts,query,salesMap,categoryFilter,supplierFilter,scope]);
+ },[periodProducts,query,salesMap,categoryFilter,supplierFilter,taxFilter,scope]);
  const selectedProducts=shown.filter(product=>checkedIds.has(product.id));
  const allShownSelected=shown.length>0&&shown.every(product=>checkedIds.has(product.id));
  const toggleProduct=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
  const toggleAllProducts=(checked:boolean)=>setCheckedIds(checked?new Set(shown.map(product=>product.id)):new Set());
  const totalPages=Math.max(1,Math.ceil(shown.length/PAGE_SIZE));
  const paged=useMemo(()=>shown.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[shown,page]);
- useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,dateFilter,categoryFilter,supplierFilter,scope]);
+ useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,dateFilter,categoryFilter,supplierFilter,taxFilter,scope]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  useEffect(()=>{if(selected&&!products.some(product=>product.id===selected.id))setSelected(null)},[products,selected]);
  const totals=useMemo(()=>{
@@ -179,12 +184,13 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
 
       {error&&<div className="errorBox supplierPageError">{error}</div>}
 
-      <div className="masterToolbar productFilterToolbar">
+      <div className="businessFilterBar productFilterToolbar">
         <div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar producto, SKU, EAN o proveedor…"/></div>
-        <div className="masterSelectFilters">
-          <SelectField value={categoryFilter} onChange={setCategoryFilter} ariaLabel="Filtrar por categoría" options={[{value:'all',label:'Todas las categorías'},...categoryOptions]}/>
-          <SelectField value={supplierFilter} onChange={setSupplierFilter} ariaLabel="Filtrar por proveedor" options={[{value:'all',label:'Todos los proveedores'},...supplierOptions]}/>
-          <SelectField value={scope} onChange={value=>setScope(value as ProductScope)} ariaLabel="Filtrar productos" options={[{value:'all',label:'Todos los productos'},{value:'with_sale',label:'Con precio de venta'},{value:'without_sale',label:'Sin precio de venta'},{value:'cost_up',label:'Coste al alza'},{value:'cost_down',label:'Coste a la baja'}]}/>
+        <div className="businessFilterFields">
+          <label className="filterField"><span>Categoría</span><SelectField value={categoryFilter} onChange={setCategoryFilter} ariaLabel="Filtrar por categoría" options={[{value:'all',label:'Todas las categorías'},...categoryOptions]}/></label>
+          <label className="filterField"><span>Proveedor</span><SelectField value={supplierFilter} onChange={setSupplierFilter} ariaLabel="Filtrar por proveedor" options={[{value:'all',label:'Todos los proveedores'},...supplierOptions]}/></label>
+          <label className="filterField"><span>IVA venta</span><SelectField value={taxFilter} onChange={setTaxFilter} ariaLabel="Filtrar por IVA de venta" options={[{value:'all',label:'Todos los tipos'},...taxOptions]}/></label>
+          <label className="filterField"><span>Situación</span><SelectField value={scope} onChange={value=>setScope(value as ProductScope)} ariaLabel="Filtrar productos" options={[{value:'all',label:'Todos los productos'},{value:'with_sale',label:'Con precio de venta'},{value:'without_sale',label:'Sin precio de venta'},{value:'missing_cost',label:'Sin coste de compra'},{value:'negative_margin',label:'Margen negativo'},{value:'cost_up',label:'Coste al alza'},{value:'cost_down',label:'Coste a la baja'}]}/></label>
         </div>
         <span className="filterResultCount">{shown.length} producto{shown.length===1?'':'s'} · {selectedPeriod}</span>
       </div>
