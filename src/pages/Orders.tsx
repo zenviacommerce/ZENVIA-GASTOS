@@ -113,6 +113,13 @@ function trackingFilterCode(order:FulfillmentOrder):Exclude<TrackingFilter,'all'
   if(tracking.className==='transit')return 'transit';
   return 'none';
 }
+function matchesOrderContext(order:FulfillmentOrder,query:string,channel:'all'|'amazon'|'shopify',trackingFilter:TrackingFilter){
+  if(channel!=='all'&&order.sourceChannel!==channel)return false;
+  if(trackingFilter!=='all'&&trackingFilterCode(order)!==trackingFilter)return false;
+  const q=query.trim().toLowerCase();
+  const haystack=[order.orderNumber||'',order.orderId||'',order.customerName||'',order.trackingNumber||'',order.trackingStatusMessage||'',carrierLabel(order),productsText(order)].join(' ').toLowerCase();
+  return !q||haystack.includes(q);
+}
 function carrierLabel(order:FulfillmentOrder){
   if(order.carrierName)return order.carrierName;
   const raw=(order.carrierCode||order.shippingOptionCode?.split(':')[0]||'').toLowerCase();
@@ -198,11 +205,14 @@ export function Orders(){
   const orderPeriodOrders=useMemo(()=>orders.filter(order=>inPeriod(orderDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
   const labelPeriodOrders=useMemo(()=>orders.filter(order=>isLabelledOrder(order)&&inPeriod(labelDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
   const shippedPeriodOrders=useMemo(()=>orders.filter(order=>isProcessedOrder(order)&&inPeriod(shippedDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
-  const pendingOrders=useMemo(()=>orderPeriodOrders.filter(isPendingOrder),[orderPeriodOrders]);
+  const orderContextOrders=useMemo(()=>orderPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter)),[orderPeriodOrders,query,channel,trackingFilter]);
+  const labelContextOrders=useMemo(()=>labelPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter)),[labelPeriodOrders,query,channel,trackingFilter]);
+  const shippedContextOrders=useMemo(()=>shippedPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter)),[shippedPeriodOrders,query,channel,trackingFilter]);
+  const pendingOrders=useMemo(()=>orderContextOrders.filter(isPendingOrder),[orderContextOrders]);
   const tariffPreviews=useMemo(()=>{const map:Record<string,ShippingPricePreview>={};for(const order of orders){const preview=calculateDefaultShippingPreview(order,tariffs);if(preview)map[order.id]=preview}return map},[orders,tariffs]);
   const transportKpis=useMemo(()=>{
     let total=0,net=0,tax=0,valued=0,missing=0,mrw=0,correos=0,other=0;
-    const shipments=orders.filter(order=>Boolean(order.sendcloudParcelId)&&inPeriod(timestampDateKey(order.shippingCostRecordedAt||order.fulfilledAt||order.labelCreatedAt||order.trackingUpdatedAt||order.orderCreatedAt),dateFrom,dateTo));
+    const shipments=orders.filter(order=>Boolean(order.sendcloudParcelId)&&inPeriod(timestampDateKey(order.shippingCostRecordedAt||order.fulfilledAt||order.labelCreatedAt||order.trackingUpdatedAt||order.orderCreatedAt),dateFrom,dateTo)&&matchesOrderContext(order,query,channel,trackingFilter));
     for(const order of shipments){
       const shipping=shippingPriceForOrder(order,tariffPreviews[order.id]||shippingPreviews[order.id]);
       if(!shipping||shipping.totalAmount==null||!Number.isFinite(shipping.totalAmount)||shipping.currency.toUpperCase()!=='EUR'){missing+=1;continue}
@@ -211,11 +221,11 @@ export function Orders(){
       if(carrier.includes('mrw'))mrw+=shipping.totalAmount;else if(carrier.includes('correos'))correos+=shipping.totalAmount;else other+=shipping.totalAmount;
     }
     return {total,net,tax,valued,missing,mrw,correos,other,shipments:shipments.length};
-  },[orders,dateFrom,dateTo,tariffPreviews,shippingPreviews]);
+  },[orders,dateFrom,dateTo,query,channel,trackingFilter,tariffPreviews,shippingPreviews]);
   useEffect(()=>{let cancelled=false;const targets=orders.filter(order=>isPendingOrder(order)&&defaultCarrierCode(order)==='correos'&&!order.shippingCostAmount);if(!targets.length)return;void(async()=>{const next:Record<string,ShippingPricePreview>={};for(const order of targets.slice(0,30)){try{const result=await getShippingOptions(order.id);const option=selectAutomaticShippingOption(order,result.options);const preview=previewFromShippingOption(option);if(preview)next[order.id]=preview}catch{/* La cotización se mostrará cuando el usuario prepare la etiqueta. */}}if(!cancelled&&Object.keys(next).length)setShippingPreviews(current=>({...current,...next}))})();return()=>{cancelled=true}},[orders]);
-  const salesKpis=useMemo(()=>{const sales=orderPeriodOrders.filter(order=>!isCancelledOrder(order)&&order.totalAmount!=null&&(order.currency==null||order.currency==='EUR'));let gross=0,net=0,vat=0;for(const order of sales){const parts=taxParts(order);gross+=parts.gross;net+=parts.net;vat+=parts.vat}return {gross,net,vat,count:sales.length,average:sales.length?gross/sales.length:0}},[orderPeriodOrders]);
-  const pending=pendingOrders.length,amazon=pendingOrders.filter(o=>o.sourceChannel==='amazon').length,shopify=pendingOrders.filter(o=>o.sourceChannel==='shopify').length,labelled=labelPeriodOrders.length,shipped=shippedPeriodOrders.length,cancelled=orderPeriodOrders.filter(isCancelledOrder).length;
-  const filtered=useMemo(()=>{const q=query.trim().toLowerCase();const base=state==='labelled'?orders.filter(order=>inPeriod(labelDateKey(order),dateFrom,dateTo)):state==='shipped'?orders.filter(order=>inPeriod(shippedDateKey(order),dateFrom,dateTo)):orderPeriodOrders;return base.filter(order=>{if(channel!=='all'&&order.sourceChannel!==channel)return false;if(state==='pending'&&!isPendingOrder(order))return false;if(state==='labelled'&&!isLabelledOrder(order))return false;if(state==='shipped'&&!isProcessedOrder(order))return false;if(state==='cancelled'&&!isCancelledOrder(order))return false;if(trackingFilter!=='all'&&trackingFilterCode(order)!==trackingFilter)return false;if(q&&!`${order.orderNumber||''} ${order.orderId||''} ${order.customerName||''} ${order.trackingNumber||''} ${order.trackingStatusMessage||''} ${carrierLabel(order)} ${productsText(order)}`.toLowerCase().includes(q))return false;return true})},[orders,orderPeriodOrders,dateFrom,dateTo,query,channel,state,trackingFilter]);
+  const salesKpis=useMemo(()=>{const sales=orderContextOrders.filter(order=>!isCancelledOrder(order)&&order.totalAmount!=null&&(order.currency==null||order.currency==='EUR'));let gross=0,net=0,vat=0;for(const order of sales){const parts=taxParts(order);gross+=parts.gross;net+=parts.net;vat+=parts.vat}return {gross,net,vat,count:sales.length,average:sales.length?gross/sales.length:0}},[orderContextOrders]);
+  const pending=pendingOrders.length,amazon=pendingOrders.filter(o=>o.sourceChannel==='amazon').length,shopify=pendingOrders.filter(o=>o.sourceChannel==='shopify').length,labelled=labelContextOrders.length,shipped=shippedContextOrders.length,cancelled=orderContextOrders.filter(isCancelledOrder).length;
+  const filtered=useMemo(()=>{const base=state==='labelled'?labelContextOrders:state==='shipped'?shippedContextOrders:orderContextOrders;return base.filter(order=>{if(state==='pending'&&!isPendingOrder(order))return false;if(state==='labelled'&&!isLabelledOrder(order))return false;if(state==='shipped'&&!isProcessedOrder(order))return false;if(state==='cancelled'&&!isCancelledOrder(order))return false;return true})},[orderContextOrders,labelContextOrders,shippedContextOrders,state]);
   const selectableOrders=filtered.filter(canPrepareOrder);
   const selectedOrders=selectableOrders.filter(order=>checkedIds.has(order.id));
   const allSelectableSelected=selectableOrders.length>0&&selectableOrders.every(order=>checkedIds.has(order.id));
