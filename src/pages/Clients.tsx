@@ -149,7 +149,7 @@ export function Clients(){
     const ordered=[...periodInvoices].sort((a,b)=>b.issueDate.localeCompare(a.issueDate));
     for(const invoice of ordered){
       const metric=map.get(invoice.clientId);if(!metric)continue;
-      const registered=invoice.status!=='draft'||Boolean(invoice.invoiceNumber);if(registered){metric.invoiced+=invoice.totalAmount;metric.count+=1;if(!metric.lastDate||invoice.issueDate>metric.lastDate)metric.lastDate=invoice.issueDate;}
+      const registered=invoice.status!=='draft';if(registered){metric.invoiced+=invoice.totalAmount;metric.count+=1;if(!metric.lastDate||invoice.issueDate>metric.lastDate)metric.lastDate=invoice.issueDate;}
       if(invoice.invoiceType==='standard'&&!['draft','paid','rectified'].includes(invoice.status))metric.pending+=Math.max(0,invoice.totalAmount-invoice.paidAmount);
       if(metric.recent.length<5)metric.recent.push(invoice);
     }
