@@ -1,5 +1,6 @@
 .navLabelMobile{display:none}
-.mobileNavHeader,.mobileSidebarBackdrop,.mobileMenuClose{display:none}
+.mobileNavHeader,.mobileSidebarBackdrop{display:none}
+.sidebar .mobileMenuClose{display:none!important}
 
 /* The desktop sidebar is allowed to scroll too, so short browser windows never trap options. */
 .sidebar{
@@ -105,7 +106,8 @@
   .sidebar .brandLogo{width:142px!important}
   .sidebar .brandProductLockup{display:flex!important}
 
-  .mobileMenuClose{
+  .sidebar .mobileMenuClose{
+    display:grid!important;
     position:absolute;
     top:0;
     right:0;
