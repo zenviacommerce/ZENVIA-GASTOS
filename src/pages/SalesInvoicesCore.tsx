@@ -233,6 +233,13 @@ export function SalesInvoices({
   const clientById=useMemo(()=>new Map(clients.map(client=>[client.id,client])),[clients]);
   const countryOptions=useMemo(()=>[...new Set(clients.map(client=>(client.countryCode||'XX').toUpperCase()))].sort((a,b)=>countryName(a).localeCompare(countryName(b),'es')).map(code=>({value:code,label:code==='XX'?'País pendiente':`${countryName(code)} · ${code}`})),[clients]);
   const clientOptions=useMemo(()=>clients.map(client=>({value:client.id,label:client.name,searchText:[client.taxId,client.email,client.city].filter(Boolean).join(' ')})),[clients]);
+  const hasDueDates=useMemo(()=>invoices.some(invoice=>Boolean(invoice.dueDate)),[invoices]);
+  const collectionOptions=useMemo(()=>[
+    {value:'all',label:'Todas'},
+    {value:'open',label:'Pendientes de cobro'},
+    ...(hasDueDates?[{value:'overdue',label:'Vencidas y pendientes'}]:[]),
+    {value:'paid',label:'Cobradas'},
+  ],[hasDueDates]);
   const filtered=useMemo(()=>{const q=query.trim().toLowerCase();const now=today();return invoices.filter(invoice=>{
     if(status!=='all'&&invoice.status!==status)return false;
     if(clientId!=='all'&&invoice.clientId!==clientId)return false;
@@ -265,8 +272,9 @@ export function SalesInvoices({
     const issued=issuedRows.reduce((sum,invoice)=>sum+invoice.totalAmount,0);
     const tax=issuedRows.reduce((sum,invoice)=>sum+invoice.taxAmount,0);
     const pending=filtered.filter(invoice=>invoice.invoiceType==='standard'&&!['draft','paid','rectified'].includes(invoice.status)).reduce((sum,invoice)=>sum+Math.max(0,invoice.totalAmount-invoice.paidAmount),0);
+    const collected=filtered.filter(invoice=>invoice.invoiceType==='standard'&&invoice.status!=='draft').reduce((sum,invoice)=>sum+Math.max(0,invoice.paidAmount),0);
     const drafts=filtered.filter(invoice=>invoice.status==='draft').length;
-    return {issued,tax,pending,drafts,count:issuedRows.length,average:issuedRows.length?issued/issuedRows.length:0};
+    return {issued,tax,pending,collected,drafts,count:issuedRows.length,average:issuedRows.length?issued/issuedRows.length:0};
   },[filtered]);
   const openNew=()=>{if(!clients.length){showError('Crea al menos un cliente antes de preparar una factura.');return;}setEditing(null);setModal(true);};
   const edit=(invoice:SalesInvoice)=>{setDetail(null);setEditing(invoice);setModal(true);};
@@ -460,6 +468,7 @@ export function SalesInvoices({
     <div className="stats salesStats normalizedKpiStats">
       <StatCard label="Facturado" value={money(totals.issued)} sub={selectedPeriod} icon={<ReceiptText/>}/>
       <StatCard label="IVA repercutido" value={money(totals.tax)} sub={selectedPeriod} icon={<BadgeEuro/>}/>
+      <StatCard label="Cobrado" value={money(totals.collected)} sub={selectedPeriod} icon={<CheckCircle2/>}/>
       <StatCard label="Pendiente de cobro" value={money(totals.pending)} sub="Facturas ordinarias vivas" icon={<Banknote/>}/>
       <StatCard label="Facturas emitidas" value={String(totals.count)} sub={selectedPeriod} icon={<CalendarDays/>}/>
       <StatCard label="Borradores" value={String(totals.drafts)} sub="Pendientes de emitir" icon={<FilePenLine/>}/>
@@ -471,7 +480,7 @@ export function SalesInvoices({
         <label className="filterField"><span>Cliente</span><SearchableSelect value={clientId==='all'?'':clientId} options={clientOptions} onChange={value=>setClientId(value||'all')} allowEmpty emptyLabel="Todos los clientes" searchPlaceholder="Buscar cliente…" ariaLabel="Filtrar por cliente"/></label>
         <label className="filterField"><span>País</span><SelectField value={countryFilter} onChange={setCountryFilter} ariaLabel="Filtrar facturas por país" options={[{value:'all',label:'Todos los países'},...countryOptions]}/></label>
         <label className="filterField"><span>Estado</span><SelectField value={status} onChange={setStatus} ariaLabel="Estado de factura" options={[{value:'all',label:'Todos los estados'},{value:'draft',label:'Borradores'},{value:'issued',label:'Emitidas'},{value:'sent',label:'Enviadas'},{value:'partially_paid',label:'Cobro parcial'},{value:'paid',label:'Cobradas'},{value:'rectified',label:'Rectificadas'}]}/></label>
-        <label className="filterField"><span>Cobro</span><SelectField value={collectionFilter} onChange={value=>setCollectionFilter(value as CollectionFilter)} ariaLabel="Filtrar por situación de cobro" options={[{value:'all',label:'Todas'},{value:'open',label:'Pendientes de cobro'},{value:'overdue',label:'Vencidas y pendientes'},{value:'paid',label:'Cobradas'}]}/></label>
+        <label className="filterField"><span>Cobro</span><SelectField value={collectionFilter} onChange={value=>setCollectionFilter(value as CollectionFilter)} ariaLabel="Filtrar por situación de cobro" options={collectionOptions}/></label>
       </div>
       <button className="filterResetCompact" type="button" onClick={()=>{setQuery('');setStatus('all');setClientId('all');setCountryFilter('all');setCollectionFilter('all');setDateFilter(defaultDateFilter())}}><RotateCcw size={15}/> Limpiar filtros</button>
       <span className="filterResultCount">{filtered.length} factura{filtered.length===1?'':'s'} · {selectedPeriod}</span>
