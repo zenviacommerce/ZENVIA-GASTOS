@@ -24,10 +24,14 @@ export function labelPdfBaseName(order: LabelOrder) {
     .replace(/^_+|_+$/g, '') || 'pedido';
 }
 
+export function labelPdfFilename(order: LabelOrder) {
+  return `${labelPdfBaseName(order)}.pdf`;
+}
+
 export function uniqueLabelPdfFilename(order: LabelOrder, used: Set<string>) {
   const base = labelPdfBaseName(order);
   let suffix = 1;
-  let fileName = `${base}.pdf`;
+  let fileName = labelPdfFilename(order);
   while (used.has(fileName)) {
     suffix += 1;
     fileName = `${base}_${suffix}.pdf`;
