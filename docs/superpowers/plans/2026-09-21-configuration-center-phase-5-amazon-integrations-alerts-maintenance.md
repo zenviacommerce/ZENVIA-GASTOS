@@ -349,12 +349,18 @@ Example root:
   "format": "zenvia-gestion-settings",
   "version": 1,
   "exportedAt": "ISO timestamp",
+  "businessSettings": {},
+  "branding": {},
+  "taxRegistrations": [],
+  "invoiceSeries": [],
   "appSettings": {},
   "aliases": [],
   "shippingRules": [],
   "automationRules": []
 }
 ```
+
+The export must include structured non-secret configuration already managed outside `app_settings`: sanitized `business_settings`, branding metadata/path (not binary file contents), tax registrations, and invoice series. It must not include integration secrets, auth/session values, or private API keys.
 
 - [ ] **Step 4: Implement reset**
 
