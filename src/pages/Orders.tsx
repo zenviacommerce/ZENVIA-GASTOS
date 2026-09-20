@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import JSZip from 'jszip';
 import {
-  AlertCircle, Calculator, CalendarDays, CheckCircle2, ChevronRight, Download, Euro,
+  AlertCircle, Calculator, CheckCircle2, ChevronRight, Download, Euro,
   ExternalLink, LoaderCircle, MapPin, PackageCheck, Percent, Pencil, Plus, Printer, RefreshCw,
   Search, Settings2, ShoppingBag, Store, Trash2, Truck, X,
 } from 'lucide-react';
@@ -9,6 +9,8 @@ import { OrderEditModal } from '../components/OrderEditModal';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
+import { defaultDateFilter, periodLabel } from '../services/filters';
 import {
   createManualOrder, createOrderLabel, fetchOrderLabel, getSavedPrinter,
   getSendcloudStatus, getShippingOptions, labelBlob, listFulfillmentOrders, listLocalPrinters,
@@ -40,25 +42,9 @@ function downloadLabel(blob:Blob,fileName:string){
   downloadBlob(blob,clean.toLowerCase().endsWith('.pdf')?clean:`${clean}.pdf`);
 }
 
-type PeriodPreset='today'|'month'|'quarter'|'year'|'all'|'custom';
 type OrderFilter='pending'|'labelled'|'shipped'|'cancelled'|'all';
 type TrackingFilter='all'|'none'|'ready'|'transit'|'route'|'pickup'|'delivered'|'issue'|'cancelled';
 
-function currentRange(preset:Exclude<PeriodPreset,'custom'>){
-  const now=new Date();
-  if(preset==='all')return {from:'',to:''};
-  if(preset==='today'){const today=iso(now);return {from:today,to:today};}
-  if(preset==='month')return {from:iso(new Date(now.getFullYear(),now.getMonth(),1)),to:iso(new Date(now.getFullYear(),now.getMonth()+1,0))};
-  if(preset==='year')return {from:`${now.getFullYear()}-01-01`,to:`${now.getFullYear()}-12-31`};
-  const start=Math.floor(now.getMonth()/3)*3;
-  return {from:iso(new Date(now.getFullYear(),start,1)),to:iso(new Date(now.getFullYear(),start+3,0))};
-}
-function periodText(preset:PeriodPreset,from:string,to:string){
-  if(preset==='today')return 'Hoy'; if(preset==='month')return 'Mes actual'; if(preset==='quarter')return 'Trimestre actual';
-  if(preset==='year')return 'Año actual'; if(preset==='all')return 'Todo el histórico sincronizado';
-  if(from&&to)return `${dayLabel(from)} – ${dayLabel(to)}`; if(from)return `Desde ${dayLabel(from)}`; if(to)return `Hasta ${dayLabel(to)}`;
-  return 'Periodo personalizado';
-}
 function timestampDateKey(value?:string|null){
   if(!value)return ''; const date=new Date(value);
   return Number.isNaN(date.getTime())?value.slice(0,10):iso(date);
@@ -186,13 +172,12 @@ function ManualOrderModal({status,saving,onClose,onSave}:{status:SendcloudStatus
 }
 
 export function Orders(){
-  const initialRange=currentRange('quarter');
   const [orders,setOrders]=useState<FulfillmentOrder[]>([]),[status,setStatus]=useState<SendcloudStatus|null>(null);
   const [loading,setLoading]=useState(true),[syncing,setSyncing]=useState(false),[error,setError]=useState('');
   const [query,setQuery]=useState(''),[channel,setChannel]=useState<'all'|'amazon'|'shopify'>('all'),[state,setState]=useState<OrderFilter>('pending'),[trackingFilter,setTrackingFilter]=useState<TrackingFilter>('all');
   const [selected,setSelected]=useState<FulfillmentOrder|null>(null),[labelOrder,setLabelOrder]=useState<FulfillmentOrder|null>(null),[options,setOptions]=useState<ShippingOption[]>([]),[optionsLoading,setOptionsLoading]=useState(false),[busyOrder,setBusyOrder]=useState<string|null>(null);
   const [printers,setPrinters]=useState<LocalPrinter[]>([]),[printer,setPrinter]=useState(getSavedPrinter()),[printerChecking,setPrinterChecking]=useState(false);
-  const [period,setPeriod]=useState<PeriodPreset>('quarter'),[dateFrom,setDateFrom]=useState(initialRange.from),[dateTo,setDateTo]=useState(initialRange.to);
+  const [dateFilter,setDateFilter]=useState(defaultDateFilter);
   const [manualOpen,setManualOpen]=useState(false),[manualSaving,setManualSaving]=useState(false);
   const [editOrder,setEditOrder]=useState<FulfillmentOrder|null>(null),[editSaving,setEditSaving]=useState(false);
   const [bulkGenerating,setBulkGenerating]=useState(false),[bulkProgress,setBulkProgress]=useState('');
@@ -208,8 +193,8 @@ export function Orders(){
   const sync=useCallback(async(silent=false,history=false)=>{if(syncing)return;setSyncing(true);if(!silent)setError('');try{const result=await syncSendcloudOrders(history);setStatus({configured:true,integrations:result.integrations});await refresh();if(history)markHistorySyncDone();if(!silent)showSuccess(`${result.synced} pedidos actualizados desde Sendcloud.`)}catch(e){const message=errorMessage(e,'No se pudieron actualizar los pedidos.');if(!silent)showError(message)}finally{setSyncing(false)}},[refresh,syncing]);
   useEffect(()=>{if(!status?.configured)return;void sync(true,shouldRunHistorySync());const timer=window.setInterval(()=>void sync(true,false),60000);return()=>window.clearInterval(timer)},[status?.configured]);
 
-  const applyPreset=(preset:Exclude<PeriodPreset,'custom'>)=>{const range=currentRange(preset);setPeriod(preset);setDateFrom(range.from);setDateTo(range.to);};
-  const periodLabel=periodText(period,dateFrom,dateTo);
+  const dateFrom=dateFilter.from,dateTo=dateFilter.to;
+  const selectedPeriod=periodLabel(dateFilter);
   const orderPeriodOrders=useMemo(()=>orders.filter(order=>inPeriod(orderDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
   const labelPeriodOrders=useMemo(()=>orders.filter(order=>isLabelledOrder(order)&&inPeriod(labelDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
   const shippedPeriodOrders=useMemo(()=>orders.filter(order=>isProcessedOrder(order)&&inPeriod(shippedDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
@@ -290,10 +275,10 @@ export function Orders(){
     {status?.configured&&<section className="ordersConnection"><CheckCircle2 size={16}/><span>Sendcloud conectado</span><small>{status.integrations.filter(item=>item.channel==='amazon'||item.channel==='shopify').map(item=>item.shopName||item.type).join(' · ')||'Integraciones disponibles'}</small></section>}
     {status&&!status.configured&&<section className="card ordersSetup"><AlertCircle/><div><h3>Falta conectar Sendcloud</h3><p>Configura las claves API para sincronizar pedidos y generar etiquetas.</p></div></section>}{error&&<div className="errorBox"><AlertCircle size={17}/>{error}</div>}
 
-    <div className="masterPeriodPanel ordersPeriodPanel"><div className="masterPeriodTop"><div><CalendarDays size={17}/><div><strong>Periodo global</strong><span>{periodLabel}</span></div></div><div className="masterPeriodQuick"><button className={period==='today'?'active':''} onClick={()=>applyPreset('today')}>Hoy</button><button className={period==='month'?'active':''} onClick={()=>applyPreset('month')}>Mes actual</button><button className={period==='quarter'?'active':''} onClick={()=>applyPreset('quarter')}>Trimestre actual</button><button className={period==='year'?'active':''} onClick={()=>applyPreset('year')}>Año actual</button><button className={period==='all'?'active':''} onClick={()=>applyPreset('all')}>Todo</button></div></div><div className="masterPeriodDates"><label>Desde<input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPeriod('custom')}}/></label><label>Hasta<input type="date" value={dateTo} min={dateFrom||undefined} onChange={e=>{setDateTo(e.target.value);setPeriod('custom')}}/></label>{period==='custom'&&<button className="secondary" onClick={()=>applyPreset('quarter')}>Restablecer trimestre</button>}</div><small className="ordersTaxNote">Ventas y pendientes se filtran por fecha del pedido. Etiquetados se filtran por fecha de etiqueta; enviados y coste de transportistas, por fecha de expedición.</small></div>
+    <PeriodFilterPanel filter={dateFilter} onChange={setDateFilter} title="Periodo global" className="ordersPeriodPanel" note="Ventas y pendientes se filtran por fecha del pedido. Etiquetados se filtran por fecha de etiqueta; enviados y coste de transportistas, por fecha de expedición."/>
 
-    <div className="stats ordersSalesStats"><div className="stat"><div className="statIcon"><Euro/></div><div><span>Total vendido</span><strong>{money(salesKpis.gross)}</strong><small>{salesKpis.count} pedidos · {periodLabel}</small></div></div><div className="stat"><div className="statIcon"><Percent/></div><div><span>IVA estimado</span><strong>{money(salesKpis.vat)}</strong><small>{periodLabel}</small></div></div><div className="stat"><div className="statIcon"><Calculator/></div><div><span>Neto sin IVA</span><strong>{money(salesKpis.net)}</strong><small>{periodLabel}</small></div></div><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Ticket medio</span><strong>{money(salesKpis.average)}</strong><small>{periodLabel}</small></div></div><div className="stat"><div className="statIcon"><Truck/></div><div><span>Coste transportistas (IVA incl.)</span><strong>{money(transportKpis.total)}</strong><small>MRW {money(transportKpis.mrw)} · Correos {money(transportKpis.correos)}</small><small>{transportKpis.valued}/{transportKpis.shipments} envíos con coste{transportKpis.missing?` · ${transportKpis.missing} sin valorar`:``}</small></div></div></div>
-    <div className="stats ordersStats"><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Pendientes</span><strong>{pending}</strong><small>{periodLabel}</small></div></div><div className="stat"><div className="statIcon"><Store/></div><div><span>Amazon pendientes</span><strong>{amazon}</strong><small>{periodLabel}</small></div></div><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Shopify pendientes</span><strong>{shopify}</strong><small>{periodLabel}</small></div></div><div className="stat"><div className="statIcon"><PackageCheck/></div><div><span>Etiquetados</span><strong>{labelled}</strong><small>Fecha etiqueta · {periodLabel}</small></div></div><div className="stat"><div className="statIcon"><Truck/></div><div><span>Enviados</span><strong>{shipped}</strong><small>Fecha expedición · {periodLabel}</small></div></div><div className="stat"><div className="statIcon"><AlertCircle/></div><div><span>Cancelados</span><strong>{cancelled}</strong><small>{periodLabel}</small></div></div></div>
+    <div className="stats ordersSalesStats"><div className="stat"><div className="statIcon"><Euro/></div><div><span>Total vendido</span><strong>{money(salesKpis.gross)}</strong><small>{salesKpis.count} pedidos · {selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><Percent/></div><div><span>IVA estimado</span><strong>{money(salesKpis.vat)}</strong><small>{selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><Calculator/></div><div><span>Neto sin IVA</span><strong>{money(salesKpis.net)}</strong><small>{selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Ticket medio</span><strong>{money(salesKpis.average)}</strong><small>{selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><Truck/></div><div><span>Coste transportistas (IVA incl.)</span><strong>{money(transportKpis.total)}</strong><small>MRW {money(transportKpis.mrw)} · Correos {money(transportKpis.correos)}</small><small>{transportKpis.valued}/{transportKpis.shipments} envíos con coste{transportKpis.missing?` · ${transportKpis.missing} sin valorar`:``}</small></div></div></div>
+    <div className="stats ordersStats"><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Pendientes</span><strong>{pending}</strong><small>{selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><Store/></div><div><span>Amazon pendientes</span><strong>{amazon}</strong><small>{selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Shopify pendientes</span><strong>{shopify}</strong><small>{selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><PackageCheck/></div><div><span>Etiquetados</span><strong>{labelled}</strong><small>Fecha etiqueta · {selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><Truck/></div><div><span>Enviados</span><strong>{shipped}</strong><small>Fecha expedición · {selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><AlertCircle/></div><div><span>Cancelados</span><strong>{cancelled}</strong><small>{selectedPeriod}</small></div></div></div>
 
     <div className="ordersToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar pedido, cliente, producto, tracking o transportista…"/></div><div className="ordersFilterGroup"><button className={state==='pending'?'active':''} onClick={()=>setState('pending')}>Pendientes</button><button className={state==='labelled'?'active':''} onClick={()=>setState('labelled')}>Etiquetados</button><button className={state==='shipped'?'active':''} onClick={()=>setState('shipped')}>Enviados</button><button className={state==='cancelled'?'active':''} onClick={()=>setState('cancelled')}>Cancelados</button><button className={state==='all'?'active':''} onClick={()=>setState('all')}>Todos</button></div><div className="ordersFilterGroup"><button className={channel==='all'?'active':''} onClick={()=>setChannel('all')}>Todos</button><button className={channel==='amazon'?'active':''} onClick={()=>setChannel('amazon')}>Amazon</button><button className={channel==='shopify'?'active':''} onClick={()=>setChannel('shopify')}>Shopify</button></div><label className="ordersTrackingFilter"><span>Seguimiento</span><SelectField value={trackingFilter} onChange={value=>setTrackingFilter(value as TrackingFilter)} ariaLabel="Filtrar por seguimiento" options={[{value:'all',label:'Todos'},{value:'none',label:'Sin etiqueta / pendiente'},{value:'ready',label:'Preparado'},{value:'transit',label:'En tránsito'},{value:'route',label:'En reparto'},{value:'pickup',label:'Punto de recogida'},{value:'delivered',label:'Entregado'},{value:'issue',label:'Incidencia'},{value:'cancelled',label:'Cancelado'}]}/></label></div>
     {selectableOrders.length>0&&<BulkSelectionToolbar selectedCount={selectedOrders.length} totalCount={selectableOrders.length} allSelected={allSelectableSelected} onToggleAll={toggleAllOrders} label="pedidos con etiqueta pendiente">
