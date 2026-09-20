@@ -19,6 +19,7 @@ import { Products } from './pages/Products';
 import { Suppliers } from './pages/Suppliers';
 import { AmazonPage } from './pages/Amazon';
 import { AdminPage } from './pages/Admin';
+import { SettingsPage } from './pages/Settings';
 import { supabase } from './services/supabase';
 import { loadAccessProfile, type AccessProfile, type MenuPermission } from './services/access';
 import { bootstrapUser, createInvoice, deleteProduct, deleteSupplier, getInvoiceFileUrl, loadAppData, updateInvoiceStatus } from './services/repository';
@@ -32,7 +33,7 @@ import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './typ
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
 const THEME_KEY = 'zenvia-gestion-theme';
-const regularPages: MenuPermission[] = ['dashboard','sales','orders','invoices','clients','products','suppliers','amazon'];
+const permissionPages: MenuPermission[] = ['dashboard','sales','orders','invoices','clients','products','suppliers','amazon'];
 
 function initialTheme(): ThemeMode {
   const stored=safeStorageGet('local',THEME_KEY) || safeStorageGet('local','zenvia-gastos-theme');
@@ -57,14 +58,21 @@ export default function App(){
  const [supplierModal,setSupplierModal]=useState(false);
  const [supplierToEdit,setSupplierToEdit]=useState<Supplier|null>(null);
  const [theme,setTheme]=useState<ThemeMode>(initialTheme);
+ const [settingsDirty,setSettingsDirty]=useState(false);
  const userId=session?.user.id||null;
 
  const allowedPages=useMemo<Page[]>(()=>{
    if(!access?.active) return [];
-   const visible=access.role==='admin'?regularPages:regularPages.filter(item=>access.permissions.includes(item));
-   return access.role==='admin'?[...visible,'admin']:[...visible];
+   const visible:Page[]=access.role==='admin'?permissionPages:permissionPages.filter(item=>access.permissions.includes(item));
+   return access.role==='admin'?[...visible,'settings','admin']:[...visible,'settings'];
  },[access]);
  const can=(permission:MenuPermission)=>Boolean(access?.active&&(access.role==='admin'||access.permissions.includes(permission)));
+
+ useEffect(()=>{
+   const onSettingsDirty=(event:Event)=>setSettingsDirty(Boolean((event as CustomEvent<{dirty?:boolean}>).detail?.dirty));
+   window.addEventListener('zenvia:settings-dirty',onSettingsDirty);
+   return()=>window.removeEventListener('zenvia:settings-dirty',onSettingsDirty);
+ },[]);
 
  useEffect(()=>{
    document.documentElement.dataset.theme=theme;
@@ -116,7 +124,14 @@ export default function App(){
  if(!accessReady) return <><ToastHost/><div className="fullLoader"><LoaderCircle className="spin"/> Comprobando acceso…</div></>;
  if(!access||!access.active||!allowedPages.length) return <><ToastHost/><div className="authPage"><div className="authPanel accessDeniedPanel"><div className="authHeroIcon"><LockKeyhole/></div><h1>Acceso no autorizado</h1><p>{access&&!access.active?'Tu acceso a ZENVIA Gestión está desactivado.':'Esta cuenta no está autorizada para utilizar ZENVIA Gestión.'} Contacta con el administrador.</p><button className="secondary" onClick={()=>supabase.auth.signOut()}>Cerrar sesión</button></div></div></>;
 
- const navigate=(next:Page)=>{if(allowedPages.includes(next))setPage(next)};
+ const navigate=(next:Page)=>{
+   if(!allowedPages.includes(next))return;
+   if(page==='settings'&&next!=='settings'&&settingsDirty){
+     if(!window.confirm('Tienes cambios sin guardar en Configuración. ¿Quieres salir y descartarlos?'))return;
+     setSettingsDirty(false);
+   }
+   setPage(next);
+ };
  const toggleTheme=()=>setTheme(current=>current==='dark'?'light':'dark');
  const runAction=async(work:()=>Promise<void>,fallback:string)=>{
    try{await work()}
@@ -197,6 +212,7 @@ export default function App(){
    {page==='products'&&can('products')&&<Products products={data.products} onAdd={openNewProduct} onEdit={openEditProduct} onDelete={removeProduct}/>} 
    {page==='suppliers'&&can('suppliers')&&<Suppliers suppliers={data.suppliers} onAdd={openNewSupplier} onEdit={openEditSupplier} onDelete={removeSupplier}/>} 
    {page==='amazon'&&can('amazon')&&<AmazonPage isAdmin={access.role==='admin'}/>} 
+   {page==='settings'&&<SettingsPage isAdmin={access.role==='admin'}/>} 
    {page==='admin'&&access.role==='admin'&&<AdminPage currentUserId={session.user.id}/>} 
  </main>
  {can('invoices')&&<UploadInvoiceModal open={upload} onClose={()=>setUpload(false)} onSave={saveInvoice} categories={data.categories} existingInvoices={data.invoices}/>} 
