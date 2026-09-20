@@ -41,3 +41,94 @@
   .salesToolbar>.filterResultCount{margin-left:0;align-self:flex-start;white-space:normal}
 }
 @media(max-width:430px){.normalizedKpiStats,.productStats{grid-template-columns:1fr}}
+
+
+/* Business-aware filter system */
+.businessFilterBar{
+  display:flex;
+  align-items:flex-end;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:16px;
+  padding:14px;
+  background:var(--surface,#fff);
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:14px;
+  box-shadow:0 1px 2px #0f172a08;
+}
+.businessFilterBar>.search{flex:1 1 320px;min-width:240px;margin:0}
+.businessFilterFields{display:flex;align-items:flex-end;gap:10px;flex:2 1 560px;flex-wrap:wrap}
+.filterField{display:grid;gap:5px;min-width:160px;flex:1 1 170px}
+.filterField>span{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.055em;color:var(--text-secondary,#64748b)}
+.filterField .searchableSelect,.filterField .searchableSelectTrigger{width:100%}
+.filterField .searchableSelectTrigger{min-height:42px}
+.businessFilterBar>.filterResultCount{margin-left:auto;align-self:center;white-space:nowrap}
+.filterResetCompact{
+  min-height:42px;
+  border:1px solid var(--border,#dbe2ea);
+  background:var(--surface,#fff);
+  color:var(--text-secondary,#64748b);
+  border-radius:10px;
+  padding:0 12px;
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  font-size:12px;
+  font-weight:700;
+  cursor:pointer;
+}
+.filterResetCompact:hover{border-color:#94a3b8;color:var(--text,#172033)}
+
+.invoiceCollectButton{
+  min-height:32px;
+  border:1px solid #99f6e4;
+  background:#ecfdf5;
+  color:#047857;
+  border-radius:8px;
+  padding:0 9px;
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  font-size:11px;
+  font-weight:800;
+  cursor:pointer;
+}
+.invoiceCollectButton:hover{background:#d1fae5;border-color:#5eead4}
+.invoicePaidMark{display:inline-flex;align-items:center;gap:4px;color:#047857;font-size:11px;font-weight:800;white-space:nowrap}
+.collectBulkButton{border-color:#99f6e4!important;color:#047857!important;background:#ecfdf5!important}
+.salesPaymentQuick{margin:14px 0 0;padding:13px;border-radius:12px;background:#f0fdfa;border:1px solid #ccfbf1;display:grid;gap:7px}
+.salesPaymentQuick .primary{width:100%}
+.salesPaymentQuick span{font-size:11px;color:#64748b;text-align:center}
+.salesBulkPaymentList{display:grid;gap:7px;margin:0 0 12px;max-height:220px;overflow:auto}
+.salesBulkPaymentList>div{display:flex;justify-content:space-between;gap:12px;padding:9px 11px;border:1px solid var(--border,#e2e8f0);border-radius:9px;font-size:12px}
+.salesBulkPaymentList span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.salesBulkPaymentList strong{white-space:nowrap}
+
+html[data-theme='dark'] .businessFilterBar,
+html[data-theme='dark'] .filterResetCompact{background:#111827;border-color:#334155}
+html[data-theme='dark'] .invoiceCollectButton,
+html[data-theme='dark'] .collectBulkButton{background:#0f2f2b!important;border-color:#115e59!important;color:#5eead4!important}
+html[data-theme='dark'] .invoicePaidMark{color:#5eead4}
+html[data-theme='dark'] .salesPaymentQuick{background:#102a27;border-color:#134e4a}
+html[data-theme='dark'] .salesPaymentQuick span{color:#94a3b8}
+
+@media(max-width:1050px){
+  .businessFilterBar{align-items:stretch}
+  .businessFilterBar>.search{flex-basis:100%}
+  .businessFilterFields{flex-basis:100%}
+  .businessFilterBar>.filterResultCount{margin-left:0}
+}
+@media(max-width:760px){
+  .businessFilterBar{padding:12px;gap:10px}
+  .businessFilterBar>.search{min-width:0;width:100%;flex-basis:100%}
+  .businessFilterFields{display:grid;grid-template-columns:1fr 1fr;width:100%;gap:9px}
+  .filterField{min-width:0;width:100%}
+  .filterField .searchableSelectTrigger{min-height:48px}
+  .filterResetCompact{width:100%;justify-content:center;min-height:46px}
+  .businessFilterBar>.filterResultCount{width:100%;white-space:normal}
+}
+@media(max-width:430px){
+  .businessFilterFields{grid-template-columns:1fr}
+  .invoiceCollectButton span{display:none}
+  .invoiceCollectButton{width:34px;padding:0;justify-content:center}
+}
