@@ -61,6 +61,14 @@ export function SalesInvoices(){
     });
   },[invoices,query,status,from,to]);
   const selectedExportRows=useMemo(()=>invoices.filter(invoice=>selectedInvoiceIds.includes(invoice.id)),[invoices,selectedInvoiceIds]);
+  const listFilteredCount=useMemo(()=>invoices.filter(invoice=>{
+    if(listFilters.status!=='all'&&invoice.status!==listFilters.status)return false;
+    if(listFilters.from&&invoice.issueDate<listFilters.from)return false;
+    if(listFilters.to&&invoice.issueDate>listFilters.to)return false;
+    const q=listFilters.query.trim().toLowerCase();
+    if(q&&![invoice.invoiceNumber||'borrador',invoice.clientName,invoice.clientTaxId||'',invoice.issuerTaxId||''].some(value=>value.toLowerCase().includes(q)))return false;
+    return true;
+  }).length,[invoices,listFilters]);
   const exportRows=exportSelectedOnly?selectedExportRows:filteredExportRows;
 
   const openImport=async()=>{if(await refreshTools())setImportOpen(true);};
@@ -98,7 +106,7 @@ export function SalesInvoices(){
     showSuccess('Facturas importadas como borrador. Revisa y emite solo las que correspondan.');
   };
 
-  const exportLabel=selectedInvoiceIds.length?`Exportar seleccionadas (${selectedInvoiceIds.length})`:`Exportar (${invoices.length})`;
+  const exportLabel=selectedInvoiceIds.length?`Exportar seleccionadas (${selectedInvoiceIds.length})`:`Exportar (${listFilteredCount})`;
 
   return <>
     <div className="salesInvoicesTransferHost"><SalesInvoicesCore key={epoch} selectedIds={selectedInvoiceIds} onSelectedIdsChange={setSelectedInvoiceIds} onExportSelected={ids=>void openSelectedExport(ids)} onFiltersChange={setListFilters}/></div>
