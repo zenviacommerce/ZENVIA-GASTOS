@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Barcode, Building2, ChevronRight, Euro, Package, Percent, Search, Tag, Trash2, TrendingDown, TrendingUp, X, Pencil } from 'lucide-react';
+import { Barcode, Building2, Calculator, ChevronRight, Euro, Package, Percent, Search, Tag, Trash2, TrendingDown, TrendingUp, X, Pencil } from 'lucide-react';
 import type { Product } from '../types';
 import { Pagination } from '../components/Pagination';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
+import { StatCard } from '../components/StatCard';
+import { SelectField } from '../components/forms/SelectField';
+import { defaultDateFilter, periodLabel } from '../services/filters';
 import { loadProductSalesMap } from '../services/productEditor';
 import { productMarginMetrics } from '../services/productMetrics';
 import { showError, showSuccess } from '../services/toast';
@@ -13,6 +17,7 @@ const PAGE_SIZE=20;
 const money=(value:number|null,decimals=2)=>value==null?'—':`${value.toLocaleString('es-ES',{minimumFractionDigits:decimals,maximumFractionDigits:4})} €`;
 
 type ProductSalesInfo={salePrice:number|null;salesTaxRate:number;invoiceDescription:string;ean:string};
+type ProductScope='all'|'with_sale'|'without_sale'|'cost_up'|'cost_down';
 
 function productMetrics(product:Product,extra?:ProductSalesInfo){
   const cost=product.lastPrice??null;
@@ -45,6 +50,10 @@ function ProductDrawer({product,extra,onClose,onEdit,onDelete,busy}:{product:Pro
 
 export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];onAdd:()=>void;onEdit:(product:Product)=>void;onDelete:(product:Product)=>Promise<void>}){
  const [query,setQuery]=useState('');
+ const [dateFilter,setDateFilter]=useState(defaultDateFilter);
+ const [categoryFilter,setCategoryFilter]=useState('all');
+ const [supplierFilter,setSupplierFilter]=useState('all');
+ const [scope,setScope]=useState<ProductScope>('all');
  const [busyId,setBusyId]=useState<string|null>(null);
  const [error,setError]=useState('');
  const [page,setPage]=useState(1);
@@ -53,21 +62,54 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
  const [bulkBusy,setBulkBusy]=useState(false);
  const [salesMap,setSalesMap]=useState<Map<string,ProductSalesInfo>>(new Map());
  useEffect(()=>{loadProductSalesMap(products.map(p=>p.id)).then(setSalesMap).catch(()=>setSalesMap(new Map()))},[products]);
- const shown=useMemo(()=>{const q=query.toLowerCase().trim();return !q?products:products.filter(p=>{const extra=salesMap.get(p.id);return [p.name,p.sku??'',extra?.ean??'',p.supplier,p.category??''].some(x=>x.toLowerCase().includes(q))})},[products,query,salesMap]);
+ const selectedPeriod=periodLabel(dateFilter);
+ const categoryOptions=useMemo(()=>[...new Set(products.map(product=>product.category?.trim()).filter((value):value is string=>Boolean(value)))].sort((a,b)=>a.localeCompare(b,'es')).map(value=>({value,label:value})),[products]);
+ const supplierOptions=useMemo(()=>[...new Set(products.map(product=>product.supplier?.trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es')).map(value=>({value,label:value})),[products]);
+ const periodProducts=useMemo(()=>products.filter(product=>{
+   if(dateFilter.preset==='all')return true;
+   const date=product.lastPurchaseDate||'';
+   if(!date)return false;
+   if(dateFilter.from&&date<dateFilter.from)return false;
+   if(dateFilter.to&&date>dateFilter.to)return false;
+   return true;
+ }),[products,dateFilter]);
+ const shown=useMemo(()=>{
+   const q=query.toLowerCase().trim();
+   return periodProducts.filter(product=>{
+     const extra=salesMap.get(product.id);
+     const metric=productMetrics(product,extra);
+     if(categoryFilter!=='all'&&(product.category||'')!==categoryFilter)return false;
+     if(supplierFilter!=='all'&&(product.supplier||'')!==supplierFilter)return false;
+     if(scope==='with_sale'&&extra?.salePrice==null)return false;
+     if(scope==='without_sale'&&extra?.salePrice!=null)return false;
+     if(scope==='cost_up'&&!(metric.delta!=null&&metric.delta>0))return false;
+     if(scope==='cost_down'&&!(metric.delta!=null&&metric.delta<0))return false;
+     if(q&&![product.name,product.sku??'',extra?.ean??'',product.supplier,product.category??''].some(value=>value.toLowerCase().includes(q)))return false;
+     return true;
+   });
+ },[periodProducts,query,salesMap,categoryFilter,supplierFilter,scope]);
  const selectedProducts=shown.filter(product=>checkedIds.has(product.id));
  const allShownSelected=shown.length>0&&shown.every(product=>checkedIds.has(product.id));
  const toggleProduct=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
  const toggleAllProducts=(checked:boolean)=>setCheckedIds(checked?new Set(shown.map(product=>product.id)):new Set());
  const totalPages=Math.max(1,Math.ceil(shown.length/PAGE_SIZE));
  const paged=useMemo(()=>shown.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[shown,page]);
- useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query]);
+ useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,dateFilter,categoryFilter,supplierFilter,scope]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  useEffect(()=>{if(selected&&!products.some(product=>product.id===selected.id))setSelected(null)},[products,selected]);
  const totals=useMemo(()=>{
-   const withSale=products.filter(p=>salesMap.get(p.id)?.salePrice!=null).length;
-   const margins=products.map(p=>productMetrics(p,salesMap.get(p.id)).marginPct).filter((value):value is number=>value!=null);
-   return {count:products.length,withSale,avgMargin:margins.length?margins.reduce((a,b)=>a+b,0)/margins.length:null};
- },[products,salesMap]);
+   const withSale=shown.filter(product=>salesMap.get(product.id)?.salePrice!=null).length;
+   const margins=shown.map(product=>productMetrics(product,salesMap.get(product.id)).marginPct).filter((value):value is number=>value!=null);
+   const costs=shown.map(product=>product.lastPrice).filter((value):value is number=>value!=null);
+   const costUp=shown.filter(product=>{const delta=productMetrics(product,salesMap.get(product.id)).delta;return delta!=null&&delta>0}).length;
+   return {
+     count:shown.length,
+     withSale,
+     avgMargin:margins.length?margins.reduce((a,b)=>a+b,0)/margins.length:null,
+     avgCost:costs.length?costs.reduce((a,b)=>a+b,0)/costs.length:null,
+     costUp,
+   };
+ },[shown,salesMap]);
  const remove=async(product:Product)=>{
    const confirmed=await confirmAction({title:'Eliminar producto',message:`Se eliminará “${product.name}”.`,confirmLabel:'Eliminar',tone:'danger',details:['Las facturas existentes no se borrarán; sus líneas quedarán sin producto asociado.']});
    if(!confirmed)return;
@@ -105,17 +147,31 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
         <button className="primary" onClick={onAdd}>+ Nuevo producto</button>
       </div>
 
-      <div className="stats masterStats">
-        <div className="stat"><div className="statIcon"><Package/></div><div><span>Productos</span><strong>{totals.count}</strong><small>Catálogo activo</small></div></div>
-        <div className="stat"><div className="statIcon"><Euro/></div><div><span>Con precio de venta</span><strong>{totals.withSale}</strong><small>de {totals.count} productos</small></div></div>
-        <div className="stat"><div className="statIcon"><Percent/></div><div><span>Margen medio</span><strong>{totals.avgMargin==null?'—':`${totals.avgMargin.toLocaleString('es-ES',{minimumFractionDigits:1,maximumFractionDigits:1})} %`}</strong><small>Sobre coste</small></div></div>
+      <PeriodFilterPanel
+        filter={dateFilter}
+        onChange={setDateFilter}
+        title="Periodo de actividad"
+        note="En Productos, el periodo se aplica a la fecha de la última compra o actualización de coste registrada."
+      />
+
+      <div className="stats masterStats productStats">
+        <StatCard label="Productos visibles" value={String(totals.count)} sub={selectedPeriod} icon={<Package/>}/>
+        <StatCard label="Con precio de venta" value={String(totals.withSale)} sub={`de ${totals.count} visibles`} icon={<Euro/>}/>
+        <StatCard label="Margen medio" value={totals.avgMargin==null?'—':`${totals.avgMargin.toLocaleString('es-ES',{minimumFractionDigits:1,maximumFractionDigits:1})} %`} sub="Sobre coste" icon={<Percent/>}/>
+        <StatCard label="Coste medio" value={money(totals.avgCost)} sub={selectedPeriod} icon={<Calculator/>}/>
+        <StatCard label="Subidas de coste" value={String(totals.costUp)} sub="Frente al coste anterior" icon={<TrendingUp/>}/>
       </div>
 
       {error&&<div className="errorBox supplierPageError">{error}</div>}
 
-      <div className="masterToolbar">
+      <div className="masterToolbar productFilterToolbar">
         <div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar producto, SKU, EAN o proveedor…"/></div>
-        <span className="filterResultCount">{shown.length} producto{shown.length===1?'':'s'}</span>
+        <div className="masterSelectFilters">
+          <SelectField value={categoryFilter} onChange={setCategoryFilter} ariaLabel="Filtrar por categoría" options={[{value:'all',label:'Todas las categorías'},...categoryOptions]}/>
+          <SelectField value={supplierFilter} onChange={setSupplierFilter} ariaLabel="Filtrar por proveedor" options={[{value:'all',label:'Todos los proveedores'},...supplierOptions]}/>
+          <SelectField value={scope} onChange={value=>setScope(value as ProductScope)} ariaLabel="Filtrar productos" options={[{value:'all',label:'Todos los productos'},{value:'with_sale',label:'Con precio de venta'},{value:'without_sale',label:'Sin precio de venta'},{value:'cost_up',label:'Coste al alza'},{value:'cost_down',label:'Coste a la baja'}]}/>
+        </div>
+        <span className="filterResultCount">{shown.length} producto{shown.length===1?'':'s'} · {selectedPeriod}</span>
       </div>
 
       {shown.length>0&&(
