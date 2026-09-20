@@ -61,7 +61,7 @@ function extractTaxId(text: string, supplierName: string) {
     if (!taxIdError(normalized, false)) return normalized;
   }
 
-  const labelled = /(?:nif|cif|vat(?:\s*(?:id|number|no\.?))?|n[uú]mero\s+de\s+iva|btw\s+nummer)\s*[:#-]?\s*([A-Z]{0,2}\s*[A-Z0-9](?:[\s.-]*[A-Z0-9]){6,14})/gi;
+  const labelled = /(?:nif|cif|c\.?\s*[il1]\.?\s*f\.?|vat(?:\s*(?:id|number|no\.?))?|n[uú]mero\s+de\s+iva|btw\s+nummer)\s*[:#-]?\s*([A-Z]{0,2}\s*[A-Z0-9](?:[\s.-]*[A-Z0-9]){6,14})/gi;
   const candidates: Array<{ value: string; score: number }> = [];
   for (const match of text.matchAll(labelled)) {
     const raw = match[1] || '';
