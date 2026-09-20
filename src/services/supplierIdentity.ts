@@ -45,6 +45,11 @@ export function supplierCoreKey(value: string): string {
     .trim();
 }
 
+function meaningfulSupplierTokens(value:string){
+  const ignored=new Set(['and','y','de','del','la','las','el','los','the','company','co','grupo','group']);
+  return value.split(/\s+/).filter(token=>token.length>=3&&!ignored.has(token));
+}
+
 export function isLikelySameSupplier(a: string, b: string): boolean {
   const aKey = supplierIdentityKey(a);
   const bKey = supplierIdentityKey(b);
@@ -53,11 +58,23 @@ export function isLikelySameSupplier(a: string, b: string): boolean {
 
   const aCore = supplierCoreKey(a);
   const bCore = supplierCoreKey(b);
-  if (!aCore || !bCore || aCore !== bCore) return false;
+  if (!aCore || !bCore) return false;
+  if (aCore === bCore) {
+    return aCore.length >= 8 && meaningfulSupplierTokens(aCore).length >= 2;
+  }
 
-  // Exigimos un nombre suficientemente descriptivo para no fusionar empresas
-  // distintas que solo compartan una palabra corta.
-  return aCore.length >= 8 && aCore.split(/\s+/).length >= 2;
+  // Algunas facturas imprimen solo la parte comercial de una razón social
+  // larga (p.ej. "Compost and Paper" frente a
+  // "Sierra Nevada Compost and Paper"). Admitimos esa abreviatura únicamente
+  // cuando es una frase completa contenida al principio o al final y conserva
+  // al menos dos palabras significativas.
+  const shorter=aCore.length<=bCore.length?aCore:bCore;
+  const longer=aCore.length>bCore.length?aCore:bCore;
+  const contained=longer===shorter
+    || longer.startsWith(shorter+' ')
+    || longer.endsWith(' '+shorter);
+  if(!contained)return false;
+  return shorter.length>=12&&meaningfulSupplierTokens(shorter).length>=2;
 }
 
 /**
