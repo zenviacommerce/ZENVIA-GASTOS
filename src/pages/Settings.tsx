@@ -17,6 +17,9 @@ import {
   Users,
 } from 'lucide-react';
 import { useSettings } from '../context/SettingsContext';
+import { SelectField } from '../components/forms/SelectField';
+import { showError, showSuccess } from '../services/toast';
+import type { UserPreferences } from '../services/settingsSchema';
 
 type SettingsSectionId =
   | 'general'
@@ -67,6 +70,88 @@ function SectionPlaceholder({section}:{section:SettingsSection}){
     <div className="settingsEmptySection">
       <SlidersHorizontal size={22}/>
       <div><strong>Sección preparada</strong><span>Los ajustes aparecerán aquí únicamente cuando estén conectados al comportamiento real de la aplicación.</span></div>
+    </div>
+  </section>;
+}
+
+
+const themeOptions=[
+  {value:'system',label:'Sistema'},
+  {value:'light',label:'Claro'},
+  {value:'dark',label:'Oscuro'},
+];
+
+const densityOptions=[
+  {value:'comfortable',label:'Cómoda'},
+  {value:'compact',label:'Compacta'},
+];
+
+const pageSizeOptions=[10,20,25,50,100].map(value=>({value:String(value),label:String(value)}));
+
+const startPageOptions=[
+  {value:'',label:'Usar valor de empresa'},
+  {value:'dashboard',label:'Resumen'},
+  {value:'sales',label:'Facturación'},
+  {value:'orders',label:'Pedidos'},
+  {value:'invoices',label:'Gastos'},
+  {value:'clients',label:'Clientes'},
+  {value:'products',label:'Productos'},
+  {value:'suppliers',label:'Proveedores'},
+  {value:'amazon',label:'Amazon'},
+  {value:'settings',label:'Configuración'},
+];
+
+const periodOptions=[
+  {value:'today',label:'Hoy'},
+  {value:'current_month',label:'Mes actual'},
+  {value:'current_quarter',label:'Trimestre actual'},
+  {value:'current_year',label:'Año actual'},
+  {value:'all',label:'Todo'},
+];
+
+function PreferencesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {preferences,updatePreferences}=useSettings();
+  const [draft,setDraft]=useState<UserPreferences>(preferences);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{setDraft(preferences);onDirtyChange(false)},[preferences,onDirtyChange]);
+
+  const update=<K extends keyof UserPreferences>(key:K,value:UserPreferences[K])=>{
+    setDraft(current=>({...current,[key]:value}));
+    onDirtyChange(true);
+  };
+
+  const save=async()=>{
+    setSaving(true);
+    try{
+      await updatePreferences(draft);
+      onDirtyChange(false);
+      showSuccess('Preferencias guardadas.');
+    }catch(e){
+      showError(e instanceof Error?e.message:'No se pudieron guardar las preferencias.');
+    }finally{
+      setSaving(false);
+    }
+  };
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero">
+      <div className="settingsSectionIcon"><UserRound size={22}/></div>
+      <div><h2>Preferencias de interfaz</h2><p>Estos ajustes son exclusivos de tu usuario y no afectan al resto del equipo.</p></div>
+    </div>
+
+    <div className="settingsFormGrid">
+      <label className="settingsField"><span>Tema</span><SelectField ariaLabel="Tema" value={draft.theme} options={themeOptions} onChange={value=>update('theme',value as UserPreferences['theme'])}/></label>
+      <label className="settingsField"><span>Densidad</span><SelectField ariaLabel="Densidad" value={draft.density} options={densityOptions} onChange={value=>update('density',value as UserPreferences['density'])}/></label>
+      <label className="settingsField"><span>Registros por página</span><SelectField ariaLabel="Registros por página" value={String(draft.pageSize)} options={pageSizeOptions} onChange={value=>update('pageSize',Number(value) as UserPreferences['pageSize'])}/></label>
+      <label className="settingsField"><span>Página inicial</span><SelectField ariaLabel="Página inicial" value={draft.startPage||''} options={startPageOptions} onChange={value=>update('startPage',value||null)}/></label>
+      <label className="settingsField"><span>Periodo inicial</span><SelectField ariaLabel="Periodo inicial" value={draft.defaultPeriod} options={periodOptions} onChange={value=>update('defaultPeriod',value as UserPreferences['defaultPeriod'])}/></label>
+      <label className="settingsToggleField"><input type="checkbox" checked={draft.rememberFilters} onChange={event=>update('rememberFilters',event.target.checked)}/><span><strong>Recordar filtros</strong><small>Conserva los últimos filtros de cada pantalla cuando vuelvas a entrar.</small></span></label>
+    </div>
+
+    <div className="settingsSectionActions">
+      <button type="button" className="secondaryButton" disabled={saving} onClick={()=>{setDraft(preferences);onDirtyChange(false)}}>Descartar cambios</button>
+      <button type="button" className="primaryButton" disabled={saving} onClick={save}>{saving?'Guardando…':'Guardar preferencias'}</button>
     </div>
   </section>;
 }
@@ -126,7 +211,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&<SectionPlaceholder section={active}/>}
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
