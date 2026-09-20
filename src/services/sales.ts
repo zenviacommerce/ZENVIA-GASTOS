@@ -31,6 +31,7 @@ export type BusinessSettings = {
   countryCode: string;
   email?: string | null;
   phone?: string | null;
+  website?: string | null;
   iban?: string | null;
   invoiceFooter?: string | null;
 };
@@ -149,11 +150,11 @@ export async function deleteClientIfUnused(id:string){const {count,error}=await 
 
 export async function loadBusinessSettings():Promise<BusinessSettings>{
   const {data,error}=await supabase.from('business_settings').select('*').maybeSingle();if(error)throw error;
-  return {legalName:data?.legal_name||'ZENVIA COMMERCE SL',tradeName:data?.trade_name||'ZENVIA',taxId:data?.tax_id||'',addressLine1:data?.address_line1||'',addressLine2:data?.address_line2||'',postalCode:data?.postal_code||'',city:data?.city||'',province:data?.province||'',countryCode:data?.country_code||'ES',email:data?.email||'',phone:data?.phone||'',iban:data?.iban||'',invoiceFooter:data?.invoice_footer||''};
+  return {legalName:data?.legal_name||'ZENVIA COMMERCE SL',tradeName:data?.trade_name||'ZENVIA',taxId:data?.tax_id||'',addressLine1:data?.address_line1||'',addressLine2:data?.address_line2||'',postalCode:data?.postal_code||'',city:data?.city||'',province:data?.province||'',countryCode:data?.country_code||'ES',email:data?.email||'',phone:data?.phone||'',website:data?.website||'',iban:data?.iban||'',invoiceFooter:data?.invoice_footer||''};
 }
 
 export async function saveBusinessSettings(input:BusinessSettings){
-  const row={legal_name:input.legalName.trim(),trade_name:nullable(input.tradeName),tax_id:nullable(input.taxId),address_line1:nullable(input.addressLine1),address_line2:nullable(input.addressLine2),postal_code:nullable(input.postalCode),city:nullable(input.city),province:nullable(input.province),country_code:(input.countryCode||'ES').trim().toUpperCase().slice(0,2),email:nullable(input.email)?.toLowerCase()||null,phone:nullable(input.phone),iban:nullable(input.iban),invoice_footer:nullable(input.invoiceFooter)};
+  const row={legal_name:input.legalName.trim(),trade_name:nullable(input.tradeName),tax_id:nullable(input.taxId),address_line1:nullable(input.addressLine1),address_line2:nullable(input.addressLine2),postal_code:nullable(input.postalCode),city:nullable(input.city),province:nullable(input.province),country_code:(input.countryCode||'ES').trim().toUpperCase().slice(0,2),email:nullable(input.email)?.toLowerCase()||null,phone:nullable(input.phone),website:nullable(input.website),iban:nullable(input.iban),invoice_footer:nullable(input.invoiceFooter)};
   const {data:existing,error:findError}=await supabase.from('business_settings').select('owner_id').maybeSingle();if(findError)throw findError;
   const result=existing?await supabase.from('business_settings').update(row).eq('owner_id',existing.owner_id):await supabase.from('business_settings').insert(row);if(result.error)throw result.error;
 }
