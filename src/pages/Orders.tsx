@@ -30,6 +30,8 @@ import { errorMessage, showError, showSuccess } from '../services/toast';
 const money=(value:number|null,currency='EUR')=>value==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:currency||'EUR'}).format(value);
 const dateLabel=(value?:string|null)=>value?new Date(value).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'}):'—';
 const dayLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
+const regionNames=typeof Intl!=='undefined'&&'DisplayNames' in Intl?new Intl.DisplayNames(['es'],{type:'region'}):null;
+const countryName=(code:string)=>regionNames?.of(code)||code;
 const text=(value:unknown)=>typeof value==='string'?value:'';
 const iso=(value:Date)=>`${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`;
 
@@ -209,7 +211,7 @@ export function Orders(){
   const orderPeriodOrders=useMemo(()=>orders.filter(order=>inPeriod(orderDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
   const labelPeriodOrders=useMemo(()=>orders.filter(order=>isLabelledOrder(order)&&inPeriod(labelDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
   const shippedPeriodOrders=useMemo(()=>orders.filter(order=>isProcessedOrder(order)&&inPeriod(shippedDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
-  const countryOptions=useMemo(()=>[...new Set(orders.map(order=>text(order.shippingAddress.country_code).trim().toUpperCase()||'XX'))].sort().map(code=>({value:code,label:code==='XX'?'País pendiente':code})),[orders]);
+  const countryOptions=useMemo(()=>[...new Set(orders.map(order=>text(order.shippingAddress.country_code).trim().toUpperCase()||'XX'))].sort((a,b)=>countryName(a).localeCompare(countryName(b),'es')).map(code=>({value:code,label:code==='XX'?'País pendiente':`${countryName(code)} · ${code}`})),[orders]);
   const carrierOptions=useMemo(()=>[...new Set(orders.map(order=>carrierLabel(order)).filter(value=>value&&value!=='—'))].sort((a,b)=>a.localeCompare(b,'es')).map(value=>({value:value.toLowerCase(),label:value})),[orders]);
   const orderContextOrders=useMemo(()=>orderPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter,countryFilter,carrierFilter)),[orderPeriodOrders,query,channel,trackingFilter,countryFilter,carrierFilter]);
   const labelContextOrders=useMemo(()=>labelPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter,countryFilter,carrierFilter)),[labelPeriodOrders,query,channel,trackingFilter,countryFilter,carrierFilter]);
