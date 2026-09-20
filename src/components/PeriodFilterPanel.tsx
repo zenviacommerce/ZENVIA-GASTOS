@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
-import { dateFilterForPreset, periodLabel, type DateRangeFilter, type PeriodPreset } from '../services/filters';
+import { dateFilterForPreset, periodLabel, type DateRangeFilter } from '../services/filters';
 
 const quickPresets = [
   ['today', 'Hoy'],
@@ -23,10 +23,10 @@ export function PeriodFilterPanel({
   note?: ReactNode;
   className?: string;
 }) {
-  const applyPreset=(preset:Exclude<PeriodPreset,'custom'|\`quarter:\${number}:\${number}\`>)=>onChange(dateFilterForPreset(preset));
+  const applyPreset=(preset:'today'|'current_month'|'current_quarter'|'current_year'|'all')=>onChange(dateFilterForPreset(preset));
   const setDate=(key:'from'|'to',value:string)=>onChange({...filter,preset:'custom',[key]:value});
 
-  return <section className={\`masterPeriodPanel sharedPeriodPanel \${className}\`.trim()}>
+  return <section className={`masterPeriodPanel sharedPeriodPanel ${className}`.trim()}>
     <div className="masterPeriodTop">
       <div><CalendarDays size={17}/><div><strong>{title}</strong><span>{periodLabel(filter)}</span></div></div>
       <div className="masterPeriodQuick">
