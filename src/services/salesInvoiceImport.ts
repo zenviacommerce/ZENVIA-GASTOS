@@ -70,9 +70,12 @@ function normalizeImportedDate(raw:string|undefined|null){
 
 function extractSalesDueDate(text:string,issueDate:string){
   const rows=text.split(/\r?\n/).map(compact).filter(Boolean);
-  const labelled=rows.find(row=>/\b(?:fecha\s+de\s+vencimiento|vencimiento|due\s+date|payment\s+due|échéance|echeance|scadenza|fällig(?:keit|keitsdatum)?)\b/i.test(row));
+  const dueLabel=/\b(?:fecha\s+de\s+vencimiento|vencimiento|due\s+date|payment\s+due|échéance|echeance|scadenza|fällig(?:keit|keitsdatum)?)\b/i;
+  const labelled=rows.find(row=>dueLabel.test(row));
   if(labelled){
-    const parsed=normalizeImportedDate(labelled);
+    const label=labelled.match(dueLabel);
+    const afterLabel=label?labelled.slice((label.index||0)+label[0].length):labelled;
+    const parsed=normalizeImportedDate(afterLabel)||normalizeImportedDate(labelled);
     if(parsed)return parsed;
   }
   return addDays(issueDate,30);
