@@ -26,6 +26,7 @@ import { updateInvoiceCategory, updateInvoiceSupplier } from './services/invoice
 import { addProduct, updateProduct, type ProductInput } from './services/productEditor';
 import { deleteInvoiceWithGmailRecovery } from './services/invoiceLifecycle';
 import { errorMessage, showSuccess } from './services/toast';
+import { safeStorageGet, safeStorageSet } from './services/browserStorage';
 import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './types';
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
@@ -33,9 +34,10 @@ const THEME_KEY = 'zenvia-gestion-theme';
 const regularPages: MenuPermission[] = ['dashboard','sales','orders','invoices','clients','products','suppliers','amazon'];
 
 function initialTheme(): ThemeMode {
-  const stored=window.localStorage.getItem(THEME_KEY) || window.localStorage.getItem('zenvia-gastos-theme');
+  const stored=safeStorageGet('local',THEME_KEY) || safeStorageGet('local','zenvia-gastos-theme');
   if(stored==='dark'||stored==='light') return stored;
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';
+  try{return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';}
+  catch{return 'light';}
 }
 
 export default function App(){
@@ -66,7 +68,7 @@ export default function App(){
  useEffect(()=>{
    document.documentElement.dataset.theme=theme;
    document.documentElement.style.colorScheme=theme;
-   window.localStorage.setItem(THEME_KEY,theme);
+   safeStorageSet('local',THEME_KEY,theme);
  },[theme]);
 
  const refresh=useCallback(async()=>{
