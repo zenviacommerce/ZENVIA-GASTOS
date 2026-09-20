@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { supabase } from '../services/supabase';
 import {
   loadAppSettings,
   loadUserPreferences,
@@ -31,15 +32,25 @@ const clone=<T,>(value:T):T=>JSON.parse(JSON.stringify(value)) as T;
 
 const SettingsContext=createContext<SettingsContextValue|undefined>(undefined);
 
-export function SettingsProvider({children,userId}:{children:ReactNode;userId:string|null}){
+export function SettingsProvider({children,userId}:{children:ReactNode;userId?:string|null}){
+  const [authUserId,setAuthUserId]=useState<string|null>(null);
+  const effectiveUserId=userId===undefined?authUserId:userId;
   const [settings,setSettings]=useState<AppSettings>(()=>clone(DEFAULT_APP_SETTINGS));
   const [preferences,setPreferences]=useState<UserPreferences>(()=>clone(DEFAULT_USER_PREFERENCES));
   const [warnings,setWarnings]=useState<SettingsWarning[]>([]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState<string|null>(null);
 
+  useEffect(()=>{
+    if(userId!==undefined)return;
+    let active=true;
+    supabase.auth.getSession().then(({data})=>{if(active)setAuthUserId(data.session?.user.id||null);});
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{if(active)setAuthUserId(session?.user.id||null);});
+    return()=>{active=false;subscription.unsubscribe();};
+  },[effectiveUserId]);
+
   const refresh=useCallback(async()=>{
-    if(!userId){
+    if(!effectiveUserId){
       setSettings(clone(DEFAULT_APP_SETTINGS));
       setPreferences(clone(DEFAULT_USER_PREFERENCES));
       setWarnings([]);
