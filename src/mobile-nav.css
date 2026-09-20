@@ -1,53 +1,210 @@
 .navLabelMobile{display:none}
+.mobileNavHeader,.mobileSidebarBackdrop,.mobileMenuClose{display:none}
 
-@media(max-width:760px){
-  .brand{display:none!important}
-  .sidebar{
-    top:auto;
-    bottom:0;
-    height:calc(72px + env(safe-area-inset-bottom));
-    padding:6px 8px calc(6px + env(safe-area-inset-bottom));
-    box-shadow:0 -8px 24px rgba(15,23,42,.16);
+/* The desktop sidebar is allowed to scroll too, so short browser windows never trap options. */
+.sidebar{
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
+}
+
+/* Mobile/tablet navigation. The height condition keeps landscape phones out of the
+   desktop sidebar layout even when their CSS width is greater than the phone breakpoint. */
+@media (max-width:900px), (max-height:600px) and (max-width:1100px){
+  .app{
+    display:block!important;
+    min-height:100dvh;
   }
-  .sidebar nav{
+
+  .mobileNavHeader{
+    position:fixed;
+    inset:0 0 auto 0;
+    z-index:45;
+    min-height:calc(58px + env(safe-area-inset-top));
+    padding:calc(8px + env(safe-area-inset-top)) 14px 8px;
     display:flex;
-    height:60px;
-    align-items:stretch;
-    gap:2px;
-    overflow-x:auto;
-    overflow-y:hidden;
-    overscroll-behavior-x:contain;
-    scroll-snap-type:x proximity;
-    scrollbar-width:none;
-    -webkit-overflow-scrolling:touch;
+    align-items:center;
+    gap:12px;
+    background:color-mix(in srgb,var(--surface,#fff) 94%,transparent);
+    border-bottom:1px solid var(--border,#e2e8f0);
+    box-shadow:0 3px 14px rgba(15,23,42,.08);
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
   }
-  .sidebar nav::-webkit-scrollbar{display:none}
-  .sidebar nav button{
-    flex:1 0 58px;
-    min-width:58px;
-    max-width:none;
-    height:58px;
-    padding:6px 2px;
-    gap:3px;
-    grid-template-rows:24px 1fr;
-    line-height:1;
-    text-align:center;
-    scroll-snap-align:center;
-  }
-  .sidebar nav button svg{
-    width:20px;
-    height:20px;
-    margin:auto;
-  }
-  .sidebar nav button .navLabelDesktop{display:none}
-  .sidebar nav button .navLabelMobile{
-    display:block;
-    width:100%;
+
+  .mobileNavHeader>strong{
+    min-width:0;
     overflow:hidden;
     text-overflow:ellipsis;
     white-space:nowrap;
-    font-size:10px;
-    line-height:1.1;
+    color:var(--text,#172033);
+    font-size:16px;
+    font-weight:800;
   }
-  .page{padding-bottom:calc(106px + env(safe-area-inset-bottom))}
+
+  .mobileMenuButton,.mobileMenuClose{
+    border:1px solid var(--border,#dbe2ea);
+    background:var(--surface,#fff);
+    color:var(--text,#172033);
+    border-radius:12px;
+    width:42px;
+    height:42px;
+    min-width:42px;
+    display:grid;
+    place-items:center;
+    cursor:pointer;
+    box-shadow:0 2px 7px rgba(15,23,42,.08);
+  }
+
+  .mobileSidebarBackdrop{
+    display:block;
+    position:fixed;
+    inset:0;
+    z-index:54;
+    width:100%;
+    height:100dvh;
+    padding:0;
+    border:0;
+    border-radius:0;
+    background:rgba(2,6,23,.52);
+    backdrop-filter:blur(2px);
+    -webkit-backdrop-filter:blur(2px);
+    cursor:default;
+  }
+
+  .sidebar{
+    position:fixed!important;
+    inset:0 auto 0 0!important;
+    z-index:55!important;
+    width:min(86vw,340px)!important;
+    height:100dvh!important;
+    min-height:0!important;
+    padding:calc(18px + env(safe-area-inset-top)) 14px calc(18px + env(safe-area-inset-bottom))!important;
+    display:flex!important;
+    flex-direction:column!important;
+    overflow-x:hidden!important;
+    overflow-y:auto!important;
+    transform:translateX(-105%);
+    transition:transform .22s ease;
+    box-shadow:18px 0 48px rgba(2,6,23,.28)!important;
+  }
+
+  .sidebar.mobileOpen{transform:translateX(0)}
+
+  .sidebar .brand{
+    position:relative;
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:flex-start!important;
+    gap:10px!important;
+    padding:0 48px 18px 5px!important;
+    margin:0 0 8px!important;
+    border-bottom:1px solid rgba(148,163,184,.14);
+  }
+
+  .sidebar .brandLogo{width:142px!important}
+  .sidebar .brandProductLockup{display:flex!important}
+
+  .mobileMenuClose{
+    position:absolute;
+    top:0;
+    right:0;
+    border-color:rgba(148,163,184,.2);
+    background:rgba(255,255,255,.06);
+    color:#e2e8f0;
+    box-shadow:none;
+  }
+
+  .sidebar nav,
+  .sidebar nav.hasAdmin{
+    display:flex!important;
+    flex-direction:column!important;
+    flex:0 0 auto!important;
+    width:100%!important;
+    height:auto!important;
+    margin:0!important;
+    gap:5px!important;
+    overflow:visible!important;
+    scroll-snap-type:none!important;
+  }
+
+  .sidebar nav button,
+  .sidebar nav.hasAdmin button{
+    display:flex!important;
+    align-items:center!important;
+    justify-content:flex-start!important;
+    flex:0 0 auto!important;
+    width:100%!important;
+    min-width:0!important;
+    max-width:none!important;
+    height:48px!important;
+    padding:0 13px!important;
+    gap:12px!important;
+    border-radius:11px!important;
+    text-align:left!important;
+    font-size:14px!important;
+    scroll-snap-align:none!important;
+  }
+
+  .sidebar nav button svg{
+    width:19px!important;
+    height:19px!important;
+    margin:0!important;
+    flex:0 0 auto;
+  }
+
+  .sidebar nav button .navLabelDesktop{display:block!important}
+  .sidebar nav button .navLabelMobile{display:none!important}
+  .adminNavMobile{display:flex!important}
+
+  .sidebarBottom{
+    display:grid!important;
+    margin-top:22px!important;
+    padding-top:16px!important;
+    gap:5px!important;
+    border-top:1px solid #243244!important;
+  }
+
+  .sidebarUserCard{
+    display:flex!important;
+    margin-bottom:8px!important;
+  }
+
+  .sidebarBottom>button{
+    min-height:46px!important;
+    justify-content:flex-start!important;
+  }
+
+  /* Admin already lives in the main drawer navigation on small screens. */
+  .sidebarBottom .adminSidebarButton{display:none!important}
+
+  /* Session/theme controls now live safely inside the scrollable drawer. */
+  .mobileLogoutButton,.mobileThemeToggle{display:none!important}
+
+  main{min-width:0!important}
+
+  .page{
+    padding-top:calc(80px + env(safe-area-inset-top))!important;
+    padding-bottom:max(42px,env(safe-area-inset-bottom))!important;
+  }
+
+  .expenseHubNavShell{
+    padding-top:calc(72px + env(safe-area-inset-top))!important;
+  }
+
+  .expenseInvoicesHub>.page{
+    padding-top:16px!important;
+  }
+
+  .globalError{
+    margin-top:calc(70px + env(safe-area-inset-top))!important;
+  }
+
+  .syncBadge{
+    top:calc(70px + env(safe-area-inset-top))!important;
+  }
+}
+
+@media (max-width:430px){
+  .sidebar{width:min(90vw,330px)!important}
 }
