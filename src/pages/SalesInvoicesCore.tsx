@@ -5,7 +5,7 @@ import {
   Trash2, UserRound, WalletCards, X,
 } from 'lucide-react';
 import {
-  addSalesPayment, createSalesInvoiceDraft, ensureSalesSeries,
+  addSalesPayment, createSalesInvoiceDraft, defaultSalesDueDate, ensureSalesSeries,
   issueSalesInvoice, loadBusinessSettings, loadClients, loadSalesInvoices,
   saveBusinessSettings, updateSalesInvoiceDraft,
   type BusinessSettings, type Client, type SalesInvoice, type SalesInvoiceDraftInput,
@@ -74,8 +74,9 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
       setNotes(invoice.notes||'');setLines(invoice.lines.length?invoice.lines.map((line,index)=>({...line,position:index+1})):[emptyLine()]);
     }else{
       const firstClient=clients[0];
-      setClientId(firstClient?.id||'');setSeriesId('');setInvoiceNumber('');setTaxRegistrationId('');setIssueDate(today());setOperationDate('');setPaymentMethod('Transferencia bancaria');setNotes('');setLines([emptyLine()]);
-      if(firstClient?.paymentTermsDays){const d=new Date();d.setDate(d.getDate()+firstClient.paymentTermsDays);setDueDate(d.toISOString().slice(0,10));}else setDueDate('');
+      const initialIssueDate=today();
+      setClientId(firstClient?.id||'');setSeriesId('');setInvoiceNumber('');setTaxRegistrationId('');setIssueDate(initialIssueDate);setOperationDate('');setPaymentMethod('Transferencia bancaria');setNotes('');setLines([emptyLine()]);
+      setDueDate(defaultSalesDueDate(initialIssueDate,firstClient?.paymentTermsDays||30));
     }
     setError('');
     loadTaxRegistrations().then(rows=>{const active=rows.filter(item=>item.active);setTaxRegistrations(active);setTaxRegistrationId(current=>active.some(item=>item.id===current)?current:(active.find(item=>item.isDefault)?.id||active[0]?.id||''));}).catch(e=>setError(errorMessage(e,'No se pudieron cargar los registros IVA.')));
@@ -120,7 +121,12 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
   const chooseClient=(value:string)=>{
     setClientId(value);
     const client=clients.find(c=>c.id===value);
-    if(client?.paymentTermsDays){const d=new Date(`${issueDate}T12:00:00`);d.setDate(d.getDate()+client.paymentTermsDays);setDueDate(d.toISOString().slice(0,10));}
+    setDueDate(defaultSalesDueDate(issueDate,client?.paymentTermsDays||30));
+  };
+  const changeIssueDate=(value:string)=>{
+    setIssueDate(value);
+    const client=clients.find(c=>c.id===clientId);
+    setDueDate(defaultSalesDueDate(value,client?.paymentTermsDays||30));
   };
   const totals=lines.reduce((acc,line)=>{const x=calcLine(line);acc.gross+=x.gross;acc.net+=x.net;acc.tax+=x.tax;acc.total+=x.total;return acc},{gross:0,net:0,tax:0,total:0});
   const save=async()=>{
@@ -156,7 +162,7 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
         <label>Registro IVA<SearchableSelect value={taxRegistrationId} options={taxRegistrationOptions} onChange={setTaxRegistrationId} allowEmpty emptyLabel={taxRegistrations.length?'Selecciona registro IVA':'Sin registros IVA'} searchPlaceholder="Buscar registro IVA…" ariaLabel="Registro IVA del emisor"/></label>
       </div>
     </section>
-    <section className="salesFormSection"><div className="salesSectionTitle"><CalendarDays size={18}/><div><strong>Fechas y cobro</strong><span>Operación, vencimiento y forma de pago</span></div></div><div className="salesInvoiceMeta salesInvoiceMetaDates"><label>Fecha factura<input type="date" value={issueDate} onChange={e=>setIssueDate(e.target.value)}/></label><label>Fecha operación<input type="date" value={operationDate} onChange={e=>setOperationDate(e.target.value)}/></label><label>Vencimiento<input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)}/></label><label>Forma de pago<input value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)} placeholder="Transferencia, tarjeta…"/></label></div></section>
+    <section className="salesFormSection"><div className="salesSectionTitle"><CalendarDays size={18}/><div><strong>Fechas y cobro</strong><span>Operación, vencimiento y forma de pago</span></div></div><div className="salesInvoiceMeta salesInvoiceMetaDates"><label>Fecha factura<input type="date" value={issueDate} onChange={e=>changeIssueDate(e.target.value)}/></label><label>Fecha operación<input type="date" value={operationDate} onChange={e=>setOperationDate(e.target.value)}/></label><label>Vencimiento<input type="date" min={issueDate||undefined} value={dueDate} onChange={e=>setDueDate(e.target.value)}/><small>{clients.find(client=>client.id===clientId)?.paymentTermsDays?`Según condiciones del cliente: ${clients.find(client=>client.id===clientId)?.paymentTermsDays} días`:'30 días por defecto'}</small></label><label>Forma de pago<input value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)} placeholder="Transferencia, tarjeta…"/></label></div></section>
     <section className="salesFormSection salesProductsSection"><div className="salesSectionTitle"><PackageSearch size={18}/><div><strong>Productos y conceptos</strong><span>Busca en tu catálogo o añade una línea libre</span></div></div><ProductCatalogPicker products={products} onAdd={addProduct}/><div className="salesLinesEditor"><div className="salesLinesHead"><div><strong>Líneas de factura</strong><span>{lines.length} línea{lines.length===1?'':'s'}</span></div><button className="secondary" type="button" onClick={addFreeLine}><Plus size={15}/> Concepto libre</button></div>{lines.map((line,index)=>{const total=calcLine(line).total;const product=products.find(item=>item.id===line.productId);return <div className="salesLine salesLineCard" key={`${line.id||'new'}-${index}`}><div className="salesLineIdentity"><div className="salesLineIndex">{index+1}</div><div><strong>{product?.name||'Concepto libre'}</strong><small>{product?.sku?`SKU ${product.sku}`:product?'Producto vinculado':'Sin producto vinculado'}</small></div></div><label className="salesLineDescription">Descripción<input value={line.description} onChange={e=>updateLine(index,{description:e.target.value})} placeholder="Producto o servicio facturado"/></label><label>Cantidad<input type="number" min="0.001" step="0.001" value={line.quantity} onChange={e=>updateLine(index,{quantity:Number(e.target.value)})}/></label><label>Unidad<input value={line.unit} onChange={e=>updateLine(index,{unit:e.target.value})}/></label><label>Precio unit.<input type="number" step="0.01" value={line.unitPrice} onChange={e=>updateLine(index,{unitPrice:Number(e.target.value)})}/></label><label>Dto. %<input type="number" min="0" max="100" step="0.01" value={line.discountPercent} onChange={e=>updateLine(index,{discountPercent:Number(e.target.value)})}/></label><label>IVA %<SelectField value={String(line.taxRate)} onChange={value=>updateLine(index,{taxRate:Number(value)})} ariaLabel="IVA de la línea" options={[{value:'21',label:'21 %'},{value:'10',label:'10 %'},{value:'4',label:'4 %'},{value:'0',label:'0 %'}]}/></label><div className="salesLineTotal"><small>Total</small><strong>{money(total)}</strong></div><button className="iconAction danger" title="Eliminar línea" type="button" onClick={()=>removeLine(index)}><Trash2 size={16}/></button></div>})}</div></section>
     <section className="salesInvoiceBottom salesFormSection salesInvoiceSummary"><label>Notas<textarea rows={4} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observaciones visibles en la factura"/></label><div className="salesTotals"><span>Importe bruto <strong>{money(totals.gross)}</strong></span>{Math.abs(totals.gross-totals.net)>0.005&&<span>Descuento <strong>{money(totals.net-totals.gross)}</strong></span>}<span>Base imponible <strong>{money(totals.net)}</strong></span><span>IVA <strong>{money(totals.tax)}</strong></span><span className="salesGrandTotal">Total <strong>{money(totals.total)}</strong></span></div></section>
     {error&&<div className="errorBox">{error}</div>}<div className="modalActions salesStickyActions"><button className="secondary" onClick={onClose} disabled={busy}>Cancelar</button><button className="primary" onClick={save} disabled={busy}>{busy?'Guardando…':'Guardar borrador'}</button></div>
