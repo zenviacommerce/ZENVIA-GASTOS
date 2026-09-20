@@ -78,17 +78,18 @@ export default function App(){
  },[]);
 
  useEffect(()=>{
-   let media:MediaQueryList|null=null;
-   const apply=()=>{
-     let prefersDark=false;
-     try{media=window.matchMedia?.('(prefers-color-scheme: dark)')||null;prefersDark=Boolean(media?.matches);}catch{prefersDark=false;}
-     setTheme(resolveThemePreference(preferences.theme,prefersDark));
-   };
+   let mediaQuery:MediaQueryList|null=null;
+   try{mediaQuery=typeof window.matchMedia==='function'?window.matchMedia('(prefers-color-scheme: dark)'):null;}catch{mediaQuery=null;}
+   const apply=()=>setTheme(resolveThemePreference(preferences.theme,Boolean(mediaQuery?.matches)));
    apply();
-   if(preferences.theme!=='system'||!media)return;
+   if(preferences.theme!=='system'||!mediaQuery)return;
    const onChange=()=>apply();
-   media.addEventListener?.('change',onChange);
-   return()=>media?.removeEventListener?.('change',onChange);
+   if(typeof mediaQuery.addEventListener==='function'){
+     mediaQuery.addEventListener('change',onChange);
+     return()=>mediaQuery?.removeEventListener('change',onChange);
+   }
+   mediaQuery.addListener?.(onChange);
+   return()=>mediaQuery?.removeListener?.(onChange);
  },[preferences.theme]);
 
  useEffect(()=>{
