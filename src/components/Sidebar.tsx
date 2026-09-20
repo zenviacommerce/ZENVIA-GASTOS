@@ -1,4 +1,5 @@
-import { BarChart3, FileText, Package, Building2, LogOut, Moon, Sun, ShieldCheck, ReceiptText, ShoppingBag, Store, Users } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { BarChart3, Building2, FileText, LogOut, Menu, Moon, Package, ReceiptText, ShieldCheck, ShoppingBag, Store, Sun, Users, X } from 'lucide-react';
 import { ZENVIA_LOGO } from '../branding';
 
 export type Page = 'dashboard' | 'sales' | 'orders' | 'invoices' | 'clients' | 'products' | 'suppliers' | 'amazon' | 'admin';
@@ -29,17 +30,39 @@ function initials(fullName: string, email: string) {
 }
 
 export function Sidebar({page,onChange,onLogout,theme,onToggleTheme,allowedPages,isAdmin,user}:{page:Page;onChange:(p:Page)=>void;onLogout:()=>void;theme:ThemeMode;onToggleTheme:()=>void;allowedPages:Page[];isAdmin:boolean;user:SidebarUser}) {
+  const [mobileOpen,setMobileOpen]=useState(false);
   const visibleItems = items.filter(([id]) => allowedPages.includes(id));
   const canOpenAdmin = isAdmin && allowedPages.includes('admin');
   const displayName = user.fullName.trim() || user.email.split('@')[0] || 'Usuario';
   const roleLabel = user.role === 'admin' ? 'Administrador' : 'Usuario';
+  const activeLabel=page==='admin'?'Administración':items.find(([id])=>id===page)?.[1]||'Menú';
 
-  return <aside className="sidebar">
+  useEffect(()=>{
+    setMobileOpen(false);
+  },[page]);
+
+  useEffect(()=>{
+    if(!mobileOpen)return;
+    const onKeyDown=(event:KeyboardEvent)=>{if(event.key==='Escape')setMobileOpen(false);};
+    document.addEventListener('keydown',onKeyDown);
+    return()=>document.removeEventListener('keydown',onKeyDown);
+  },[mobileOpen]);
+
+  const navigate=(next:Page)=>{onChange(next);setMobileOpen(false);};
+
+  return <>
+    <div className="mobileNavHeader">
+      <button className="mobileMenuButton" type="button" onClick={()=>setMobileOpen(true)} aria-label="Abrir menú" aria-expanded={mobileOpen}><Menu size={22}/></button>
+      <strong>{activeLabel}</strong>
+    </div>
+    {mobileOpen&&<button className="mobileSidebarBackdrop" type="button" aria-label="Cerrar menú" onClick={()=>setMobileOpen(false)}/>}
+    <aside className={`sidebar ${mobileOpen?'mobileOpen':''}`}>
     <div className="brand">
       <div className="brandLogoWrap"><img className="brandLogo" src={ZENVIA_LOGO} alt="ZENVIA COMMERCE"/></div>
       <div className="brandProductLockup"><span className="brandProductDot"/><div className="brandProductText"><strong>Gestión</strong><span>Gestión empresarial</span></div></div>
+      <button className="mobileMenuClose" type="button" onClick={()=>setMobileOpen(false)} aria-label="Cerrar menú"><X size={20}/></button>
     </div>
-    <nav className={isAdmin?'hasAdmin':''}>{visibleItems.map(([id,label,mobileLabel,Icon]) => <button key={id} className={page===id?'active':''} onClick={()=>onChange(id)} title={label} aria-label={label}><Icon size={18}/><span className="navLabelDesktop">{label}</span><span className="navLabelMobile">{mobileLabel}</span></button>)}{canOpenAdmin&&<button className={page==='admin'?'active adminNavMobile':'adminNavMobile'} onClick={()=>onChange('admin')} title="Administración" aria-label="Administración"><ShieldCheck size={18}/><span className="navLabelDesktop">Administración</span><span className="navLabelMobile">Admin</span></button>}</nav>
+    <nav className={isAdmin?'hasAdmin':''}>{visibleItems.map(([id,label,mobileLabel,Icon]) => <button key={id} className={page===id?'active':''} onClick={()=>navigate(id)} title={label} aria-label={label}><Icon size={18}/><span className="navLabelDesktop">{label}</span><span className="navLabelMobile">{mobileLabel}</span></button>)}{canOpenAdmin&&<button className={page==='admin'?'active adminNavMobile':'adminNavMobile'} onClick={()=>navigate('admin')} title="Administración" aria-label="Administración"><ShieldCheck size={18}/><span className="navLabelDesktop">Administración</span><span className="navLabelMobile">Admin</span></button>}</nav>
     <div className="sidebarBottom">
       <div className="sidebarUserCard" title={`${displayName} · ${user.email}`}>
         <div className="sidebarUserAvatar" aria-hidden="true">{initials(displayName, user.email)}</div>
@@ -49,9 +72,10 @@ export function Sidebar({page,onChange,onLogout,theme,onToggleTheme,allowedPages
           <span className="sidebarUserEmail">{user.email}</span>
         </div>
       </div>
-      {canOpenAdmin&&<button className={page==='admin'?'adminSidebarButton active':'adminSidebarButton'} onClick={()=>onChange('admin')}><ShieldCheck size={18}/>Administración</button>}
+      {canOpenAdmin&&<button className={page==='admin'?'adminSidebarButton active':'adminSidebarButton'} onClick={()=>navigate('admin')}><ShieldCheck size={18}/>Administración</button>}
       <button className="themeSidebarButton" onClick={onToggleTheme}>{theme==='dark'?<Sun size={18}/>:<Moon size={18}/>} {theme==='dark'?'Modo claro':'Modo oscuro'}</button>
       <button onClick={onLogout}><LogOut size={18}/>Cerrar sesión</button>
     </div>
   </aside>
+  </>;
 }
