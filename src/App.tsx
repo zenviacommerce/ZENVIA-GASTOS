@@ -33,7 +33,7 @@ import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './typ
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
 const THEME_KEY = 'zenvia-gestion-theme';
-const permissionPages: MenuPermission[] = ['dashboard','sales','orders','invoices','clients','products','suppliers','amazon'];
+const regularPages: MenuPermission[] = ['dashboard','sales','orders','invoices','clients','products','suppliers','amazon'];
 
 function initialTheme(): ThemeMode {
   const stored=safeStorageGet('local',THEME_KEY) || safeStorageGet('local','zenvia-gastos-theme');
@@ -63,7 +63,7 @@ export default function App(){
 
  const allowedPages=useMemo<Page[]>(()=>{
    if(!access?.active) return [];
-   const visible:Page[]=access.role==='admin'?permissionPages:permissionPages.filter(item=>access.permissions.includes(item));
+   const visible:Page[]=access.role==='admin'?regularPages:regularPages.filter(item=>access.permissions.includes(item));
    return access.role==='admin'?[...visible,'settings','admin']:[...visible,'settings'];
  },[access]);
  const can=(permission:MenuPermission)=>Boolean(access?.active&&(access.role==='admin'||access.permissions.includes(permission)));
