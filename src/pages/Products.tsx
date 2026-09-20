@@ -15,7 +15,7 @@ import '../supplier-actions.css';
 
 const PAGE_SIZE=20;
 const money=(value:number|null,decimals=2)=>value==null?'—':`${value.toLocaleString('es-ES',{minimumFractionDigits:decimals,maximumFractionDigits:4})} €`;
-const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
+const dateLabel=(value?:string|null)=>value?new Date(`${value.slice(0,10)}T12:00:00`).toLocaleDateString('es-ES'):'—';
 
 type ProductSalesInfo={salePrice:number|null;salesTaxRate:number;invoiceDescription:string;ean:string};
 type ProductScope='all'|'with_sale'|'without_sale'|'cost_up'|'cost_down';
@@ -75,7 +75,7 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
  },[products]);
  const periodProducts=useMemo(()=>products.filter(product=>{
    if(dateFilter.preset==='all')return true;
-   const date=product.lastPurchaseDate||'';
+   const date=(product.lastPurchaseDate||'').slice(0,10);
    if(!date)return false;
    if(dateFilter.from&&date<dateFilter.from)return false;
    if(dateFilter.to&&date>dateFilter.to)return false;
