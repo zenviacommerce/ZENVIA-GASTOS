@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { LoaderCircle, LockKeyhole, LogOut, Moon, Sun } from 'lucide-react';
 import { Sidebar, type Page, type ThemeMode } from './components/Sidebar';
@@ -9,7 +9,7 @@ import { SupplierModal } from './components/SupplierModal';
 import { ToastHost } from './components/ToastHost';
 import { AuthScreen } from './components/AuthScreen';
 import { PasskeySetup } from './components/PasskeySetup';
-import { SettingsProvider } from './context/SettingsContext';
+import { useSettings } from './context/SettingsContext';
 import { Dashboard } from './pages/Dashboard';
 import { ExpenseInvoicesHub } from './pages/ExpenseInvoicesHub';
 import { SalesInvoices } from './pages/SalesInvoices';
@@ -27,8 +27,9 @@ import { addSupplier, updateSupplier, type SupplierInput } from './services/supp
 import { updateInvoiceCategory, updateInvoiceSupplier } from './services/invoiceEditor';
 import { addProduct, updateProduct, type ProductInput } from './services/productEditor';
 import { deleteInvoiceWithGmailRecovery } from './services/invoiceLifecycle';
-import { errorMessage, showSuccess } from './services/toast';
+import { errorMessage, showError, showSuccess } from './services/toast';
 import { safeStorageGet, safeStorageSet } from './services/browserStorage';
+import { effectiveStartPage, resolveThemePreference } from './services/uiPreferences';
 import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './types';
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
@@ -43,6 +44,7 @@ function initialTheme(): ThemeMode {
 }
 
 export default function App(){
+ const {settings,preferences,updatePreferences,loading:settingsLoading}=useSettings();
  const [session,setSession]=useState<Session|null>(null);
  const [authReady,setAuthReady]=useState(false);
  const [access,setAccess]=useState<AccessProfile|null>(null);
@@ -59,6 +61,7 @@ export default function App(){
  const [supplierToEdit,setSupplierToEdit]=useState<Supplier|null>(null);
  const [theme,setTheme]=useState<ThemeMode>(initialTheme);
  const [settingsDirty,setSettingsDirty]=useState(false);
+ const startPageApplied=useRef(false);
  const userId=session?.user.id||null;
 
  const allowedPages=useMemo<Page[]>(()=>{
@@ -75,10 +78,28 @@ export default function App(){
  },[]);
 
  useEffect(()=>{
+   let media:MediaQueryList|null=null;
+   const apply=()=>{
+     let prefersDark=false;
+     try{media=window.matchMedia?.('(prefers-color-scheme: dark)')||null;prefersDark=Boolean(media?.matches);}catch{prefersDark=false;}
+     setTheme(resolveThemePreference(preferences.theme,prefersDark));
+   };
+   apply();
+   if(preferences.theme!=='system'||!media)return;
+   const onChange=()=>apply();
+   media.addEventListener?.('change',onChange);
+   return()=>media?.removeEventListener?.('change',onChange);
+ },[preferences.theme]);
+
+ useEffect(()=>{
    document.documentElement.dataset.theme=theme;
    document.documentElement.style.colorScheme=theme;
    safeStorageSet('local',THEME_KEY,theme);
  },[theme]);
+
+ useEffect(()=>{
+   document.documentElement.dataset.density=preferences.density;
+ },[preferences.density]);
 
  const refresh=useCallback(async()=>{
    setLoading(true); setError('');
@@ -116,8 +137,14 @@ export default function App(){
 
  useEffect(()=>{
    if(!accessReady||!access?.active||!allowedPages.length)return;
+   if(!startPageApplied.current&&!settingsLoading){
+     const initial=effectiveStartPage(preferences.startPage,settings.general.startPage,allowedPages);
+     if(initial)setPage(initial);
+     startPageApplied.current=true;
+     return;
+   }
    if(!allowedPages.includes(page))setPage(allowedPages[0]);
- },[accessReady,access,allowedPages,page]);
+ },[accessReady,access,allowedPages,page,preferences.startPage,settings.general.startPage,settingsLoading]);
 
  if(!authReady) return <div className="fullLoader"><LoaderCircle className="spin"/> Cargando…</div>;
  if(!session) return <><ToastHost/><AuthScreen/></>;
@@ -130,9 +157,14 @@ export default function App(){
      if(!window.confirm('Tienes cambios sin guardar en Configuración. ¿Quieres salir y descartarlos?'))return;
      setSettingsDirty(false);
    }
+   startPageApplied.current=true;
    setPage(next);
  };
- const toggleTheme=()=>setTheme(current=>current==='dark'?'light':'dark');
+ const toggleTheme=()=>{
+   const next:ThemeMode=theme==='dark'?'light':'dark';
+   setTheme(next);
+   void updatePreferences({...preferences,theme:next}).catch(e=>showError(errorMessage(e,'No se pudo guardar el tema.')));
+ };
  const runAction=async(work:()=>Promise<void>,fallback:string)=>{
    try{await work()}
    catch(e){throw new Error(errorMessage(e,fallback));}
@@ -198,7 +230,7 @@ export default function App(){
    await runAction(async()=>{await deleteSupplier(supplier.id);await refresh()},'No se pudo eliminar el proveedor.');
  };
 
- return <SettingsProvider userId={userId}><div className="app"><ToastHost/><Sidebar page={page} onChange={navigate} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme} allowedPages={allowedPages} isAdmin={access.role==='admin'} user={{fullName:access.fullName,email:access.email||session.user.email||'',role:access.role}}/><main>
+ return <div className="app"><ToastHost/><Sidebar page={page} onChange={navigate} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme} allowedPages={allowedPages} isAdmin={access.role==='admin'} user={{fullName:access.fullName,email:access.email||session.user.email||'',role:access.role}}/><main>
    <button className="mobileLogoutButton" onClick={()=>supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut size={19}/></button>
    <button className="mobileThemeToggle" onClick={toggleTheme} title={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'} aria-label={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'}>{theme==='dark'?<Sun size={19}/>:<Moon size={19}/>}</button>
    <PasskeySetup userId={session.user.id}/>
@@ -219,5 +251,5 @@ export default function App(){
  {can('invoices')&&<BulkInvoiceImportModal open={bulkUpload} onClose={()=>setBulkUpload(false)} categories={data.categories} existingInvoices={data.invoices} onSave={saveBulkInvoice} onFinished={finishBulkImport}/>} 
  {can('products')&&<ProductModal open={productModal} product={productToEdit} suppliers={data.suppliers} onClose={closeProductModal} onSave={saveProduct}/>} 
  {can('suppliers')&&<SupplierModal open={supplierModal} supplier={supplierToEdit} onClose={closeSupplierModal} onSave={saveSupplier}/>} 
- </div></SettingsProvider>
+ </div>
 }
