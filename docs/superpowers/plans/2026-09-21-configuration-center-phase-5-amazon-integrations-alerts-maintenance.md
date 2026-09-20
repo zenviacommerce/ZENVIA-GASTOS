@@ -62,6 +62,19 @@ Expected: FAIL.
 
 Do not duplicate account IDs/secrets in JSON. Store only behavioral choices and marketplace IDs already present in `amazon_marketplaces`.
 
+The schema must include and connect:
+
+- `defaultVatRate` (initially 21) used only when Amazon/order financial data does not provide usable tax;
+- `defaultConsumptionFactor` (initially 1) used when creating a new internal SKU mapping and never to rewrite existing explicit mapping factors;
+- `fxMissingRatePolicy: 'last_known' | 'exclude'`, where `last_known` may use the most recent prior stored `amazon_fx_rates` value and `exclude` omits the unconvertible amount from consolidated EUR metrics while surfacing a warning;
+- active marketplaces and primary marketplace;
+- consolidated currency;
+- default period/history days;
+- automatic sync flags for orders/inventory/finance/images;
+- unmapped-SKU behavior and KPI visibility.
+
+Tests must prove explicit transaction tax, explicit mapping factor, and exact-date FX rate always override these fallbacks.
+
 - [ ] **Step 4: Connect Amazon page defaults**
 
 Default filter period, primary marketplace, visible KPI set, and unmapped-SKU behavior must derive from settings.
@@ -279,6 +292,18 @@ Supplier/client merge must repoint foreign keys and preserve audit/history. Requ
 Show counts of affected invoices/products/history rows before enabling merge.
 
 - [ ] **Step 6: Implement explicit recalculation/reprocess tools**
+
+Provide separate admin actions, each with a read-only preview before confirmation:
+
+- reprocess one expense invoice through the current parser/policy;
+- recalculate current product costs without deleting historical price rows;
+- rebuild product↔supplier associations from invoice lines;
+- rebuild derived price-history links where source invoice lines still exist;
+- run Sendcloud order synchronization;
+- run Amazon synchronization;
+- list suppliers missing CIF/VAT;
+- list clients missing fiscal ID;
+- list products without usable cost.
 
 Each action states scope and non-reversible effects. Historical recalculation is never triggered by changing a setting alone.
 
