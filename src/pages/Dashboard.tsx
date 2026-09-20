@@ -6,8 +6,8 @@ import {
 import { PieChart, Pie, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import type { Invoice, Product, Supplier } from '../types';
 import { StatCard } from '../components/StatCard';
-import { InvoiceFilters } from '../components/InvoiceFilters';
-import { defaultInvoiceFilter, filterInvoices, periodLabel } from '../services/filters';
+import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
+import { defaultDateFilter, periodLabel } from '../services/filters';
 import { loadSalesInvoices, type SalesInvoice } from '../services/sales';
 import { listFulfillmentOrders, syncSendcloudOrders, type FulfillmentOrder } from '../services/orders';
 import { isCancelledOrder, isPendingOrder, orderStatusCode } from '../services/orderStatus';
@@ -25,7 +25,7 @@ function isShippedOrder(order:FulfillmentOrder){
 }
 
 export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{invoices:Invoice[];products:Product[];suppliers:Supplier[];onUpload?:()=>void;onProducts?:()=>void}){
-  const [filter,setFilter]=useState(defaultInvoiceFilter);
+  const [filter,setFilter]=useState(defaultDateFilter);
   const [sales,setSales]=useState<SalesInvoice[]>(()=>readViewCache<SalesInvoice[]>(DASHBOARD_SALES_CACHE)||[]);
   const [orders,setOrders]=useState<FulfillmentOrder[]>(()=>readViewCache<FulfillmentOrder[]>(DASHBOARD_ORDERS_CACHE)||[]);
 
@@ -56,7 +56,7 @@ export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{inv
     return()=>{alive=false;window.clearInterval(timer);};
   },[]);
 
-  const periodExpenses=useMemo(()=>filterInvoices(invoices,{...filter,supplierId:''}),[invoices,filter]);
+  const periodExpenses=useMemo(()=>invoices.filter(invoice=>(!filter.from||invoice.invoiceDate>=filter.from)&&(!filter.to||invoice.invoiceDate<=filter.to)),[invoices,filter]);
   const selectedSales=useMemo(()=>sales.filter(invoice=>{
     if(invoice.status==='draft')return false;
     if(filter.from&&invoice.issueDate<filter.from)return false;
@@ -96,7 +96,7 @@ export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{inv
 
   return <div className="page">
     <div className="pageHead"><div><div className="eyebrow">{selectedPeriod}</div><h1>Resumen</h1><p>Visión global de ventas, gastos, pedidos, logística, IVA, cobros y costes de ZENVIA COMMERCE.</p></div>{onUpload&&<button className="primary" onClick={onUpload}>+ Factura de gasto</button>}</div>
-    <InvoiceFilters filter={filter} onChange={setFilter} invoices={invoices} suppliers={suppliers} showSupplier={false}/>
+    <PeriodFilterPanel filter={filter} onChange={setFilter} title="Periodo global" note="Este periodo se aplica de forma consistente a ventas, gastos y pedidos del resumen."/>
 
     <div className="dashboardSectionHead"><div><div className="eyebrow">FINANZAS</div><h2>Facturación y gastos</h2><p>{selectedPeriod}</p></div></div>
     <div className="stats filteredStats"><StatCard label="Facturación" value={money(salesTotal)} sub={selectedPeriod} icon={<Banknote/>}/><StatCard label="Gastos" value={money(expenseTotal)} sub={selectedPeriod} icon={<Euro/>}/><StatCard label="Resultado" value={money(result)} sub="Ventas − gastos" icon={<Scale/>}/><StatCard label="IVA neto" value={money(vatBalance)} sub={`${money(outputVat)} repercutido · ${money(inputVat)} soportado`} icon={<BadgeEuro/>}/><StatCard label="Pendiente de cobro" value={money(receivable)} sub="Facturas de venta emitidas" icon={<ReceiptText/>}/><StatCard label="Gastos por revisar" value={String(pending)} sub={selectedPeriod} icon={<AlertCircle/>}/></div>
