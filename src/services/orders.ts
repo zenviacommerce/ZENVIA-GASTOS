@@ -143,7 +143,7 @@ export function labelBlob(result:Pick<LabelResult,'base64'|'mimeType'>){
 }
 export function downloadLabel(blob:Blob,orderNumber?:string|null){
   const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url;
-  const base=(orderNumber||'pedido').trim().replace(/[^a-z0-9._-]+/gi,'_').replace(/^_+|_+$/g,'_')||'pedido';
+  const base=(orderNumber||'pedido').trim().replace(/[^a-z0-9._-]+/gi,'_').replace(/^_+|_+$/g,'')||'pedido';
   a.download=`${base}.pdf`; document.body.appendChild(a);a.click();a.remove();
   window.setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
