@@ -29,6 +29,38 @@
 
 ---
 
+### Task 0: Capture the pre-feature test/build baseline
+
+**Files:**
+- Read: `package.json`
+- Test: existing `scripts/*.test.mjs`
+- No product changes
+
+**Interfaces:**
+- Produces: a baseline record of existing failures before Configuration Center code changes
+
+- [ ] **Step 1: Run the current full test suite**
+
+```bash
+node --test scripts/*.test.mjs
+```
+
+Expected: record every pass/failure exactly. Do not silently fix unrelated failures during this baseline step.
+
+- [ ] **Step 2: Run the current production build**
+
+```bash
+npm run build
+```
+
+Expected: build succeeds. If it does not, stop and resolve whether the failure predates the feature.
+
+- [ ] **Step 3: Record baseline failures in the execution ledger**
+
+For each failure, record test file, assertion/error, and whether it predates Configuration Center. This is the comparison point for the final full-suite run.
+
+---
+
 ### Task 1: Create and verify the isolated Supabase development environment
 
 **Files:**
@@ -218,7 +250,7 @@ assert.equal(result.value.general.currencyCode, 'EUR');
 assert.ok(result.warnings.some(x => x.path === 'sales.defaultDueDays'));
 ```
 
-Also test unknown keys, null input, invalid page size, and `theme: 'system'`.
+Also test unknown keys, null input, invalid page size, `theme: 'system'`, and `startPage: null` as “inherit the company default”.
 
 - [ ] **Step 2: Run and verify failure**
 
@@ -239,7 +271,7 @@ export const DEFAULT_USER_PREFERENCES = {
   theme: 'system',
   density: 'comfortable',
   pageSize: 20,
-  startPage: 'dashboard',
+  startPage: null,
   defaultPeriod: 'current_quarter',
   rememberFilters: true,
   tableColumns: {},
@@ -433,7 +465,8 @@ Pin:
 - `theme='system'` respects media query when available;
 - invalid media query access falls back to light without throw;
 - `defaultPeriod='current_month'` creates the correct range;
-- `pageSize=50` is accepted while `pageSize=37` falls back to 20.
+- `pageSize=50` is accepted while `pageSize=37` falls back to 20;
+- `startPage=null` inherits `settings.general.startPage`, while an explicit personal start page overrides it.
 
 - [ ] **Step 2: Run and verify failure**
 
@@ -453,7 +486,7 @@ Fields:
 - theme system/light/dark;
 - density comfortable/compact;
 - page size 10/20/25/50/100;
-- start page limited to pages the user can access;
+- start page with an “Usar valor de empresa” option plus explicit pages limited to pages the user can access;
 - default period today/current_month/current_quarter/current_year/all;
 - remember filters;
 - dashboard KPI selection container.
