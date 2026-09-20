@@ -298,9 +298,17 @@ Assert validated label sizes A4/A6/10x15, positive fallback weight, enabled-carr
 
 Expected: FAIL.
 
-- [ ] **Step 3: Connect only parameters supported by Sendcloud API**
+- [ ] **Step 3: Implement each shipping preference at the layer that can actually enforce it**
 
-For an option not supported by the current API endpoint, keep the UI control out until the integration can actually apply it. This preserves the approved “no decorative settings” requirement.
+- sender identity/address: pass through the backend request when Sendcloud supports an explicit sender, otherwise bind the configured sender to the supported sender-address identifier;
+- fallback weight/unit: apply only when the order has no valid explicit weight;
+- label format/size: request the supported Sendcloud label format where the API supports it;
+- copies/orientation: apply in the client print/download preparation layer when Sendcloud returns a single canonical PDF;
+- enabled carriers: filter automatic choices but never hide a manually selected existing label;
+- fallback service/no-valid-method behavior: return a structured manual-selection requirement rather than guessing;
+- confirm shipment and persist cost: connect to existing backend response fields.
+
+A setting must not be shown until its enforcement path above is implemented and covered by a test.
 
 - [ ] **Step 4: Persist returned shipping cost when enabled**
 
