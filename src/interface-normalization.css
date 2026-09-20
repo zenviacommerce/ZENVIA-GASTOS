@@ -198,3 +198,19 @@ html[data-theme='dark'] .salesPaymentQuick span{color:#94a3b8}
 @media(min-width:761px){
   .invoiceFilterPanel .filterGrid>.filterReset{align-self:end}
 }
+
+
+/* Sales invoice import: fiscal data review */
+.salesImportedClientEditor{
+  margin:12px 0 16px;
+  padding:14px;
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:13px;
+  background:var(--surface-soft,#f8fafc);
+}
+.salesImportedClientEditorHead{margin-bottom:12px}
+.salesImportedClientEditorHead strong{display:block;font-size:13px;color:var(--text,#172033)}
+.salesImportedClientEditorHead span{display:block;margin-top:3px;font-size:11px;line-height:1.4;color:var(--text-secondary,#64748b)}
+.salesImportedClientHint{display:block;margin-top:5px;font-size:10.5px;line-height:1.4;color:var(--text-secondary,#64748b)}
+html[data-theme='dark'] .salesImportedClientEditor{background:#0f172a;border-color:#334155}
+html[data-theme='dark'] .salesImportedClientEditorHead strong{color:#f8fafc}
