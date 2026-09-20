@@ -214,3 +214,26 @@ html[data-theme='dark'] .salesPaymentQuick span{color:#94a3b8}
 .salesImportedClientHint{display:block;margin-top:5px;font-size:10.5px;line-height:1.4;color:var(--text-secondary,#64748b)}
 html[data-theme='dark'] .salesImportedClientEditor{background:#0f172a;border-color:#334155}
 html[data-theme='dark'] .salesImportedClientEditorHead strong{color:#f8fafc}
+
+
+/* Sales due-date visibility */
+.salesDueDate{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.salesDueDate small{
+  display:inline-flex;
+  align-items:center;
+  min-height:20px;
+  padding:2px 7px;
+  border-radius:999px;
+  background:#fef2f2;
+  color:#b91c1c;
+  font-size:9px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.salesDueDate.overdue{color:#b91c1c;font-weight:800}
+html[data-theme='dark'] .salesDueDate.overdue{color:#fca5a5}
+html[data-theme='dark'] .salesDueDate small{background:#3f1d23;color:#fca5a5}
+@media(min-width:761px){
+  .salesDetailMeta{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+}
