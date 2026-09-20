@@ -4,6 +4,7 @@ import { readInvoiceDocumentEnhanced } from './invoiceReaderEnhanced';
 import { createInvoice } from './repository';
 import { supabase } from './supabase';
 import { downloadGmailAttachment, updateGmailImport, type GmailCandidate } from './gmail';
+import { isLikelySameSupplier, supplierIdentityKey } from './supplierIdentity';
 
 class NotInvoiceDocumentError extends Error {
   constructor(message: string) {
@@ -92,11 +93,18 @@ async function findInvoiceBySupplierAndNumber(supplierName: string, invoiceNumbe
 
   const { data: suppliers, error: supplierError } = await supabase
     .from('suppliers')
-    .select('id')
-    .ilike('name', cleanSupplier)
-    .limit(5);
+    .select('id,name');
   if (supplierError) throw supplierError;
-  const supplierIds = (suppliers || []).map((supplier: any) => supplier.id).filter(Boolean);
+
+  const supplierKey=supplierIdentityKey(cleanSupplier);
+  const supplierIds=(suppliers||[])
+    .filter((supplier:any)=>{
+      const existingName=String(supplier.name||'');
+      return supplierIdentityKey(existingName)===supplierKey
+        || isLikelySameSupplier(existingName,cleanSupplier);
+    })
+    .map((supplier:any)=>supplier.id)
+    .filter(Boolean);
   if (!supplierIds.length) return undefined;
 
   const { data: invoices, error: invoiceError } = await supabase
