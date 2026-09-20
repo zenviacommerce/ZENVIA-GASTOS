@@ -3,9 +3,10 @@ import { Building2, CalendarDays, ChevronRight, FileText, Globe, Mail, MapPin, P
 import { loadAppData } from '../services/repository';
 import { showError, showSuccess } from '../services/toast';
 import { confirmAction, openActionProcess } from '../services/actionDialog';
-import type { Invoice, Supplier } from '../types';
+import type { ExpenseCategory, Invoice, Supplier } from '../types';
 import { Pagination } from '../components/Pagination';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { SelectField } from '../components/forms/SelectField';
 import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
 import { defaultDateFilter, periodLabel } from '../services/filters';
 import '../supplier-actions.css';
@@ -14,7 +15,8 @@ const PAGE_SIZE=20;
 const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
 const normalize=(value:string)=>value.trim().toLowerCase().replace(/\s+/g,' ');
-type SupplierFilter='all'|'goods'|'service'|'both'|'unclassified';
+type SupplierTypeFilter='all'|'goods'|'service'|'both'|'unclassified';
+type SupplierActivityFilter='all'|'active'|'inactive';
 type SupplierMetric={count:number;total:number;lastDate:string|null;recent:Invoice[]};
 
 function supplierTypeLabel(type: Supplier['supplierType']) {
@@ -50,15 +52,18 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  const [busyId,setBusyId]=useState<string|null>(null);
  const [error,setError]=useState('');
  const [query,setQuery]=useState('');
- const [filter,setFilter]=useState<SupplierFilter>('all');
+ const [typeFilter,setTypeFilter]=useState<SupplierTypeFilter>('all');
+ const [activityFilter,setActivityFilter]=useState<SupplierActivityFilter>('all');
+ const [categoryFilter,setCategoryFilter]=useState('all');
  const [selected,setSelected]=useState<Supplier|null>(null);
  const [checkedIds,setCheckedIds]=useState<Set<string>>(()=>new Set());
  const [bulkBusy,setBulkBusy]=useState(false);
  const [invoices,setInvoices]=useState<Invoice[]>([]);
+ const [categories,setCategories]=useState<ExpenseCategory[]>([]);
  const [dateFilter,setDateFilter]=useState(defaultDateFilter);
  const [page,setPage]=useState(1);
 
- useEffect(()=>{let cancelled=false;loadAppData().then(data=>{if(!cancelled)setInvoices(data.invoices)}).catch(()=>{});return()=>{cancelled=true}},[suppliers]);
+ useEffect(()=>{let cancelled=false;loadAppData().then(data=>{if(!cancelled){setInvoices(data.invoices);setCategories(data.categories)}}).catch(()=>{});return()=>{cancelled=true}},[suppliers]);
 
  const selectedPeriod=periodLabel(dateFilter);
  const periodInvoices=useMemo(()=>invoices.filter(invoice=>(!dateFilter.from||invoice.invoiceDate>=dateFilter.from)&&(!dateFilter.to||invoice.invoiceDate<=dateFilter.to)),[invoices,dateFilter]);
@@ -79,18 +84,22 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
    return map;
  },[suppliers,periodInvoices]);
 
- const filtered=useMemo(()=>{const q=query.trim().toLowerCase();return suppliers.filter(s=>{
-   const matchesQuery=!q||[s.name,s.taxId||'',s.email||'',s.phone||'',s.address||'',s.website||''].some(v=>v.toLowerCase().includes(q));
-   const matchesFilter=filter==='all'||s.supplierType===filter;
-   return matchesQuery&&matchesFilter;
- })},[suppliers,query,filter]);
+ const filtered=useMemo(()=>{const q=query.trim().toLowerCase();return suppliers.filter(supplier=>{
+   const metric=metrics.get(supplier.id);
+   const matchesQuery=!q||[supplier.name,supplier.taxId||'',supplier.email||'',supplier.phone||'',supplier.address||'',supplier.website||''].some(value=>value.toLowerCase().includes(q));
+   if(typeFilter!=='all'&&supplier.supplierType!==typeFilter)return false;
+   if(categoryFilter!=='all'&&(supplier.defaultCategoryId||'')!==categoryFilter)return false;
+   if(activityFilter==='active'&&(metric?.count||0)===0)return false;
+   if(activityFilter==='inactive'&&(metric?.count||0)>0)return false;
+   return matchesQuery;
+ })},[suppliers,metrics,query,typeFilter,categoryFilter,activityFilter]);
  const selectedSuppliers=filtered.filter(supplier=>checkedIds.has(supplier.id));
  const allFilteredSelected=filtered.length>0&&filtered.every(supplier=>checkedIds.has(supplier.id));
  const toggleSupplier=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
  const toggleAllSuppliers=(checked:boolean)=>setCheckedIds(checked?new Set(filtered.map(supplier=>supplier.id)):new Set());
  const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
  const paged=useMemo(()=>filtered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[filtered,page]);
- useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,filter,dateFilter]);
+ useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,typeFilter,categoryFilter,activityFilter,dateFilter]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  const totals=useMemo(()=>({spent:filtered.reduce((sum,s)=>sum+(metrics.get(s.id)?.total||0),0),invoices:filtered.reduce((sum,s)=>sum+(metrics.get(s.id)?.count||0),0),active:filtered.filter(s=>(metrics.get(s.id)?.count||0)>0).length}),[filtered,metrics]);
 
@@ -135,9 +144,14 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
       <div className="stat"><div className="statIcon"><FileText/></div><div><span>Facturas recibidas</span><strong>{totals.invoices}</strong><small>{selectedPeriod}</small></div></div>
     </div>
 
-    <div className="masterToolbar">
+    <div className="businessFilterBar">
       <div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar proveedor, CIF, email, teléfono o dirección…"/></div>
-      <div className="masterFilters"><button className={filter==='all'?'active':''} onClick={()=>setFilter('all')}>Todos</button><button className={filter==='goods'?'active':''} onClick={()=>setFilter('goods')}>Mercancía</button><button className={filter==='service'?'active':''} onClick={()=>setFilter('service')}>Servicios</button><button className={filter==='both'?'active':''} onClick={()=>setFilter('both')}>Ambos</button><button className={filter==='unclassified'?'active':''} onClick={()=>setFilter('unclassified')}>Sin clasificar</button></div>
+      <div className="businessFilterFields">
+        <label className="filterField"><span>Tipo</span><SelectField value={typeFilter} onChange={value=>setTypeFilter(value as SupplierTypeFilter)} ariaLabel="Filtrar por tipo de proveedor" options={[{value:'all',label:'Todos los tipos'},{value:'goods',label:'Mercancía'},{value:'service',label:'Servicios'},{value:'both',label:'Mercancía y servicios'},{value:'unclassified',label:'Sin clasificar'}]}/></label>
+        <label className="filterField"><span>Categoría habitual</span><SelectField value={categoryFilter} onChange={setCategoryFilter} ariaLabel="Filtrar por categoría habitual" options={[{value:'all',label:'Todas las categorías'},...categories.map(category=>({value:category.id,label:category.name}))]}/></label>
+        <label className="filterField"><span>Actividad</span><SelectField value={activityFilter} onChange={value=>setActivityFilter(value as SupplierActivityFilter)} ariaLabel="Filtrar proveedores por actividad" options={[{value:'all',label:'Todos'},{value:'active',label:'Con facturas en el periodo'},{value:'inactive',label:'Sin facturas en el periodo'}]}/></label>
+      </div>
+      <span className="filterResultCount">{filtered.length} proveedor{filtered.length===1?'':'es'} · {selectedPeriod}</span>
     </div>
 
     {filtered.length>0&&(
@@ -153,12 +167,13 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
     <section className="card tableCard masterTableCard">
       {filtered.length?(
         <table className="masterTable">
-          <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllSuppliers} label={allFilteredSelected?'Deseleccionar proveedores visibles':'Seleccionar proveedores visibles'}/></th><th>Proveedor</th><th>CIF/VAT</th><th>Tipo</th><th>Contacto</th><th className="right">Facturas</th><th className="right">Gasto periodo</th><th>Última factura</th><th></th></tr></thead>
+          <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllSuppliers} label={allFilteredSelected?'Deseleccionar proveedores visibles':'Seleccionar proveedores visibles'}/></th><th>Proveedor</th><th>CIF/VAT</th><th>Tipo</th><th>Categoría habitual</th><th>Contacto</th><th className="right">Facturas</th><th className="right">Gasto periodo</th><th>Última factura</th><th></th></tr></thead>
           <tbody>{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <tr className={`clickableRow ${checkedIds.has(s.id)?'bulkSelectedRow':''}`} key={s.id} onClick={()=>setSelected(s)}>
               <td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(s.id)} onChange={checked=>toggleSupplier(s.id,checked)} label={`Seleccionar ${s.name}`}/></td>
               <td><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)}</small></div></div></td>
               <td>{s.taxId||<span className="muted">Pendiente</span>}</td>
               <td><span className={`masterTypeTag ${s.supplierType}`}>{supplierTypeLabel(s.supplierType)}</span></td>
+              <td>{categories.find(category=>category.id===s.defaultCategoryId)?.name||<span className="muted">Sin categoría</span>}</td>
               <td><div className="masterContactCell"><span>{s.email||'—'}</span><small>{s.phone||''}</small></div></td>
               <td className="right"><strong>{metric.count}</strong></td>
               <td className="right"><strong>{money(metric.total)}</strong></td>
