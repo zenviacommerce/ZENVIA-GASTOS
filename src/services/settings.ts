@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { safeStorageGet } from './browserStorage';
 import {
   APP_SETTINGS_SCHEMA_VERSION,
   DEFAULT_APP_SETTINGS,
@@ -125,11 +126,37 @@ export async function loadUserPreferences():Promise<LoadedUserPreferences>{
     .maybeSingle();
   if(error)throw error;
   if(!data){
+    const preferences=clone(DEFAULT_USER_PREFERENCES);
+    const legacyTheme=safeStorageGet('local','zenvia-gestion-theme')||safeStorageGet('local','zenvia-gastos-theme');
+    const legacyPrinter=safeStorageGet('local','zenvia-label-printer');
+    let migrated=false;
+    if(legacyTheme==='dark'||legacyTheme==='light'){preferences.theme=legacyTheme;migrated=true;}
+    if(legacyPrinter){preferences.labelPrinterId=legacyPrinter;migrated=true;}
+    if(migrated){
+      const {error:migrationError}=await supabase
+        .from('user_preferences')
+        .upsert({
+          user_id:userId,
+          owner_id:ownerId,
+          schema_version:USER_PREFERENCES_SCHEMA_VERSION,
+          preferences,
+          updated_at:new Date().toISOString(),
+        },{onConflict:'user_id,owner_id'});
+      if(migrationError){
+        return {
+          userId,
+          ownerId,
+          schemaVersion:USER_PREFERENCES_SCHEMA_VERSION,
+          preferences,
+          warnings:[{path:'preferences',message:'Se han aplicado tus preferencias antiguas, pero todavía no se pudieron guardar en la cuenta.'}],
+        };
+      }
+    }
     return {
       userId,
       ownerId,
       schemaVersion:USER_PREFERENCES_SCHEMA_VERSION,
-      preferences:clone(DEFAULT_USER_PREFERENCES),
+      preferences,
       warnings:[],
     };
   }
