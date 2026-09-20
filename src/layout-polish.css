@@ -36,7 +36,7 @@ html[data-theme='dark'] .amazonOfflineNotice span{color:#d6c39a}
 
 @media(max-width:760px){
   .expenseHubNavShell{
-    padding:14px 15px 0!important;
+    padding:calc(72px + env(safe-area-inset-top)) 15px 0!important;
     overflow-x:auto;
     -webkit-overflow-scrolling:touch;
   }
