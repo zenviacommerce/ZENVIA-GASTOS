@@ -20,6 +20,8 @@ import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { showError, showSuccess } from '../services/toast';
 import type { UserPreferences } from '../services/settingsSchema';
+import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
+import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 
 type SettingsSectionId =
   | 'general'
@@ -74,6 +76,155 @@ function SectionPlaceholder({section}:{section:SettingsSection}){
   </section>;
 }
 
+
+
+const currencyOptions=[
+  {value:'EUR',label:'EUR · Euro'},
+  {value:'GBP',label:'GBP · Libra esterlina'},
+  {value:'USD',label:'USD · Dólar estadounidense'},
+];
+
+const dateFormatOptions=[
+  {value:'DD/MM/YYYY',label:'DD/MM/YYYY'},
+  {value:'DD-MM-YYYY',label:'DD-MM-YYYY'},
+  {value:'YYYY-MM-DD',label:'YYYY-MM-DD'},
+];
+
+const languageOptions=[
+  {value:'es',label:'Español'},
+  {value:'en',label:'English'},
+  {value:'fr',label:'Français'},
+  {value:'it',label:'Italiano'},
+  {value:'de',label:'Deutsch'},
+  {value:'pt',label:'Português'},
+];
+
+function GeneralSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {settings,updateSection}=useSettings();
+  const [business,setBusiness]=useState<BusinessSettings>({legalName:'ZENVIA COMMERCE SL',countryCode:'ES'});
+  const [general,setGeneral]=useState(settings.general);
+  const [branding,setBranding]=useState<CompanyBranding|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{
+    let active=true;
+    setLoading(true);
+    Promise.all([loadBusinessSettings(),loadCompanyBranding()])
+      .then(([nextBusiness,nextBranding])=>{
+        if(!active)return;
+        setBusiness(nextBusiness);
+        setBranding(nextBranding);
+        setGeneral(settings.general);
+        onDirtyChange(false);
+      })
+      .catch(e=>showError(e instanceof Error?e.message:'No se pudo cargar la configuración general.'))
+      .finally(()=>{if(active)setLoading(false)});
+    return()=>{active=false};
+  },[]);
+
+  useEffect(()=>{setGeneral(settings.general)},[settings.general]);
+
+  const updateBusiness=<K extends keyof BusinessSettings>(key:K,value:BusinessSettings[K])=>{
+    setBusiness(current=>({...current,[key]:value}));
+    onDirtyChange(true);
+  };
+  const updateGeneral=<K extends keyof typeof general>(key:K,value:(typeof general)[K])=>{
+    setGeneral(current=>({...current,[key]:value}));
+    onDirtyChange(true);
+  };
+
+  const save=async()=>{
+    setSaving(true);
+    try{
+      await saveBusinessSettings(business);
+      await updateSection('general',general);
+      onDirtyChange(false);
+      showSuccess('Configuración general guardada.');
+    }catch(e){
+      showError(e instanceof Error?e.message:'No se pudo guardar la configuración general.');
+    }finally{
+      setSaving(false);
+    }
+  };
+
+  const changeLogo=async(file:File|null)=>{
+    if(!file)return;
+    setSaving(true);
+    try{
+      const next=await uploadCompanyLogo(file,branding?.logoPath);
+      setBranding(next);
+      showSuccess('Logotipo actualizado.');
+    }catch(e){
+      showError(e instanceof Error?e.message:'No se pudo actualizar el logotipo.');
+    }finally{
+      setSaving(false);
+    }
+  };
+
+  const removeLogo=async()=>{
+    setSaving(true);
+    try{
+      const next=await removeCompanyLogo(branding?.logoPath);
+      setBranding(next);
+      showSuccess('Logotipo eliminado.');
+    }catch(e){
+      showError(e instanceof Error?e.message:'No se pudo eliminar el logotipo.');
+    }finally{
+      setSaving(false);
+    }
+  };
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero">
+      <div className="settingsSectionIcon"><Building2 size={22}/></div>
+      <div><h2>Configuración general</h2><p>General de empresa, identidad fiscal y preferencias documentales globales.</p></div>
+    </div>
+    {loading?<div className="settingsInlineLoading">Cargando configuración…</div>:<>
+      <div className="settingsFormGrid settingsFormGridWide">
+        <label className="settingsField"><span>Razón social</span><input value={business.legalName} onChange={e=>updateBusiness('legalName',e.target.value)}/></label>
+        <label className="settingsField"><span>Nombre comercial</span><input value={business.tradeName||''} onChange={e=>updateBusiness('tradeName',e.target.value)}/></label>
+        <label className="settingsField"><span>CIF/VAT</span><input value={business.taxId||''} onChange={e=>updateBusiness('taxId',e.target.value)}/></label>
+        <label className="settingsField"><span>Email</span><input type="email" value={business.email||''} onChange={e=>updateBusiness('email',e.target.value)}/></label>
+        <label className="settingsField"><span>Teléfono</span><input value={business.phone||''} onChange={e=>updateBusiness('phone',e.target.value)}/></label>
+        <label className="settingsField"><span>Web</span><input placeholder="https://…" value={business.website||''} onChange={e=>updateBusiness('website',e.target.value)}/></label>
+        <label className="settingsField settingsFieldWide"><span>Dirección</span><input value={business.addressLine1||''} onChange={e=>updateBusiness('addressLine1',e.target.value)}/></label>
+        <label className="settingsField"><span>Dirección 2</span><input value={business.addressLine2||''} onChange={e=>updateBusiness('addressLine2',e.target.value)}/></label>
+        <label className="settingsField"><span>Código postal</span><input value={business.postalCode||''} onChange={e=>updateBusiness('postalCode',e.target.value)}/></label>
+        <label className="settingsField"><span>Ciudad</span><input value={business.city||''} onChange={e=>updateBusiness('city',e.target.value)}/></label>
+        <label className="settingsField"><span>Provincia</span><input value={business.province||''} onChange={e=>updateBusiness('province',e.target.value)}/></label>
+        <label className="settingsField"><span>País</span><input maxLength={2} value={business.countryCode} onChange={e=>updateBusiness('countryCode',e.target.value.toUpperCase())}/></label>
+        <label className="settingsField settingsFieldWide"><span>IBAN</span><input value={business.iban||''} onChange={e=>updateBusiness('iban',e.target.value)}/></label>
+        <label className="settingsField settingsFieldWide"><span>Pie de factura</span><textarea rows={3} value={business.invoiceFooter||''} onChange={e=>updateBusiness('invoiceFooter',e.target.value)}/></label>
+      </div>
+
+      <div className="settingsSubsection">
+        <h3>Documentos y aplicación</h3>
+        <div className="settingsFormGrid">
+          <label className="settingsField"><span>Moneda</span><SelectField ariaLabel="Moneda" value={general.currencyCode} options={currencyOptions} onChange={value=>updateGeneral('currencyCode',value)}/></label>
+          <label className="settingsField"><span>Zona horaria</span><input value={general.timezone} onChange={e=>updateGeneral('timezone',e.target.value)}/></label>
+          <label className="settingsField"><span>Formato de fecha</span><SelectField ariaLabel="Formato de fecha" value={general.dateFormat} options={dateFormatOptions} onChange={value=>updateGeneral('dateFormat',value as typeof general.dateFormat)}/></label>
+          <label className="settingsField"><span>Idioma</span><SelectField ariaLabel="Idioma" value={general.documentLanguage} options={languageOptions} onChange={value=>updateGeneral('documentLanguage',value as typeof general.documentLanguage)}/></label>
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <h3>Logotipo</h3>
+        <div className="settingsLogoRow">
+          <div className="settingsLogoPreview">{branding?.logoDataUrl?<img src={branding.logoDataUrl} alt="Logotipo de empresa"/>:<span>Sin logotipo</span>}</div>
+          <div className="settingsLogoActions">
+            <label className="secondaryButton settingsFileButton">Cambiar logotipo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>void changeLogo(e.target.files?.[0]||null)}/></label>
+            {branding?.logoPath&&<button type="button" className="secondaryButton" disabled={saving} onClick={()=>void removeLogo()}>Eliminar logotipo</button>}
+          </div>
+        </div>
+      </div>
+
+      <div className="settingsSectionActions">
+        <button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
+      </div>
+    </>}
+  </section>;
+}
 
 const themeOptions=[
   {value:'system',label:'Sistema'},
@@ -211,7 +362,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
