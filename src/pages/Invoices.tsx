@@ -32,7 +32,10 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,filter]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  const selectedSupplier=suppliers.find(s=>s.id===filter.supplierId);
- const selectionLabel=`${periodLabel(filter)}${selectedSupplier?` · ${selectedSupplier.name}`:''}`;
+ const selectedCategory=categories.find(category=>category.id===filter.categoryId);
+ const statusLabels:Record<string,string>={pending:'Pendientes',reviewed:'Revisadas',accounted:'Contabilizadas'};
+ const sourceLabels:Record<string,string>={manual:'Archivo / manual',camera:'Cámara',gmail:'Gmail'};
+ const selectionLabel=[periodLabel(filter),selectedSupplier?.name,selectedCategory?.name,filter.status?statusLabels[filter.status]:null,filter.source?sourceLabels[filter.source]:null].filter(Boolean).join(' · ');
  const expenseTotal=filtered.reduce((sum,invoice)=>sum+invoice.total,0);
  const vatTotal=filtered.reduce((sum,invoice)=>sum+invoice.vat,0);
  const invoiceCount=filtered.length;
@@ -80,7 +83,7 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
    try{await onCategoryChange(invoice.id,categoryId);const category=categories.find(c=>c.id===categoryId);if(category)setSelected(current=>current?.id===invoice.id?{...current,categoryId,category:category.name}:current);showSuccess('Categoría de la factura actualizada correctamente.')}catch(e){throw e instanceof Error?e:new Error('No se pudo cambiar la categoría de la factura.')}finally{setBusyId(null)}
  };
  return <div className="page"><div className="pageHead"><div><div className="eyebrow">DOCUMENTACIÓN · {periodLabel(filter)}</div><h1>Facturas de gastos</h1><p>Consulta el histórico completo, filtra y exporta cualquier periodo.</p></div><div className="actions"><button className="secondary" onClick={doExport} disabled={exporting||!exportRows.length}><Download size={17}/> {exporting?'Preparando…':selectedRows.length?`Exportar seleccionadas (${selectedRows.length})`:`Exportar (${filtered.length})`}</button><button className="secondary" onClick={onBulkUpload}><Files size={17}/> Importar facturas</button><button className="primary" onClick={onUpload}>+ Nueva factura</button></div></div>
- <InvoiceFilters filter={filter} onChange={setFilter} invoices={invoices} suppliers={suppliers}/>
+ <InvoiceFilters filter={filter} onChange={setFilter} invoices={invoices} suppliers={suppliers} categories={categories}/>
  <div className="stats expenseStats"><StatCard label="Gasto total" value={money(expenseTotal)} sub={selectionLabel} icon={<Euro/>}/><StatCard label="IVA soportado" value={money(vatTotal)} sub={selectionLabel} icon={<BadgeEuro/>}/><StatCard label="Nº de facturas" value={String(invoiceCount)} sub={selectionLabel} icon={<ReceiptText/>}/><StatCard label="Pendientes de revisar" value={String(pendingReview)} sub={pendingReview?`${pendingReview} pendiente${pendingReview===1?'':'s'}`:'Todo revisado'} icon={<Clock3/>}/><StatCard label="Ticket medio" value={money(averageTicket)} sub="Media por factura" icon={<Calculator/>}/><StatCard label="Proveedores distintos" value={String(supplierCount)} sub={selectionLabel} icon={<Building2/>}/></div>
  <div className="toolbar invoiceSearchToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar proveedor, nº factura, categoría…"/></div><span className="filterResultCount">{filtered.length} factura{filtered.length===1?'':'s'} · {selectionLabel}</span></div>
  {filtered.length>0&&<BulkSelectionToolbar selectedCount={selectedRows.length} totalCount={filtered.length} allSelected={allFilteredSelected} onToggleAll={toggleAllFiltered} label="gastos visibles">
