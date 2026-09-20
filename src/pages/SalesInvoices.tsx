@@ -8,11 +8,15 @@ import { loadCompanyBranding, type CompanyBranding } from '../services/companyBr
 import { exportSalesInvoices } from '../services/salesInvoiceExport';
 import { errorMessage, showError, showSuccess } from '../services/toast';
 import { SelectField } from '../components/forms/SelectField';
+import { SearchableSelect } from '../components/forms/SearchableSelect';
 import '../sales-transfer.css';
 
 const IMPORT_LABEL='Importar facturas';
 const downloadBlob=(blob:Blob,filename:string)=>{const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1500);};
 const compactDate=(value:string)=>value||'sin-fecha';
+const regionNames=typeof Intl!=='undefined'&&'DisplayNames' in Intl?new Intl.DisplayNames(['es'],{type:'region'}):null;
+const countryName=(code:string)=>regionNames?.of(code)||code;
+const today=()=>new Date().toISOString().slice(0,10);
 
 export function SalesInvoices(){
   const [clients,setClients]=useState<Client[]>([]);
@@ -22,9 +26,12 @@ export function SalesInvoices(){
   const [importOpen,setImportOpen]=useState(false);
   const [exportOpen,setExportOpen]=useState(false);
   const [headerActionsHost,setHeaderActionsHost]=useState<HTMLElement|null>(null);
-  const [listFilters,setListFilters]=useState({query:'',status:'all',from:'',to:''});
+  const [listFilters,setListFilters]=useState({query:'',status:'all',from:'',to:'',clientId:'all',country:'all',collection:'all'});
   const [query,setQuery]=useState('');
   const [status,setStatus]=useState('all');
+  const [clientId,setClientId]=useState('all');
+  const [country,setCountry]=useState('all');
+  const [collection,setCollection]=useState('all');
   const [from,setFrom]=useState('');
   const [to,setTo]=useState('');
   const [loading,setLoading]=useState(true);
@@ -50,25 +57,43 @@ export function SalesInvoices(){
     return()=>window.cancelAnimationFrame(frame);
   },[epoch]);
 
+  const clientById=useMemo(()=>new Map(clients.map(client=>[client.id,client])),[clients]);
+  const clientOptions=useMemo(()=>clients.map(client=>({value:client.id,label:client.name,searchText:[client.taxId,client.email,client.city].filter(Boolean).join(' ')})),[clients]);
+  const countryOptions=useMemo(()=>[...new Set(clients.map(client=>(client.countryCode||'XX').toUpperCase()))].sort((a,b)=>countryName(a).localeCompare(countryName(b),'es')).map(code=>({value:code,label:code==='XX'?'País pendiente':`${countryName(code)} · ${code}`})),[clients]);
   const filteredExportRows=useMemo(()=>{
     const q=query.trim().toLowerCase();
+    const now=today();
     return invoices.filter(invoice=>{
       if(status!=='all'&&invoice.status!==status)return false;
+      if(clientId!=='all'&&invoice.clientId!==clientId)return false;
+      const clientCountry=(clientById.get(invoice.clientId)?.countryCode||'XX').toUpperCase();
+      if(country!=='all'&&clientCountry!==country)return false;
       if(from&&invoice.issueDate<from)return false;
       if(to&&invoice.issueDate>to)return false;
+      const pending=Math.max(0,invoice.totalAmount-invoice.paidAmount);
+      if(collection==='open'&&(invoice.invoiceType!=='standard'||invoice.status==='draft'||invoice.status==='rectified'||pending<=0.005))return false;
+      if(collection==='paid'&&invoice.status!=='paid')return false;
+      if(collection==='overdue'&&(invoice.invoiceType!=='standard'||invoice.status==='draft'||invoice.status==='rectified'||pending<=0.005||!invoice.dueDate||invoice.dueDate>=now))return false;
       if(q&&![invoice.invoiceNumber||'borrador',invoice.clientName,invoice.clientTaxId||'',invoice.issuerTaxId||''].some(value=>value.toLowerCase().includes(q)))return false;
       return true;
     });
-  },[invoices,query,status,from,to]);
+  },[invoices,query,status,clientId,country,collection,from,to,clientById]);
   const selectedExportRows=useMemo(()=>invoices.filter(invoice=>selectedInvoiceIds.includes(invoice.id)),[invoices,selectedInvoiceIds]);
   const listFilteredCount=useMemo(()=>invoices.filter(invoice=>{
     if(listFilters.status!=='all'&&invoice.status!==listFilters.status)return false;
+    if(listFilters.clientId!=='all'&&invoice.clientId!==listFilters.clientId)return false;
+    const clientCountry=(clientById.get(invoice.clientId)?.countryCode||'XX').toUpperCase();
+    if(listFilters.country!=='all'&&clientCountry!==listFilters.country)return false;
     if(listFilters.from&&invoice.issueDate<listFilters.from)return false;
     if(listFilters.to&&invoice.issueDate>listFilters.to)return false;
+    const pending=Math.max(0,invoice.totalAmount-invoice.paidAmount);
+    if(listFilters.collection==='open'&&(invoice.invoiceType!=='standard'||invoice.status==='draft'||invoice.status==='rectified'||pending<=0.005))return false;
+    if(listFilters.collection==='paid'&&invoice.status!=='paid')return false;
+    if(listFilters.collection==='overdue'&&(invoice.invoiceType!=='standard'||invoice.status==='draft'||invoice.status==='rectified'||pending<=0.005||!invoice.dueDate||invoice.dueDate>=today()))return false;
     const q=listFilters.query.trim().toLowerCase();
     if(q&&![invoice.invoiceNumber||'borrador',invoice.clientName,invoice.clientTaxId||'',invoice.issuerTaxId||''].some(value=>value.toLowerCase().includes(q)))return false;
     return true;
-  }).length,[invoices,listFilters]);
+  }).length,[invoices,listFilters,clientById]);
   const exportRows=exportSelectedOnly?selectedExportRows:filteredExportRows;
 
   const openImport=async()=>{if(await refreshTools())setImportOpen(true);};
@@ -79,6 +104,9 @@ export function SalesInvoices(){
       if(!onlySelected){
         setQuery(listFilters.query);
         setStatus(listFilters.status);
+        setClientId(listFilters.clientId);
+        setCountry(listFilters.country);
+        setCollection(listFilters.collection);
         setFrom(listFilters.from);
         setTo(listFilters.to);
       }
@@ -123,7 +151,10 @@ export function SalesInvoices(){
           {exportSelectedOnly&&<div className="salesExportSelection"><strong>{selectedExportRows.length} seleccionada{selectedExportRows.length===1?'':'s'}</strong><button className="secondary" type="button" onClick={()=>setExportSelectedOnly(false)}>Usar filtros</button></div>}
           {!exportSelectedOnly&&<div className="salesFormGrid salesExportFilterGrid">
             <label className="salesSpan2">Buscar<input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Cliente, CIF, VAT o nº de factura…"/></label>
-            <label className="salesSpan2">Estado<SelectField value={status} onChange={setStatus} ariaLabel="Estado para exportar" options={[{value:'all',label:'Todos los estados'},{value:'draft',label:'Borradores'},{value:'issued',label:'Emitidas'},{value:'sent',label:'Enviadas'},{value:'partially_paid',label:'Cobro parcial'},{value:'paid',label:'Cobradas'},{value:'rectified',label:'Rectificadas'}]}/></label>
+            <label>Cliente<SearchableSelect value={clientId==='all'?'':clientId} options={clientOptions} onChange={value=>setClientId(value||'all')} allowEmpty emptyLabel="Todos los clientes" searchPlaceholder="Buscar cliente…" ariaLabel="Cliente para exportar"/></label>
+            <label>País<SelectField value={country} onChange={setCountry} ariaLabel="País para exportar" options={[{value:'all',label:'Todos los países'},...countryOptions]}/></label>
+            <label>Estado<SelectField value={status} onChange={setStatus} ariaLabel="Estado para exportar" options={[{value:'all',label:'Todos los estados'},{value:'draft',label:'Borradores'},{value:'issued',label:'Emitidas'},{value:'sent',label:'Enviadas'},{value:'partially_paid',label:'Cobro parcial'},{value:'paid',label:'Cobradas'},{value:'rectified',label:'Rectificadas'}]}/></label>
+            <label>Cobro<SelectField value={collection} onChange={setCollection} ariaLabel="Situación de cobro para exportar" options={[{value:'all',label:'Todas'},{value:'open',label:'Pendientes de cobro'},{value:'overdue',label:'Vencidas y pendientes'},{value:'paid',label:'Cobradas'}]}/></label>
             <label>Desde<input type="date" value={from} onChange={event=>setFrom(event.target.value)}/></label>
             <label>Hasta<input type="date" value={to} min={from||undefined} onChange={event=>setTo(event.target.value)}/></label>
           </div>}
