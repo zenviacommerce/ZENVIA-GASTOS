@@ -132,3 +132,57 @@ html[data-theme='dark'] .salesPaymentQuick span{color:#94a3b8}
   .invoiceCollectButton span{display:none}
   .invoiceCollectButton{width:34px;padding:0;justify-content:center}
 }
+
+
+/* Mobile-first sales invoice list: actions remain discoverable without horizontal scrolling. */
+.salesInvoicesMobileList{display:none}
+.salesInvoiceMobileCard{
+  position:relative;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:0 10px;
+  background:var(--surface,#fff);
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:14px;
+  overflow:hidden;
+  box-shadow:0 1px 2px #0f172a08;
+}
+.salesInvoiceMobileCard.selected{border-color:#5eead4;box-shadow:0 0 0 2px #14b8a614}
+.salesInvoiceMobileSelect{padding:15px 0 0 13px}
+.salesInvoiceMobileMain{
+  min-width:0;
+  padding:13px 13px 10px 0;
+  border:0;
+  background:transparent;
+  color:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+.salesInvoiceMobileHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.salesInvoiceMobileHead>div{min-width:0;display:grid;gap:2px}
+.salesInvoiceMobileHead strong{font-size:14px;color:var(--text,#111827)}
+.salesInvoiceMobileHead>div>span{font-size:12px;color:var(--text-secondary,#64748b);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.salesInvoiceMobileMeta{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;color:var(--text-secondary,#64748b);font-size:11px}
+.salesInvoiceMobileMeta span+span:before{content:"·";margin-right:8px}
+.salesInvoiceMobileAmounts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.salesInvoiceMobileAmounts>div{padding:9px 10px;border-radius:10px;background:var(--surface-soft,#f8fafc);display:grid;gap:2px}
+.salesInvoiceMobileAmounts span{font-size:10px;text-transform:uppercase;letter-spacing:.045em;color:var(--text-secondary,#64748b)}
+.salesInvoiceMobileAmounts strong{font-size:14px;color:var(--text,#111827)}
+.salesInvoiceMobileAmounts strong.isPending{color:#b45309}
+.salesInvoiceMobileActions{
+  grid-column:1/-1;
+  display:flex;
+  gap:8px;
+  align-items:center;
+  padding:10px 12px;
+  border-top:1px solid var(--border,#e2e8f0);
+  background:var(--surface-soft,#f8fafc);
+}
+.salesInvoiceMobileActions button{flex:1;min-height:42px}
+.salesInvoiceMobileActions .invoicePaidMark{margin-left:auto;padding:0 6px}
+.invoiceMobileCollect{background:#0f766e!important;color:#fff!important}
+
+@media(max-width:760px){
+  .salesInvoiceTableCard{display:none!important}
+  .salesInvoicesMobileList{display:grid;gap:11px;margin-bottom:16px}
+}
