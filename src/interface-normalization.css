@@ -14,3 +14,30 @@
 .listPagination button{font-size:13px}
 @media(max-width:760px){.page .search input,.page .toolbar select,.page .salesToolbar select,.page .gmailStatusFilter,.page .auditFilters select,.page .masterPeriodDates input{font-size:16px!important}.page .masterFilters button,.page .masterPeriodQuick button,.page .ordersFilterGroup button,.page .adminTabs button{font-size:14px!important}}
 /* deploy trigger 2026-09-15 */
+
+/* Unified filters + KPI layout across business sections */
+.normalizedKpiStats,.productStats{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.masterSelectFilters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.masterSelectFilters .searchableSelect{min-width:180px}
+.masterSelectFilters .searchableSelectTrigger{min-height:40px}
+.productFilterToolbar{align-items:flex-start;flex-wrap:wrap}
+.productFilterToolbar>.search{min-width:260px}
+.productFilterToolbar>.filterResultCount{align-self:center;margin-left:auto;white-space:nowrap}
+.sharedPeriodNote{display:block;color:var(--text-secondary,#64748b);font-size:11px;line-height:1.45}
+.salesToolbar>.searchableSelect{min-width:190px}
+.salesToolbar>.filterResultCount{margin-left:auto;white-space:nowrap;align-self:center}
+
+@media(max-width:1050px){
+  .productFilterToolbar{flex-direction:column;align-items:stretch}
+  .productFilterToolbar>.search,.masterSelectFilters{width:100%}
+  .masterSelectFilters .searchableSelect{flex:1 1 190px}
+  .productFilterToolbar>.filterResultCount{margin-left:0;align-self:flex-start}
+}
+@media(max-width:760px){
+  .normalizedKpiStats,.productStats{grid-template-columns:1fr 1fr}
+  .masterSelectFilters{display:grid;grid-template-columns:1fr}
+  .masterSelectFilters .searchableSelect{width:100%;min-width:0}
+  .salesToolbar>.searchableSelect{width:100%;min-width:0}
+  .salesToolbar>.filterResultCount{margin-left:0;align-self:flex-start;white-space:normal}
+}
+@media(max-width:430px){.normalizedKpiStats,.productStats{grid-template-columns:1fr}}
