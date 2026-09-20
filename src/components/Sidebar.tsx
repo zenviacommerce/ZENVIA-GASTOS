@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, Building2, FileText, LogOut, Menu, Moon, Package, ReceiptText, ShieldCheck, ShoppingBag, Store, Sun, Users, X } from 'lucide-react';
+import { BarChart3, Building2, FileText, LogOut, Menu, Moon, Package, ReceiptText, Settings2, ShieldCheck, ShoppingBag, Store, Sun, Users, X } from 'lucide-react';
 import { ZENVIA_LOGO } from '../branding';
 
-export type Page = 'dashboard' | 'sales' | 'orders' | 'invoices' | 'clients' | 'products' | 'suppliers' | 'amazon' | 'admin';
+export type Page = 'dashboard' | 'sales' | 'orders' | 'invoices' | 'clients' | 'products' | 'suppliers' | 'amazon' | 'settings' | 'admin';
 export type ThemeMode = 'light' | 'dark';
 
 type SidebarUser = {
@@ -20,6 +20,7 @@ const items = [
   ['products','Productos','Productos',Package],
   ['suppliers','Proveedores','Proveedores',Building2],
   ['amazon','Amazon','Amazon',Store],
+  ['settings','Configuración','Ajustes',Settings2],
 ] as const;
 
 function initials(fullName: string, email: string) {
