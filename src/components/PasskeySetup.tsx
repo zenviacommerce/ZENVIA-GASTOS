@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Fingerprint, LoaderCircle, ShieldCheck, X } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { showError, showSuccess } from '../services/toast';
+import { safeStorageGet, safeStorageSet } from '../services/browserStorage';
 
 function supportsPasskeys(){
   return typeof window!=='undefined' && window.isSecureContext && 'PublicKeyCredential' in window && !!navigator.credentials;
@@ -26,7 +27,7 @@ export function PasskeySetup({userId}:{userId:string}){
   useEffect(()=>{
     const ok=supportsPasskeys();
     setSupported(ok);
-    setDismissed(window.sessionStorage.getItem(`zenvia-passkey-dismissed-${userId}`)==='1');
+    setDismissed(safeStorageGet('session',`zenvia-passkey-dismissed-${userId}`)==='1');
     if(!ok){setRegistered(false);return;}
     let active=true;
     supabase.auth.passkey.list().then(({data,error})=>{
@@ -38,7 +39,7 @@ export function PasskeySetup({userId}:{userId:string}){
   },[userId]);
 
   const dismiss=()=>{
-    window.sessionStorage.setItem(`zenvia-passkey-dismissed-${userId}`,'1');
+    safeStorageSet('session',`zenvia-passkey-dismissed-${userId}`,'1');
     setDismissed(true);
   };
 
