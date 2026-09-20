@@ -86,7 +86,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
 
   useEffect(()=>{
     window.dispatchEvent(new CustomEvent('zenvia:settings-dirty',{detail:{dirty}}));
-    return()=>window.dispatchEvent(new CustomEvent('zenvia:settings-dirty',{detail:{dirty:false}}));
+    return()=>{window.dispatchEvent(new CustomEvent('zenvia:settings-dirty',{detail:{dirty:false}}));};
   },[dirty]);
 
   useEffect(()=>{
