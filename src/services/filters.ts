@@ -10,6 +10,9 @@ export interface DateRangeFilter {
 
 export interface InvoiceFilter extends DateRangeFilter {
   supplierId: string;
+  categoryId: string;
+  status: string;
+  source: string;
 }
 
 const pad = (value: number) => String(value).padStart(2, '0');
@@ -58,7 +61,7 @@ export function defaultDateFilter(): DateRangeFilter {
 }
 
 export function filterForPreset(preset: PeriodPreset, supplierId = '', now = new Date()): InvoiceFilter {
-  return { ...dateFilterForPreset(preset, now), supplierId };
+  return { ...dateFilterForPreset(preset, now), supplierId, categoryId: '', status: '', source: '' };
 }
 
 export function defaultInvoiceFilter(): InvoiceFilter {
@@ -68,6 +71,9 @@ export function defaultInvoiceFilter(): InvoiceFilter {
 export function filterInvoices(invoices: Invoice[], filter: InvoiceFilter) {
   return invoices.filter(invoice => {
     if (filter.supplierId && invoice.supplierId !== filter.supplierId) return false;
+    if (filter.categoryId && invoice.categoryId !== filter.categoryId) return false;
+    if (filter.status && invoice.status !== filter.status) return false;
+    if (filter.source && invoice.source !== filter.source) return false;
     const date = invoice.invoiceDate || '';
     if (filter.from && (!date || date < filter.from)) return false;
     if (filter.to && (!date || date > filter.to)) return false;
