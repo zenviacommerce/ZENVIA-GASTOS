@@ -5,6 +5,7 @@ import { extractSupplierContactData } from './supplierContactExtractor';
 import { extractSupplierInvoiceDetails } from './supplierInvoiceDetails';
 import { validateInvoiceRecipient } from './invoiceRecipientRules';
 import { extractInvoiceParty, formatInvoicePartyAddress } from './invoicePartyExtractor';
+import { isLikelySameSupplier } from './supplierIdentity';
 
 async function sha256File(file:File){
   const buffer=await file.arrayBuffer();
@@ -76,10 +77,10 @@ export async function prepareInvoiceCandidate(
     status,
     reviewReason,
     supplierName:read.supplierName,
-    supplierTaxId:party.taxId||contact.taxId||details.taxId,
-    supplierEmail:party.email||contact.email,
-    supplierPhone:party.phone||contact.phone,
-    supplierAddress:formatInvoicePartyAddress(party)||details.address,
+    supplierTaxId:contact.taxId||details.taxId||party.taxId,
+    supplierEmail:contact.email||party.email,
+    supplierPhone:contact.phone||party.phone,
+    supplierAddress:details.address||formatInvoicePartyAddress(party),
     supplierWebsite:details.website,
     recipientTaxId:recipient.detectedTaxId,
     recipientName:recipient.detectedName,
@@ -106,7 +107,10 @@ export function classifyInvoiceCandidate(candidate:InvoiceImportCandidate,existi
     || Boolean(
       invoiceNumber
       && supplierName
-      && normalizeKey(existing.supplierName)===supplierName
+      && (
+        normalizeKey(existing.supplierName)===supplierName
+        || isLikelySameSupplier(existing.supplierName,candidate.supplierName)
+      )
       && normalizeKey(existing.invoiceNumber)===invoiceNumber
     )
   );
