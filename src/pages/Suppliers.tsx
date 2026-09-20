@@ -130,7 +130,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
     <PeriodFilterPanel filter={dateFilter} onChange={setDateFilter} title="Periodo de análisis"/>
 
     <div className="stats masterStats">
-      <div className="stat"><div className="statIcon"><Building2/></div><div><span>Proveedores con actividad</span><strong>{totals.active}</strong><small>de {filtered.length} visibles · {periodLabel.toLowerCase()}</small></div></div>
+      <div className="stat"><div className="statIcon"><Building2/></div><div><span>Proveedores con actividad</span><strong>{totals.active}</strong><small>de {filtered.length} visibles · {selectedPeriod.toLowerCase()}</small></div></div>
       <div className="stat"><div className="statIcon"><ShoppingCart/></div><div><span>Gasto del periodo</span><strong>{money(totals.spent)}</strong><small>{selectedPeriod}</small></div></div>
       <div className="stat"><div className="statIcon"><FileText/></div><div><span>Facturas recibidas</span><strong>{totals.invoices}</strong><small>{selectedPeriod}</small></div></div>
     </div>
