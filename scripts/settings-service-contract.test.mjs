@@ -42,8 +42,8 @@ test('settings provider exposes defaults and warnings instead of blocking the ap
   assert.match(source,/updatePreferences/);
 });
 
-test('authenticated workspace is wrapped by SettingsProvider',async()=>{
-  const source=await read('../src/App.tsx');
+test('application root is wrapped by SettingsProvider',async()=>{
+  const source=await read('../src/main.tsx');
   assert.match(source,/SettingsProvider/);
-  assert.match(source,/<SettingsProvider[^>]*userId=\{userId\}/);
+  assert.match(source,/<SettingsProvider>\s*<App\/>/);
 });
