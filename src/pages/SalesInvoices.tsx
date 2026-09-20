@@ -22,6 +22,7 @@ export function SalesInvoices(){
   const [importOpen,setImportOpen]=useState(false);
   const [exportOpen,setExportOpen]=useState(false);
   const [headerActionsHost,setHeaderActionsHost]=useState<HTMLElement|null>(null);
+  const [listFilters,setListFilters]=useState({query:'',status:'all',from:'',to:''});
   const [query,setQuery]=useState('');
   const [status,setStatus]=useState('all');
   const [from,setFrom]=useState('');
@@ -63,7 +64,19 @@ export function SalesInvoices(){
   const exportRows=exportSelectedOnly?selectedExportRows:filteredExportRows;
 
   const openImport=async()=>{if(await refreshTools())setImportOpen(true);};
-  const openExport=async(selectedOnly=selectedInvoiceIds.length>0)=>{if(await refreshTools()){setExportSelectedOnly(selectedOnly&&selectedInvoiceIds.length>0);setExportOpen(true);}};
+  const openExport=async(selectedOnly=selectedInvoiceIds.length>0)=>{
+    if(await refreshTools()){
+      const onlySelected=selectedOnly&&selectedInvoiceIds.length>0;
+      setExportSelectedOnly(onlySelected);
+      if(!onlySelected){
+        setQuery(listFilters.query);
+        setStatus(listFilters.status);
+        setFrom(listFilters.from);
+        setTo(listFilters.to);
+      }
+      setExportOpen(true);
+    }
+  };
   const openSelectedExport=async(ids:string[])=>{setSelectedInvoiceIds(ids);if(await refreshTools()){setExportSelectedOnly(true);setExportOpen(true);}};
 
   const exportNow=async()=>{
@@ -88,7 +101,7 @@ export function SalesInvoices(){
   const exportLabel=selectedInvoiceIds.length?`Exportar seleccionadas (${selectedInvoiceIds.length})`:`Exportar (${invoices.length})`;
 
   return <>
-    <div className="salesInvoicesTransferHost"><SalesInvoicesCore key={epoch} selectedIds={selectedInvoiceIds} onSelectedIdsChange={setSelectedInvoiceIds} onExportSelected={ids=>void openSelectedExport(ids)}/></div>
+    <div className="salesInvoicesTransferHost"><SalesInvoicesCore key={epoch} selectedIds={selectedInvoiceIds} onSelectedIdsChange={setSelectedInvoiceIds} onExportSelected={ids=>void openSelectedExport(ids)} onFiltersChange={setListFilters}/></div>
     {headerActionsHost&&createPortal(<>
       <button className="secondary salesTransferHeaderAction" type="button" onClick={()=>void openExport(selectedInvoiceIds.length>0)} disabled={loading||!invoices.length}><Download size={17}/> {exportLabel}</button>
       <button className="secondary salesTransferHeaderAction" type="button" onClick={()=>void openImport()} disabled={loading}><FileUp size={17}/> {IMPORT_LABEL}</button>
