@@ -130,6 +130,7 @@ export type SalesInvoiceDraftInput = {
 const n=(value:unknown)=>Number(value??0)||0;
 const nullable=(value?:string|null)=>{const cleaned=sanitizeDatabaseText(value).trim();return cleaned||null;};
 const addressFrom=(row:any)=>[row?.address_line1,row?.address_line2,[row?.postal_code,row?.city].filter(Boolean).join(' '),row?.province,row?.country_code].filter(Boolean).join(', ');
+export function defaultSalesDueDate(issueDate:string,days=30){if(!/^\d{4}-\d{2}-\d{2}$/.test(issueDate))return '';const date=new Date(`${issueDate}T12:00:00`);if(Number.isNaN(date.getTime()))return '';date.setDate(date.getDate()+days);return date.toISOString().slice(0,10);}
 
 export async function loadClients():Promise<Client[]> {
   const {data,error}=await supabase.from('clients').select('*').eq('active',true).order('name');
@@ -194,7 +195,7 @@ export async function loadSalesInvoices():Promise<SalesInvoice[]>{
   });
 }
 
-function invoiceRow(input:SalesInvoiceDraftInput){return {client_id:input.clientId,series_id:input.seriesId,tax_registration_id:input.taxRegistrationId||null,issue_date:sanitizeDatabaseSingleLine(input.issueDate),operation_date:nullable(input.operationDate),due_date:nullable(input.dueDate),payment_method:nullable(input.paymentMethod),notes:nullable(input.notes)};}
+function invoiceRow(input:SalesInvoiceDraftInput){const issueDate=sanitizeDatabaseSingleLine(input.issueDate);return {client_id:input.clientId,series_id:input.seriesId,tax_registration_id:input.taxRegistrationId||null,issue_date:issueDate,operation_date:nullable(input.operationDate),due_date:nullable(input.dueDate)||defaultSalesDueDate(issueDate,30)||null,payment_method:nullable(input.paymentMethod),notes:nullable(input.notes)};}
 function lineRows(invoiceId:string,lines:SalesInvoiceLine[]){return lines.map((line,index)=>({invoice_id:invoiceId,product_id:line.productId||null,position:index+1,description:sanitizeDatabaseSingleLine(line.description),quantity:line.quantity,unit:sanitizeDatabaseSingleLine(line.unit)||'ud',unit_price:line.unitPrice,discount_percent:line.discountPercent||0,tax_rate:line.taxRate}));}
 
 export async function createSalesInvoiceDraft(input:SalesInvoiceDraftInput){const {data:invoice,error}=await supabase.from('sales_invoices').insert(invoiceRow(input)).select('id').single();if(error)throw error;const rows=lineRows(invoice.id,input.lines).filter(row=>row.description);if(rows.length){const {error:lineError}=await supabase.from('sales_invoice_lines').insert(rows);if(lineError){await supabase.from('sales_invoices').delete().eq('id',invoice.id);throw lineError;}}return invoice.id as string;}
