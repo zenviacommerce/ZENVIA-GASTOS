@@ -24,8 +24,9 @@ const options = [
 ];
 
 test('uses the order number as the PDF filename', async () => {
-  const { labelPdfBaseName } = await loadModule();
+  const { labelPdfBaseName, labelPdfFilename } = await loadModule();
   assert.equal(labelPdfBaseName(baseOrder), '403-1234567-1234567');
+  assert.equal(labelPdfFilename(baseOrder), '403-1234567-1234567.pdf');
 });
 
 test('deduplicates repeated label PDF filenames', async () => {
