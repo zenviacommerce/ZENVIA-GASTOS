@@ -23,16 +23,16 @@ const options = [
   { code: 'mrw:timeslot=19:expedition', name: 'MRW Urgent 19:00 Expedition 0-80kg', carrierCode: 'mrw', carrierName: 'MRW', contractId: 2 },
 ];
 
-test('abbreviates a Zenic product title for the PDF filename', async () => {
+test('uses the order number as the PDF filename', async () => {
   const { labelPdfBaseName } = await loadModule();
-  assert.equal(labelPdfBaseName(baseOrder), '2_rollos_mercado');
+  assert.equal(labelPdfBaseName(baseOrder), '403-1234567-1234567');
 });
 
 test('deduplicates repeated label PDF filenames', async () => {
   const { uniqueLabelPdfFilename } = await loadModule();
   const used = new Set();
-  assert.equal(uniqueLabelPdfFilename(baseOrder, used), '2_rollos_mercado.pdf');
-  assert.equal(uniqueLabelPdfFilename(baseOrder, used), '2_rollos_mercado_2.pdf');
+  assert.equal(uniqueLabelPdfFilename(baseOrder, used), '403-1234567-1234567.pdf');
+  assert.equal(uniqueLabelPdfFilename(baseOrder, used), '403-1234567-1234567_2.pdf');
 });
 
 test('selects MRW Urgent 19:00 outside Baleares', async () => {
