@@ -88,7 +88,8 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
    const metric=metrics.get(supplier.id);
    const matchesQuery=!q||[supplier.name,supplier.taxId||'',supplier.email||'',supplier.phone||'',supplier.address||'',supplier.website||''].some(value=>value.toLowerCase().includes(q));
    if(typeFilter!=='all'&&supplier.supplierType!==typeFilter)return false;
-   if(categoryFilter!=='all'&&(supplier.defaultCategoryId||'')!==categoryFilter)return false;
+   if(categoryFilter==='__none__'&&supplier.defaultCategoryId)return false;
+   if(categoryFilter!=='all'&&categoryFilter!=='__none__'&&(supplier.defaultCategoryId||'')!==categoryFilter)return false;
    if(activityFilter==='active'&&(metric?.count||0)===0)return false;
    if(activityFilter==='inactive'&&(metric?.count||0)>0)return false;
    return matchesQuery;
@@ -148,7 +149,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
       <div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar proveedor, CIF, email, teléfono o dirección…"/></div>
       <div className="businessFilterFields">
         <label className="filterField"><span>Tipo</span><SelectField value={typeFilter} onChange={value=>setTypeFilter(value as SupplierTypeFilter)} ariaLabel="Filtrar por tipo de proveedor" options={[{value:'all',label:'Todos los tipos'},{value:'goods',label:'Mercancía'},{value:'service',label:'Servicios'},{value:'both',label:'Mercancía y servicios'},{value:'unclassified',label:'Sin clasificar'}]}/></label>
-        <label className="filterField"><span>Categoría habitual</span><SelectField value={categoryFilter} onChange={setCategoryFilter} ariaLabel="Filtrar por categoría habitual" options={[{value:'all',label:'Todas las categorías'},...categories.map(category=>({value:category.id,label:category.name}))]}/></label>
+        <label className="filterField"><span>Categoría habitual</span><SelectField value={categoryFilter} onChange={setCategoryFilter} ariaLabel="Filtrar por categoría habitual" options={[{value:'all',label:'Todas las categorías'},{value:'__none__',label:'Sin categoría habitual'},...categories.map(category=>({value:category.id,label:category.name}))]}/></label>
         <label className="filterField"><span>Actividad</span><SelectField value={activityFilter} onChange={value=>setActivityFilter(value as SupplierActivityFilter)} ariaLabel="Filtrar proveedores por actividad" options={[{value:'all',label:'Todos'},{value:'active',label:'Con facturas en el periodo'},{value:'inactive',label:'Sin facturas en el periodo'}]}/></label>
       </div>
       <span className="filterResultCount">{filtered.length} proveedor{filtered.length===1?'':'es'} · {selectedPeriod}</span>
