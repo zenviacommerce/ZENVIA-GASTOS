@@ -162,7 +162,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add src/services/settingsSchema.ts src/services/sales.ts src/services/salesInvoiceImport.ts src/pages/SalesInvoicesCore.tsx supabase/migrations scripts/configurable-sales-due-date.test.mjs scripts/sales-invoice-import-export.test.mjs
@@ -226,6 +226,7 @@ sales: {
   showPaymentMethodOnPdf: true,
   allowPartialPayments: true,
   autoMarkPaid: true,
+  allowEditIssuedInvoices: true,
 }
 ```
 
@@ -239,11 +240,24 @@ Series and tax-registration management must reuse `salesConfig.ts`; settings sto
 
 Apply defaults only at creation time. Rendering visibility changes can apply to regenerated PDFs, but stored invoice fiscal fields remain untouched.
 
-- [ ] **Step 6: Respect payment toggles**
+- [ ] **Step 6: Enforce payment toggles in both UI and PostgreSQL**
 
-If partial payments are disabled, the UI allows only the full outstanding amount. Existing partial-payment history remains visible.
+Update the existing `private.sync_sales_payment_status()` behavior through a generated migration so the database enforces the same settings as the UI:
 
-- [ ] **Step 7: Run tests and build**
+- when `allowPartialPayments=false`, reject a payment state where total paid is greater than zero but lower than invoice total;
+- when `autoMarkPaid=true`, keep the current automatic `paid` transition;
+- when `autoMarkPaid=false`, a fully covered invoice remains eligible for an explicit “Marcar cobrada” action instead of being promoted silently;
+- deleting/reducing payments recalculates status consistently.
+
+Add a guarded helper that reads booleans from `app_settings.sales` with defaults `true` and never raises on malformed JSON.
+
+Add the explicit “Marcar cobrada” action only when recorded payments cover the total and `autoMarkPaid=false`; the backend must verify the same invariant before accepting the status change.
+
+- [ ] **Step 7: Enforce issued-invoice editing in UI and database**
+
+When `allowEditIssuedInvoices=false`, hide/disable the reopen/edit control for issued invoices. Update `private.guard_sales_invoice_immutable()` so an issued → draft transition is rejected server-side when the workspace setting is false. Existing already-reopened drafts remain editable; historical issued invoices are not rewritten.
+
+- [ ] **Step 8: Run tests and build**
 
 ```bash
 node --test scripts/sales-settings.test.mjs scripts/sales-invoice-import-export.test.mjs
@@ -255,7 +269,7 @@ Expected: PASS.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/pages/Settings.tsx src/pages/SalesInvoicesCore.tsx src/services/salesInvoicePdf.ts src/services/sales.ts src/services/settingsSchema.ts scripts/sales-settings.test.mjs
+git add src/pages/Settings.tsx src/pages/SalesInvoicesCore.tsx src/services/salesInvoicePdf.ts src/services/sales.ts src/services/settingsSchema.ts supabase/migrations scripts/sales-settings.test.mjs
 git commit -m "feat: configure sales defaults and invoice output"
 ```
 
