@@ -20,9 +20,9 @@ const emptyClient = (): ClientInput => ({
 });
 const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
-const EU_COUNTRIES=new Set(['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE']);
-
-type ClientFilter='all'|'pending'|'settled'|'es'|'eu';
+const regionNames=typeof Intl!=='undefined'&&'DisplayNames' in Intl?new Intl.DisplayNames(['es'],{type:'region'}):null;
+const countryName=(code:string)=>regionNames?.of(code)||code;
+type ClientBalanceFilter='all'|'pending'|'settled'|'active'|'inactive';
 type ClientMetric={invoiced:number;pending:number;count:number;lastDate:string|null;recent:SalesInvoice[]};
 
 function ClientModal({open,client,onClose,onSaved}:{open:boolean;client:Client|null;onClose:()=>void;onSaved:()=>Promise<void>}) {
@@ -128,7 +128,8 @@ export function Clients(){
   const [loading,setLoading]=useState(true);
   const [query,setQuery]=useState('');
   const [dateFilter,setDateFilter]=useState(defaultDateFilter);
-  const [filter,setFilter]=useState<ClientFilter>('all');
+  const [balanceFilter,setBalanceFilter]=useState<ClientBalanceFilter>('all');
+  const [countryFilter,setCountryFilter]=useState('all');
   const [editing,setEditing]=useState<Client|null>(null);
   const [selected,setSelected]=useState<Client|null>(null);
   const [modal,setModal]=useState(false);
@@ -156,20 +157,28 @@ export function Clients(){
     return map;
   },[clients,periodInvoices]);
 
-  const filtered=useMemo(()=>{const q=query.trim().toLowerCase();return clients.filter(c=>{
-    const metric=metrics.get(c.id)!;
-    const matchesQuery=!q||[c.name,c.taxId||'',c.email||'',c.phone||'',c.city||''].some(v=>v.toLowerCase().includes(q));
-    const country=(c.countryCode||'').toUpperCase();
-    const matchesFilter=filter==='all'||(filter==='pending'&&metric.pending>0.005)||(filter==='settled'&&metric.pending<=0.005)||(filter==='es'&&country==='ES')||(filter==='eu'&&country!=='ES'&&EU_COUNTRIES.has(country));
-    return matchesQuery&&matchesFilter;
-  })},[clients,metrics,query,filter]);
+  const countryOptions=useMemo(()=>[...new Set(clients.map(client=>(client.countryCode||'XX').toUpperCase()))]
+    .sort((a,b)=>countryName(a).localeCompare(countryName(b),'es'))
+    .map(code=>({value:code,label:code==='XX'?'País pendiente':`${countryName(code)} · ${code}`})),[clients]);
+
+  const filtered=useMemo(()=>{const q=query.trim().toLowerCase();return clients.filter(client=>{
+    const metric=metrics.get(client.id)!;
+    const matchesQuery=!q||[client.name,client.taxId||'',client.email||'',client.phone||'',client.city||'',client.province||''].some(value=>value.toLowerCase().includes(q));
+    const country=(client.countryCode||'XX').toUpperCase();
+    if(countryFilter!=='all'&&country!==countryFilter)return false;
+    if(balanceFilter==='pending'&&metric.pending<=0.005)return false;
+    if(balanceFilter==='settled'&&metric.pending>0.005)return false;
+    if(balanceFilter==='active'&&metric.count===0)return false;
+    if(balanceFilter==='inactive'&&metric.count>0)return false;
+    return matchesQuery;
+  })},[clients,metrics,query,countryFilter,balanceFilter]);
   const selectedClients=filtered.filter(client=>checkedIds.has(client.id));
   const allFilteredSelected=filtered.length>0&&filtered.every(client=>checkedIds.has(client.id));
   const toggleClient=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
   const toggleAllClients=(checked:boolean)=>setCheckedIds(checked?new Set(filtered.map(client=>client.id)):new Set());
   const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
   const paged=useMemo(()=>filtered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[filtered,page]);
-  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,filter,dateFilter]);
+  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,balanceFilter,countryFilter,dateFilter]);
   useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
 
   const totals=useMemo(()=>{
@@ -217,7 +226,14 @@ export function Clients(){
       <StatCard label="Facturas emitidas" value={String(totals.invoiceCount)} sub={selectedPeriod} icon={<FileText/>}/>
       <StatCard label="Ticket medio" value={money(totals.average)} sub="Media por factura emitida" icon={<Calculator/>}/>
     </div>
-    <div className="masterToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente, CIF, email, teléfono o ciudad…"/></div><div className="masterFilters"><button className={filter==='all'?'active':''} onClick={()=>setFilter('all')}>Todos</button><button className={filter==='pending'?'active':''} onClick={()=>setFilter('pending')}>Con pendiente</button><button className={filter==='settled'?'active':''} onClick={()=>setFilter('settled')}>Sin pendiente</button><button className={filter==='es'?'active':''} onClick={()=>setFilter('es')}>España</button><button className={filter==='eu'?'active':''} onClick={()=>setFilter('eu')}>UE</button></div></div>
+    <div className="businessFilterBar">
+      <div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente, CIF, email, teléfono o ciudad…"/></div>
+      <div className="businessFilterFields">
+        <label className="filterField"><span>País</span><SelectField value={countryFilter} onChange={setCountryFilter} ariaLabel="Filtrar clientes por país" options={[{value:'all',label:'Todos los países'},...countryOptions]}/></label>
+        <label className="filterField"><span>Situación</span><SelectField value={balanceFilter} onChange={value=>setBalanceFilter(value as ClientBalanceFilter)} ariaLabel="Filtrar clientes por situación" options={[{value:'all',label:'Todos los clientes'},{value:'pending',label:'Con saldo pendiente'},{value:'settled',label:'Sin saldo pendiente'},{value:'active',label:'Con actividad en el periodo'},{value:'inactive',label:'Sin actividad en el periodo'}]}/></label>
+      </div>
+      <span className="filterResultCount">{filtered.length} cliente{filtered.length===1?'':'s'} · {selectedPeriod}</span>
+    </div>
     {filtered.length>0&&<BulkSelectionToolbar selectedCount={selectedClients.length} totalCount={filtered.length} allSelected={allFilteredSelected} onToggleAll={toggleAllClients} label="clientes">
       <button className="secondary dangerText" type="button" disabled={!selectedClients.length||bulkBusy} onClick={()=>void removeSelected()}><Trash2 size={15}/> {bulkBusy?'Eliminando…':`Eliminar seleccionados (${selectedClients.length})`}</button>
     </BulkSelectionToolbar>}
