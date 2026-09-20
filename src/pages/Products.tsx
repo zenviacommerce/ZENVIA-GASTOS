@@ -63,8 +63,14 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
  const [salesMap,setSalesMap]=useState<Map<string,ProductSalesInfo>>(new Map());
  useEffect(()=>{loadProductSalesMap(products.map(p=>p.id)).then(setSalesMap).catch(()=>setSalesMap(new Map()))},[products]);
  const selectedPeriod=periodLabel(dateFilter);
- const categoryOptions=useMemo(()=>[...new Set(products.map(product=>product.category?.trim()).filter((value):value is string=>Boolean(value)))].sort((a,b)=>a.localeCompare(b,'es')).map(value=>({value,label:value})),[products]);
- const supplierOptions=useMemo(()=>[...new Set(products.map(product=>product.supplier?.trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es')).map(value=>({value,label:value})),[products]);
+ const categoryOptions=useMemo(()=>{
+   const values=[...new Set(products.map(product=>product.category?.trim()).filter((value):value is string=>Boolean(value)))].sort((a,b)=>a.localeCompare(b,'es')).map(value=>({value,label:value}));
+   return products.some(product=>!product.category?.trim())?[...values,{value:'__none__',label:'Sin categoría'}]:values;
+ },[products]);
+ const supplierOptions=useMemo(()=>{
+   const values=[...new Set(products.map(product=>product.supplier?.trim()).filter(value=>Boolean(value)&&value!=='—'))].sort((a,b)=>a.localeCompare(b,'es')).map(value=>({value,label:value}));
+   return products.some(product=>!product.supplier?.trim()||product.supplier==='—')?[...values,{value:'__none__',label:'Sin proveedor'}]:values;
+ },[products]);
  const periodProducts=useMemo(()=>products.filter(product=>{
    if(dateFilter.preset==='all')return true;
    const date=product.lastPurchaseDate||'';
@@ -78,8 +84,15 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
    return periodProducts.filter(product=>{
      const extra=salesMap.get(product.id);
      const metric=productMetrics(product,extra);
-     if(categoryFilter!=='all'&&(product.category||'')!==categoryFilter)return false;
-     if(supplierFilter!=='all'&&(product.supplier||'')!==supplierFilter)return false;
+     if(categoryFilter!=='all'){
+       if(categoryFilter==='__none__'&&product.category?.trim())return false;
+       if(categoryFilter!=='__none__'&&(product.category||'')!==categoryFilter)return false;
+     }
+     if(supplierFilter!=='all'){
+       const hasSupplier=Boolean(product.supplier?.trim()&&product.supplier!=='—');
+       if(supplierFilter==='__none__'&&hasSupplier)return false;
+       if(supplierFilter!=='__none__'&&(product.supplier||'')!==supplierFilter)return false;
+     }
      if(scope==='with_sale'&&extra?.salePrice==null)return false;
      if(scope==='without_sale'&&extra?.salePrice!=null)return false;
      if(scope==='cost_up'&&!(metric.delta!=null&&metric.delta>0))return false;
@@ -198,7 +211,7 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
                 <td className="right"><ChevronRight size={17}/></td>
               </tr>})}</tbody>
           </table>
-        ):<div className="emptyState large">No hay productos para la búsqueda seleccionada.</div>}
+        ):<div className="emptyState large">No hay productos para los filtros seleccionados.</div>}
       </section>
 
       {shown.length>0&&(
