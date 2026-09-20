@@ -15,6 +15,7 @@ import '../supplier-actions.css';
 
 const PAGE_SIZE=20;
 const money=(value:number|null,decimals=2)=>value==null?'—':`${value.toLocaleString('es-ES',{minimumFractionDigits:decimals,maximumFractionDigits:4})} €`;
+const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
 
 type ProductSalesInfo={salePrice:number|null;salesTaxRate:number;invoiceDescription:string;ean:string};
 type ProductScope='all'|'with_sale'|'without_sale'|'cost_up'|'cost_down';
@@ -36,7 +37,8 @@ function ProductDrawer({product,extra,onClose,onEdit,onDelete,busy}:{product:Pro
       <section className="masterDrawerSection"><h3>Datos del producto</h3><div className="masterInfoList">
         <div><span><Tag size={15}/> Categoría</span><strong>{product.category||'Sin categoría'}</strong></div>
         <div><span><Package size={15}/> Unidad</span><strong>{product.unit||'—'}</strong></div>
-        <div><span><Building2 size={15}/> Proveedor</span><strong>{product.supplier||'Sin proveedor'}</strong></div>
+        <div><span><Building2 size={15}/> Proveedor</span><strong>{product.supplier&&product.supplier!=='—'?product.supplier:'Sin proveedor'}</strong></div>
+        <div><span><Package size={15}/> Última compra</span><strong>{dateLabel(product.lastPurchaseDate)}</strong></div>
         <div><span><Barcode size={15}/> SKU</span><strong>{product.sku||'Sin SKU'}</strong></div>
         <div><span><Barcode size={15}/> EAN</span><strong>{extra?.ean||'Sin EAN'}</strong></div>
         <div><span><Percent size={15}/> IVA venta</span><strong>{extra?.salesTaxRate!=null?`${extra.salesTaxRate} %`:'—'}</strong></div>
@@ -198,12 +200,13 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
       <section className="card tableCard masterTableCard">
         {shown.length?(
           <table className="masterTable">
-            <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allShownSelected} onChange={toggleAllProducts} label={allShownSelected?'Deseleccionar productos visibles':'Seleccionar productos visibles'}/></th><th>Producto</th><th>SKU / EAN</th><th>Proveedor</th><th className="right">Coste</th><th className="right">P. venta</th><th className="right">Margen</th><th className="right">Var. coste</th><th></th></tr></thead>
+            <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allShownSelected} onChange={toggleAllProducts} label={allShownSelected?'Deseleccionar productos visibles':'Seleccionar productos visibles'}/></th><th>Producto</th><th>SKU / EAN</th><th>Proveedor</th><th>Última compra</th><th className="right">Coste</th><th className="right">P. venta</th><th className="right">Margen</th><th className="right">Var. coste</th><th></th></tr></thead>
             <tbody>{paged.map(p=>{const extra=salesMap.get(p.id);const metric=productMetrics(p,extra);return <tr key={p.id} className={`clickableRow ${checkedIds.has(p.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(p)}>
                 <td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(p.id)} onChange={checked=>toggleProduct(p.id,checked)} label={`Seleccionar ${p.name}`}/></td>
                 <td><div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{p.name}</strong><small>{p.category||'Sin categoría'} · por {p.unit}</small></div></div></td>
                 <td><span className="mono">{p.sku||'—'}</span>{extra?.ean&&<div className="muted mono">{extra.ean}</div>}</td>
-                <td>{p.supplier}</td>
+                <td>{p.supplier&&p.supplier!=='—'?p.supplier:<span className="muted">Sin proveedor</span>}</td>
+                <td>{dateLabel(p.lastPurchaseDate)}</td>
                 <td className="right"><strong>{money(metric.cost,metric.cost!=null&&metric.cost<1?3:2)}</strong></td>
                 <td className="right"><strong>{money(metric.sale)}</strong></td>
                 <td className="right">{metric.margin==null?<span className="muted">—</span>:<><strong>{money(metric.margin)}</strong>{metric.marginPct!=null&&<div className="muted">{metric.marginPct.toFixed(1)} %</div>}</>}</td>
@@ -219,7 +222,7 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
           {paged.map(p=>{const extra=salesMap.get(p.id);const metric=productMetrics(p,extra);return <div className={`bulkMobileSelectableRow ${checkedIds.has(p.id)?'selected':''}`} key={p.id}>
               <BulkSelectCheckbox checked={checkedIds.has(p.id)} onChange={checked=>toggleProduct(p.id,checked)} label={`Seleccionar ${p.name}`}/>
               <button className="card masterMobileRow" onClick={()=>setSelected(p)}>
-                <div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{p.name}</strong><small>{p.sku||extra?.ean||'Sin SKU / EAN'} · {p.category||'Sin categoría'}</small></div></div>
+                <div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{p.name}</strong><small>{p.sku||extra?.ean||'Sin SKU / EAN'} · {p.category||'Sin categoría'} · Última compra {dateLabel(p.lastPurchaseDate)}</small></div></div>
                 <div className="masterMobileAmounts"><span>Coste <strong>{money(metric.cost,metric.cost!=null&&metric.cost<1?3:2)}</strong></span><span>P. venta <strong>{money(metric.sale)}</strong></span><span>Margen <strong>{metric.marginPct==null?'—':`${metric.marginPct.toFixed(1)} %`}</strong></span></div>
                 <ChevronRight size={18}/>
               </button>
