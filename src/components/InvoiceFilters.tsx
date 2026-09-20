@@ -1,6 +1,6 @@
 import { CalendarDays, History, RotateCcw } from 'lucide-react';
-import type { Invoice, Supplier } from '../types';
-import { filterForPreset, quarterOptions, type InvoiceFilter, type PeriodPreset } from '../services/filters';
+import type { ExpenseCategory, Invoice, Supplier } from '../types';
+import { dateFilterForPreset, filterForPreset, quarterOptions, type InvoiceFilter, type PeriodPreset } from '../services/filters';
 import { SearchableSelect } from './forms/SearchableSelect';
 import { SelectField } from './forms/SelectField';
 
@@ -9,12 +9,14 @@ export function InvoiceFilters({
   onChange,
   invoices,
   suppliers,
+  categories = [],
   showSupplier = true,
 }: {
   filter: InvoiceFilter;
   onChange: (next: InvoiceFilter) => void;
   invoices: Invoice[];
   suppliers: Supplier[];
+  categories?: ExpenseCategory[];
   showSupplier?: boolean;
 }) {
   const quarters = quarterOptions(invoices);
@@ -38,7 +40,8 @@ export function InvoiceFilters({
       onChange({ ...filter, preset });
       return;
     }
-    onChange(filterForPreset(preset, showSupplier ? filter.supplierId : ''));
+    const range=dateFilterForPreset(preset);
+    onChange({ ...filter, ...range, supplierId: showSupplier ? filter.supplierId : '' });
   };
 
   const setDate = (key: 'from' | 'to', value: string) => {
@@ -77,6 +80,15 @@ export function InvoiceFilters({
           ariaLabel="Filtrar por proveedor"
         />
       </label>}
+      <label>Categoría
+        <SelectField value={filter.categoryId} onChange={categoryId=>onChange({...filter,categoryId})} ariaLabel="Filtrar por categoría" options={[{value:'',label:'Todas las categorías'},...categories.map(category=>({value:category.id,label:category.name}))]}/>
+      </label>
+      <label>Estado
+        <SelectField value={filter.status} onChange={status=>onChange({...filter,status})} ariaLabel="Filtrar por estado" options={[{value:'',label:'Todos los estados'},{value:'pending',label:'Pendientes'},{value:'reviewed',label:'Revisadas'},{value:'accounted',label:'Contabilizadas'}]}/>
+      </label>
+      <label>Origen
+        <SelectField value={filter.source} onChange={source=>onChange({...filter,source})} ariaLabel="Filtrar por origen" options={[{value:'',label:'Todos los orígenes'},{value:'manual',label:'Archivo / manual'},{value:'camera',label:'Cámara'},{value:'gmail',label:'Gmail'}]}/>
+      </label>
       <label>Desde
         <input type="date" value={filter.from} onChange={event => setDate('from', event.target.value)}/>
       </label>
