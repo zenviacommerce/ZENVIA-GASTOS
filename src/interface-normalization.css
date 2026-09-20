@@ -186,3 +186,15 @@ html[data-theme='dark'] .salesPaymentQuick span{color:#94a3b8}
   .salesInvoiceTableCard{display:none!important}
   .salesInvoicesMobileList{display:grid;gap:11px;margin-bottom:16px}
 }
+
+
+/* Expense filter grid can grow without squeezing fields or creating accidental implicit columns. */
+.invoiceFilterPanel .filterGrid{
+  grid-template-columns:repeat(auto-fit,minmax(155px,1fr))!important;
+}
+.invoiceFilterPanel .filterReset{
+  min-width:132px;
+}
+@media(min-width:761px){
+  .invoiceFilterPanel .filterGrid>.filterReset{align-self:end}
+}
