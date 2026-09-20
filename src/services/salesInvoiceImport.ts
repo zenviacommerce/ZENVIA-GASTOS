@@ -14,6 +14,7 @@ export type SalesInvoiceImportCandidate={
   proposedClient?:ClientInput|null;
   invoiceNumber:string;
   issueDate:string;
+  dueDate:string;
   seriesId:string;
   taxRegistrationId?:string|null;
   paymentMethod?:string;
@@ -46,6 +47,35 @@ function clientNameFromFilename(filename:string,invoiceNumber:string){
   }
   base=base.replace(/^F\d{5,12}[_\s-]*/i,'').replace(/[_]+/g,' ').replace(/\s*-\s*/g,' ');
   return validClientName(titleCase(base));
+}
+
+function addDays(date:string,days:number){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return '';
+  const value=new Date(date+'T12:00:00');
+  if(Number.isNaN(value.getTime()))return '';
+  value.setDate(value.getDate()+days);
+  return value.toISOString().slice(0,10);
+}
+
+function normalizeImportedDate(raw:string|undefined|null){
+  const value=compact(String(raw||''));
+  if(!value)return '';
+  const iso=value.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
+  if(iso)return iso[1]+'-'+String(Number(iso[2])).padStart(2,'0')+'-'+String(Number(iso[3])).padStart(2,'0');
+  const european=value.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2}|\d{2})\b/);
+  if(!european)return '';
+  const year=european[3].length===2?'20'+european[3]:european[3];
+  return year+'-'+String(Number(european[2])).padStart(2,'0')+'-'+String(Number(european[1])).padStart(2,'0');
+}
+
+function extractSalesDueDate(text:string,issueDate:string){
+  const rows=text.split(/\r?\n/).map(compact).filter(Boolean);
+  const labelled=rows.find(row=>/\b(?:fecha\s+de\s+vencimiento|vencimiento|due\s+date|payment\s+due|échéance|echeance|scadenza|fällig(?:keit|keitsdatum)?)\b/i.test(row));
+  if(labelled){
+    const parsed=normalizeImportedDate(labelled);
+    if(parsed)return parsed;
+  }
+  return addDays(issueDate,30);
 }
 
 function extractSalesRecipient(text:string,filename:string,invoiceNumber:string,invoiceDate=''):ClientInput|null{
@@ -230,6 +260,7 @@ export async function prepareSalesInvoiceImportCandidate(file:File,clients:Clien
   const vat=fiscal?.vat??read.vat;
   const total=fiscal?.total||read.total;
   const proposedClient=extractSalesRecipient(read.text,file.name,read.invoiceNumber||'',read.invoiceDate||'');
+  const dueDate=extractSalesDueDate(read.text,read.invoiceDate||'');
   const matched=(proposedClient&&matchClientIdentity(proposedClient,clients))||matchSalesInvoiceClient(read.text,clients);
   const fallbackTaxRate=nearestTaxRate(subtotal,vat);
   const exactLines=extractSalesConceptLines(read.text,fallbackTaxRate);
@@ -241,7 +272,7 @@ export async function prepareSalesInvoiceImportCandidate(file:File,clients:Clien
   if(!read.invoiceNumber)reasons.push('Revisa el número de factura');
   if(!read.invoiceDate)reasons.push('Revisa la fecha');
   if(!lines.length)reasons.push('Añade al menos una línea');
-  return {id:crypto.randomUUID(),file,status:'needs_review',clientId:matched?.id||'',proposedClient,invoiceNumber:read.invoiceNumber||'',issueDate:read.invoiceDate||'',seriesId:'',taxRegistrationId:null,paymentMethod:'',notes:'',lines,subtotal,taxAmount:vat,totalAmount:total,confidence:read.confidence,text:read.text,reviewReason:reasons.length?reasons.join(' · '):matched?'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.':proposedClient?`Se creará automáticamente el cliente ${proposedClient.name}. Revisa los datos antes de guardar.`:'Comprueba cliente, serie, número, fecha, líneas e IVA antes de guardar.'};
+  return {id:crypto.randomUUID(),file,status:'needs_review',clientId:matched?.id||'',proposedClient,invoiceNumber:read.invoiceNumber||'',issueDate:read.invoiceDate||'',dueDate,seriesId:'',taxRegistrationId:null,paymentMethod:'',notes:'',lines,subtotal,taxAmount:vat,totalAmount:total,confidence:read.confidence,text:read.text,reviewReason:reasons.length?reasons.join(' · '):matched?'Comprueba cliente, serie, número, fecha, vencimiento, líneas e IVA antes de guardar.':proposedClient?`Se creará automáticamente el cliente ${proposedClient.name}. Revisa sus datos fiscales antes de guardar.`:'Comprueba cliente, serie, número, fecha, vencimiento, líneas e IVA antes de guardar.'};
 }
 
 export function recalculateSalesImportCandidate(candidate:SalesInvoiceImportCandidate){
@@ -311,7 +342,7 @@ export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoic
     if(!reviewed.issueDate)throw new Error('Indica la fecha de factura.');
     const lines=cleanImportLines(reviewed);
     if(!lines.length)throw new Error('No hay líneas válidas para guardar esta factura.');
-    const payload:SalesInvoiceDraftInput={clientId,seriesId:reviewed.seriesId,taxRegistrationId:reviewed.taxRegistrationId||null,issueDate:reviewed.issueDate,paymentMethod:reviewed.paymentMethod||undefined,notes:reviewed.notes||undefined,lines};
+    const payload:SalesInvoiceDraftInput={clientId,seriesId:reviewed.seriesId,taxRegistrationId:reviewed.taxRegistrationId||null,issueDate:reviewed.issueDate,dueDate:reviewed.dueDate||addDays(reviewed.issueDate,30)||undefined,paymentMethod:reviewed.paymentMethod||undefined,notes:reviewed.notes||undefined,lines};
 
     if(reviewed.existingInvoiceId){
       if(reviewed.existingInvoiceNumber&&reviewed.invoiceNumber.trim()!==reviewed.existingInvoiceNumber){
