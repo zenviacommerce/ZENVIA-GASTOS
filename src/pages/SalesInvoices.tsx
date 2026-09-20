@@ -60,6 +60,12 @@ export function SalesInvoices(){
   const clientById=useMemo(()=>new Map(clients.map(client=>[client.id,client])),[clients]);
   const clientOptions=useMemo(()=>clients.map(client=>({value:client.id,label:client.name,searchText:[client.taxId,client.email,client.city].filter(Boolean).join(' ')})),[clients]);
   const countryOptions=useMemo(()=>[...new Set(clients.map(client=>(client.countryCode||'XX').toUpperCase()))].sort((a,b)=>countryName(a).localeCompare(countryName(b),'es')).map(code=>({value:code,label:code==='XX'?'País pendiente':`${countryName(code)} · ${code}`})),[clients]);
+  const collectionOptions=useMemo(()=>[
+    {value:'all',label:'Todas'},
+    {value:'open',label:'Pendientes de cobro'},
+    ...(invoices.some(invoice=>Boolean(invoice.dueDate))?[{value:'overdue',label:'Vencidas y pendientes'}]:[]),
+    {value:'paid',label:'Cobradas'},
+  ],[invoices]);
   const filteredExportRows=useMemo(()=>{
     const q=query.trim().toLowerCase();
     const now=today();
@@ -154,7 +160,7 @@ export function SalesInvoices(){
             <label>Cliente<SearchableSelect value={clientId==='all'?'':clientId} options={clientOptions} onChange={value=>setClientId(value||'all')} allowEmpty emptyLabel="Todos los clientes" searchPlaceholder="Buscar cliente…" ariaLabel="Cliente para exportar"/></label>
             <label>País<SelectField value={country} onChange={setCountry} ariaLabel="País para exportar" options={[{value:'all',label:'Todos los países'},...countryOptions]}/></label>
             <label>Estado<SelectField value={status} onChange={setStatus} ariaLabel="Estado para exportar" options={[{value:'all',label:'Todos los estados'},{value:'draft',label:'Borradores'},{value:'issued',label:'Emitidas'},{value:'sent',label:'Enviadas'},{value:'partially_paid',label:'Cobro parcial'},{value:'paid',label:'Cobradas'},{value:'rectified',label:'Rectificadas'}]}/></label>
-            <label>Cobro<SelectField value={collection} onChange={setCollection} ariaLabel="Situación de cobro para exportar" options={[{value:'all',label:'Todas'},{value:'open',label:'Pendientes de cobro'},{value:'overdue',label:'Vencidas y pendientes'},{value:'paid',label:'Cobradas'}]}/></label>
+            <label>Cobro<SelectField value={collection} onChange={setCollection} ariaLabel="Situación de cobro para exportar" options={collectionOptions}/></label>
             <label>Desde<input type="date" value={from} onChange={event=>setFrom(event.target.value)}/></label>
             <label>Hasta<input type="date" value={to} min={from||undefined} onChange={event=>setTo(event.target.value)}/></label>
           </div>}
