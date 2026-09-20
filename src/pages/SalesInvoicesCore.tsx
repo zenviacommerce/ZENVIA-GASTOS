@@ -198,7 +198,25 @@ function BulkPaymentModal({invoices,onClose,onSaved}:{invoices:SalesInvoice[];on
   const [date,setDate]=useState(today());const [method,setMethod]=useState('Transferencia bancaria');const [reference,setReference]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');
   const total=invoices.reduce((sum,invoice)=>sum+Math.max(0,invoice.totalAmount-invoice.paidAmount),0);
   if(!invoices.length)return null;
-  const save=async()=>{setBusy(true);setError('');try{for(const invoice of invoices){const pending=Math.max(0,invoice.totalAmount-invoice.paidAmount);if(pending>0.005)await addSalesPayment(invoice.id,{amount:pending,paymentDate:date,method,reference});}await onSaved();showSuccess(`${invoices.length} factura${invoices.length===1?'':'s'} marcada${invoices.length===1?'':'s'} como cobrada${invoices.length===1?'':'s'}.`);onClose();}catch(e){setError(errorMessage(e,'No se pudieron registrar todos los cobros.'));}finally{setBusy(false);}};
+  const save=async()=>{
+    setBusy(true);setError('');
+    const process=openActionProcess({title:'Registrando cobros',description:'Se registrará el importe pendiente de cada factura seleccionada.',items:invoices.map(invoice=>({id:invoice.id,label:`${invoice.invoiceNumber||'Factura'} · ${invoice.clientName}`}))});
+    let paid=0;let failed=0;
+    try{
+      for(const invoice of invoices){
+        const pending=Math.max(0,invoice.totalAmount-invoice.paidAmount);
+        process.setItem(invoice.id,'running',`Registrando ${money(pending)}…`);
+        try{
+          if(pending>0.005)await addSalesPayment(invoice.id,{amount:pending,paymentDate:date,method,reference});
+          paid+=1;process.setItem(invoice.id,'success','Cobrada completamente.');
+        }catch(e){failed+=1;process.setItem(invoice.id,'error',errorMessage(e,'No se pudo registrar el cobro.'));}
+      }
+      await onSaved();
+      process.finish(`${paid} factura${paid===1?'':'s'} cobrada${paid===1?'':'s'}.${failed?` ${failed} con error.`:''}`,failed?(paid?'warning':'error'):'success');
+      if(paid)onClose();
+    }catch(e){setError(errorMessage(e,'No se pudo actualizar la facturación tras registrar los cobros.'));process.finish('No se pudo completar la actualización final.','error');}
+    finally{setBusy(false);}
+  };
   return <div className="modalBackdrop"><div className="modal smallModal polishedModal salesPaymentModal"><div className="modalHead salesModalHead"><div><div className="eyebrow">COBROS EN LOTE</div><h3>Marcar facturas como cobradas</h3><p>{invoices.length} factura{invoices.length===1?'':'s'} · Total pendiente {money(total)}</p></div><button onClick={onClose}><X/></button></div><div className="salesFormSection"><div className="salesFormGrid"><label>Fecha de cobro<input type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label>Método<SelectField value={method} onChange={setMethod} ariaLabel="Método de cobro en lote" options={[{value:'Transferencia bancaria',label:'Transferencia bancaria'},{value:'Tarjeta',label:'Tarjeta'},{value:'Efectivo',label:'Efectivo'},{value:'PayPal',label:'PayPal'},{value:'Bizum',label:'Bizum'},{value:'Domiciliación bancaria',label:'Domiciliación bancaria'},{value:'Otro',label:'Otro'}]}/></label><label className="salesSpan2">Referencia común<input value={reference} onChange={e=>setReference(e.target.value)} placeholder="Opcional"/></label></div></div><div className="salesBulkPaymentList">{invoices.map(invoice=><div key={invoice.id}><span>{invoice.invoiceNumber||'Factura'} · {invoice.clientName}</span><strong>{money(Math.max(0,invoice.totalAmount-invoice.paidAmount))}</strong></div>)}</div>{error&&<div className="errorBox">{error}</div>}<div className="modalActions"><button className="secondary" onClick={onClose} disabled={busy}>Cancelar</button><button className="primary" disabled={busy} onClick={save}>{busy?'Registrando…':`Cobrar ${money(total)}`}</button></div></div></div>;
 }
 
