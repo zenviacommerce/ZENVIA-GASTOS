@@ -30,4 +30,7 @@ test('configuration center core schema is workspace-scoped and RLS protected', a
   assert.match(sql, /audit_logs/i);
   assert.match(sql, /configuration/i);
   assert.match(sql, /create trigger audit_app_settings/i);
+
+  const allSql = await Promise.all(files.map(name => readFile(new URL(name, migrationsUrl), 'utf8')));
+  assert.match(allSql.join('\n'), /create index(?: if not exists)? user_preferences_owner_idx\s+on public\.user_preferences\s*\(owner_id,user_id\)/i);
 });
