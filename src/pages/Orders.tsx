@@ -113,11 +113,15 @@ function trackingFilterCode(order:FulfillmentOrder):Exclude<TrackingFilter,'all'
   if(tracking.className==='transit')return 'transit';
   return 'none';
 }
-function matchesOrderContext(order:FulfillmentOrder,query:string,channel:'all'|'amazon'|'shopify',trackingFilter:TrackingFilter){
+function matchesOrderContext(order:FulfillmentOrder,query:string,channel:'all'|'amazon'|'shopify',trackingFilter:TrackingFilter,countryFilter:string,carrierFilter:string){
   if(channel!=='all'&&order.sourceChannel!==channel)return false;
   if(trackingFilter!=='all'&&trackingFilterCode(order)!==trackingFilter)return false;
+  const country=text(order.shippingAddress.country_code).trim().toUpperCase()||'XX';
+  if(countryFilter!=='all'&&country!==countryFilter)return false;
+  const carrier=carrierLabel(order).trim().toLowerCase();
+  if(carrierFilter!=='all'&&carrier!==carrierFilter)return false;
   const q=query.trim().toLowerCase();
-  const haystack=[order.orderNumber||'',order.orderId||'',order.customerName||'',order.trackingNumber||'',order.trackingStatusMessage||'',carrierLabel(order),productsText(order)].join(' ').toLowerCase();
+  const haystack=[order.orderNumber||'',order.orderId||'',order.customerName||'',order.trackingNumber||'',order.trackingStatusMessage||'',carrierLabel(order),productsText(order),country].join(' ').toLowerCase();
   return !q||haystack.includes(q);
 }
 function carrierLabel(order:FulfillmentOrder){
@@ -181,7 +185,7 @@ function ManualOrderModal({status,saving,onClose,onSave}:{status:SendcloudStatus
 export function Orders(){
   const [orders,setOrders]=useState<FulfillmentOrder[]>([]),[status,setStatus]=useState<SendcloudStatus|null>(null);
   const [loading,setLoading]=useState(true),[syncing,setSyncing]=useState(false),[error,setError]=useState('');
-  const [query,setQuery]=useState(''),[channel,setChannel]=useState<'all'|'amazon'|'shopify'>('all'),[state,setState]=useState<OrderFilter>('pending'),[trackingFilter,setTrackingFilter]=useState<TrackingFilter>('all');
+  const [query,setQuery]=useState(''),[channel,setChannel]=useState<'all'|'amazon'|'shopify'>('all'),[state,setState]=useState<OrderFilter>('pending'),[trackingFilter,setTrackingFilter]=useState<TrackingFilter>('all'),[countryFilter,setCountryFilter]=useState('all'),[carrierFilter,setCarrierFilter]=useState('all');
   const [selected,setSelected]=useState<FulfillmentOrder|null>(null),[labelOrder,setLabelOrder]=useState<FulfillmentOrder|null>(null),[options,setOptions]=useState<ShippingOption[]>([]),[optionsLoading,setOptionsLoading]=useState(false),[busyOrder,setBusyOrder]=useState<string|null>(null);
   const [printers,setPrinters]=useState<LocalPrinter[]>([]),[printer,setPrinter]=useState(getSavedPrinter()),[printerChecking,setPrinterChecking]=useState(false);
   const [dateFilter,setDateFilter]=useState(defaultDateFilter);
@@ -205,14 +209,16 @@ export function Orders(){
   const orderPeriodOrders=useMemo(()=>orders.filter(order=>inPeriod(orderDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
   const labelPeriodOrders=useMemo(()=>orders.filter(order=>isLabelledOrder(order)&&inPeriod(labelDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
   const shippedPeriodOrders=useMemo(()=>orders.filter(order=>isProcessedOrder(order)&&inPeriod(shippedDateKey(order),dateFrom,dateTo)),[orders,dateFrom,dateTo]);
-  const orderContextOrders=useMemo(()=>orderPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter)),[orderPeriodOrders,query,channel,trackingFilter]);
-  const labelContextOrders=useMemo(()=>labelPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter)),[labelPeriodOrders,query,channel,trackingFilter]);
-  const shippedContextOrders=useMemo(()=>shippedPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter)),[shippedPeriodOrders,query,channel,trackingFilter]);
+  const countryOptions=useMemo(()=>[...new Set(orders.map(order=>text(order.shippingAddress.country_code).trim().toUpperCase()||'XX'))].sort().map(code=>({value:code,label:code==='XX'?'País pendiente':code})),[orders]);
+  const carrierOptions=useMemo(()=>[...new Set(orders.map(order=>carrierLabel(order)).filter(value=>value&&value!=='—'))].sort((a,b)=>a.localeCompare(b,'es')).map(value=>({value:value.toLowerCase(),label:value})),[orders]);
+  const orderContextOrders=useMemo(()=>orderPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter,countryFilter,carrierFilter)),[orderPeriodOrders,query,channel,trackingFilter,countryFilter,carrierFilter]);
+  const labelContextOrders=useMemo(()=>labelPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter,countryFilter,carrierFilter)),[labelPeriodOrders,query,channel,trackingFilter,countryFilter,carrierFilter]);
+  const shippedContextOrders=useMemo(()=>shippedPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter,countryFilter,carrierFilter)),[shippedPeriodOrders,query,channel,trackingFilter,countryFilter,carrierFilter]);
   const pendingOrders=useMemo(()=>orderContextOrders.filter(isPendingOrder),[orderContextOrders]);
   const tariffPreviews=useMemo(()=>{const map:Record<string,ShippingPricePreview>={};for(const order of orders){const preview=calculateDefaultShippingPreview(order,tariffs);if(preview)map[order.id]=preview}return map},[orders,tariffs]);
   const transportKpis=useMemo(()=>{
     let total=0,net=0,tax=0,valued=0,missing=0,mrw=0,correos=0,other=0;
-    const shipments=orders.filter(order=>Boolean(order.sendcloudParcelId)&&inPeriod(timestampDateKey(order.shippingCostRecordedAt||order.fulfilledAt||order.labelCreatedAt||order.trackingUpdatedAt||order.orderCreatedAt),dateFrom,dateTo)&&matchesOrderContext(order,query,channel,trackingFilter));
+    const shipments=orders.filter(order=>Boolean(order.sendcloudParcelId)&&inPeriod(timestampDateKey(order.shippingCostRecordedAt||order.fulfilledAt||order.labelCreatedAt||order.trackingUpdatedAt||order.orderCreatedAt),dateFrom,dateTo)&&matchesOrderContext(order,query,channel,trackingFilter,countryFilter,carrierFilter));
     for(const order of shipments){
       const shipping=shippingPriceForOrder(order,tariffPreviews[order.id]||shippingPreviews[order.id]);
       if(!shipping||shipping.totalAmount==null||!Number.isFinite(shipping.totalAmount)||shipping.currency.toUpperCase()!=='EUR'){missing+=1;continue}
@@ -221,7 +227,7 @@ export function Orders(){
       if(carrier.includes('mrw'))mrw+=shipping.totalAmount;else if(carrier.includes('correos'))correos+=shipping.totalAmount;else other+=shipping.totalAmount;
     }
     return {total,net,tax,valued,missing,mrw,correos,other,shipments:shipments.length};
-  },[orders,dateFrom,dateTo,query,channel,trackingFilter,tariffPreviews,shippingPreviews]);
+  },[orders,dateFrom,dateTo,query,channel,trackingFilter,countryFilter,carrierFilter,tariffPreviews,shippingPreviews]);
   useEffect(()=>{let cancelled=false;const targets=orders.filter(order=>isPendingOrder(order)&&defaultCarrierCode(order)==='correos'&&!order.shippingCostAmount);if(!targets.length)return;void(async()=>{const next:Record<string,ShippingPricePreview>={};for(const order of targets.slice(0,30)){try{const result=await getShippingOptions(order.id);const option=selectAutomaticShippingOption(order,result.options);const preview=previewFromShippingOption(option);if(preview)next[order.id]=preview}catch{/* La cotización se mostrará cuando el usuario prepare la etiqueta. */}}if(!cancelled&&Object.keys(next).length)setShippingPreviews(current=>({...current,...next}))})();return()=>{cancelled=true}},[orders]);
   const salesKpis=useMemo(()=>{const sales=orderContextOrders.filter(order=>!isCancelledOrder(order)&&order.totalAmount!=null&&(order.currency==null||order.currency==='EUR'));let gross=0,net=0,vat=0;for(const order of sales){const parts=taxParts(order);gross+=parts.gross;net+=parts.net;vat+=parts.vat}return {gross,net,vat,count:sales.length,average:sales.length?gross/sales.length:0}},[orderContextOrders]);
   const pending=pendingOrders.length,amazon=pendingOrders.filter(o=>o.sourceChannel==='amazon').length,shopify=pendingOrders.filter(o=>o.sourceChannel==='shopify').length,labelled=labelContextOrders.length,shipped=shippedContextOrders.length,cancelled=orderContextOrders.filter(isCancelledOrder).length;
@@ -231,7 +237,7 @@ export function Orders(){
   const allSelectableSelected=selectableOrders.length>0&&selectableOrders.every(order=>checkedIds.has(order.id));
   const toggleOrder=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
   const toggleAllOrders=(checked:boolean)=>setCheckedIds(checked?new Set(selectableOrders.map(order=>order.id)):new Set());
-  useEffect(()=>{setCheckedIds(new Set())},[query,channel,state,trackingFilter,dateFrom,dateTo]);
+  useEffect(()=>{setCheckedIds(new Set())},[query,channel,state,trackingFilter,countryFilter,carrierFilter,dateFrom,dateTo]);
 
   const prepare=async(order:FulfillmentOrder)=>{
     if(!canPrepareOrder(order)){showError('Este pedido ya no admite una nueva etiqueta.');return}
@@ -290,7 +296,16 @@ export function Orders(){
     <div className="stats ordersSalesStats"><div className="stat"><div className="statIcon"><Euro/></div><div><span>Total vendido</span><strong>{money(salesKpis.gross)}</strong><small>{salesKpis.count} pedidos · {selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><Percent/></div><div><span>IVA estimado</span><strong>{money(salesKpis.vat)}</strong><small>{selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><Calculator/></div><div><span>Neto sin IVA</span><strong>{money(salesKpis.net)}</strong><small>{selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Ticket medio</span><strong>{money(salesKpis.average)}</strong><small>{selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><Truck/></div><div><span>Coste transportistas (IVA incl.)</span><strong>{money(transportKpis.total)}</strong><small>MRW {money(transportKpis.mrw)} · Correos {money(transportKpis.correos)}</small><small>{transportKpis.valued}/{transportKpis.shipments} envíos con coste{transportKpis.missing?` · ${transportKpis.missing} sin valorar`:``}</small></div></div></div>
     <div className="stats ordersStats"><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Pendientes</span><strong>{pending}</strong><small>{selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><Store/></div><div><span>Amazon pendientes</span><strong>{amazon}</strong><small>{selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><ShoppingBag/></div><div><span>Shopify pendientes</span><strong>{shopify}</strong><small>{selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><PackageCheck/></div><div><span>Etiquetados</span><strong>{labelled}</strong><small>Fecha etiqueta · {selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><Truck/></div><div><span>Enviados</span><strong>{shipped}</strong><small>Fecha expedición · {selectedPeriod}</small></div></div><div className="stat"><div className="statIcon"><AlertCircle/></div><div><span>Cancelados</span><strong>{cancelled}</strong><small>{selectedPeriod}</small></div></div></div>
 
-    <div className="ordersToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar pedido, cliente, producto, tracking o transportista…"/></div><div className="ordersFilterGroup"><button className={state==='pending'?'active':''} onClick={()=>setState('pending')}>Pendientes</button><button className={state==='labelled'?'active':''} onClick={()=>setState('labelled')}>Etiquetados</button><button className={state==='shipped'?'active':''} onClick={()=>setState('shipped')}>Enviados</button><button className={state==='cancelled'?'active':''} onClick={()=>setState('cancelled')}>Cancelados</button><button className={state==='all'?'active':''} onClick={()=>setState('all')}>Todos</button></div><div className="ordersFilterGroup"><button className={channel==='all'?'active':''} onClick={()=>setChannel('all')}>Todos</button><button className={channel==='amazon'?'active':''} onClick={()=>setChannel('amazon')}>Amazon</button><button className={channel==='shopify'?'active':''} onClick={()=>setChannel('shopify')}>Shopify</button></div><label className="ordersTrackingFilter"><span>Seguimiento</span><SelectField value={trackingFilter} onChange={value=>setTrackingFilter(value as TrackingFilter)} ariaLabel="Filtrar por seguimiento" options={[{value:'all',label:'Todos'},{value:'none',label:'Sin etiqueta / pendiente'},{value:'ready',label:'Preparado'},{value:'transit',label:'En tránsito'},{value:'route',label:'En reparto'},{value:'pickup',label:'Punto de recogida'},{value:'delivered',label:'Entregado'},{value:'issue',label:'Incidencia'},{value:'cancelled',label:'Cancelado'}]}/></label></div>
+    <div className="ordersToolbar businessFilterBar">
+      <div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar pedido, cliente, producto, tracking o transportista…"/></div>
+      <div className="ordersFilterGroup"><button className={state==='pending'?'active':''} onClick={()=>setState('pending')}>Pendientes</button><button className={state==='labelled'?'active':''} onClick={()=>setState('labelled')}>Etiquetados</button><button className={state==='shipped'?'active':''} onClick={()=>setState('shipped')}>Enviados</button><button className={state==='cancelled'?'active':''} onClick={()=>setState('cancelled')}>Cancelados</button><button className={state==='all'?'active':''} onClick={()=>setState('all')}>Todos</button></div>
+      <div className="businessFilterFields">
+        <label className="filterField"><span>Canal</span><SelectField value={channel} onChange={value=>setChannel(value as 'all'|'amazon'|'shopify')} ariaLabel="Filtrar por canal" options={[{value:'all',label:'Todos los canales'},{value:'amazon',label:'Amazon'},{value:'shopify',label:'Shopify'}]}/></label>
+        <label className="filterField"><span>Destino</span><SelectField value={countryFilter} onChange={setCountryFilter} ariaLabel="Filtrar por país de destino" options={[{value:'all',label:'Todos los países'},...countryOptions]}/></label>
+        <label className="filterField"><span>Transportista</span><SelectField value={carrierFilter} onChange={setCarrierFilter} ariaLabel="Filtrar por transportista" options={[{value:'all',label:'Todos los transportistas'},...carrierOptions]}/></label>
+        <label className="filterField"><span>Seguimiento</span><SelectField value={trackingFilter} onChange={value=>setTrackingFilter(value as TrackingFilter)} ariaLabel="Filtrar por seguimiento" options={[{value:'all',label:'Todos'},{value:'none',label:'Sin etiqueta / pendiente'},{value:'ready',label:'Preparado'},{value:'transit',label:'En tránsito'},{value:'route',label:'En reparto'},{value:'pickup',label:'Punto de recogida'},{value:'delivered',label:'Entregado'},{value:'issue',label:'Incidencia'},{value:'cancelled',label:'Cancelado'}]}/></label>
+      </div>
+    </div>
     {selectableOrders.length>0&&<BulkSelectionToolbar selectedCount={selectedOrders.length} totalCount={selectableOrders.length} allSelected={allSelectableSelected} onToggleAll={toggleAllOrders} label="pedidos con etiqueta pendiente">
       <button className="primary" type="button" disabled={!selectedOrders.length||bulkGenerating||syncing||!status?.configured} onClick={()=>void generateSelectedLabels()}><Download size={15}/> {bulkGenerating&&selectedOrders.length?`Generando ${bulkProgress}`:`Generar etiquetas seleccionadas (${selectedOrders.length})`}</button>
     </BulkSelectionToolbar>}
