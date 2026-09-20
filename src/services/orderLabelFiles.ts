@@ -17,18 +17,11 @@ function normalized(value: string) {
 }
 
 export function labelPdfBaseName(order: LabelOrder) {
-  const first = order.items?.[0] || {};
-  const raw = text(first.name) || text(first.description) || text(first.sku) || order.orderNumber || 'pedido';
-  const parts = raw.split('|').map(part => part.trim()).filter(Boolean);
-  const candidate = (parts.length > 1 ? parts[1] : raw).replace(/^zenic\b[\s|:–—-]*/i, '').trim();
-  const words = normalized(candidate)
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  const short = words.slice(0, 3).join('_');
-  if (short) return short;
-  return normalized(order.orderNumber || 'pedido').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'pedido';
+  const orderNumber = text(order.orderNumber).trim();
+  if (!orderNumber) return 'pedido';
+  return orderNumber
+    .replace(/[^a-z0-9._-]+/gi, '_')
+    .replace(/^_+|_+$/g, '') || 'pedido';
 }
 
 export function uniqueLabelPdfFilename(order: LabelOrder, used: Set<string>) {
