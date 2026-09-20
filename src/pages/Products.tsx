@@ -6,7 +6,7 @@ import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSele
 import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
 import { StatCard } from '../components/StatCard';
 import { SelectField } from '../components/forms/SelectField';
-import { defaultDateFilter, periodLabel } from '../services/filters';
+import { dateFilterForPreset, periodLabel } from '../services/filters';
 import { loadProductSalesMap } from '../services/productEditor';
 import { productMarginMetrics } from '../services/productMetrics';
 import { showError, showSuccess } from '../services/toast';
@@ -50,7 +50,7 @@ function ProductDrawer({product,extra,onClose,onEdit,onDelete,busy}:{product:Pro
 
 export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];onAdd:()=>void;onEdit:(product:Product)=>void;onDelete:(product:Product)=>Promise<void>}){
  const [query,setQuery]=useState('');
- const [dateFilter,setDateFilter]=useState(defaultDateFilter);
+ const [dateFilter,setDateFilter]=useState(()=>dateFilterForPreset('all'));
  const [categoryFilter,setCategoryFilter]=useState('all');
  const [supplierFilter,setSupplierFilter]=useState('all');
  const [scope,setScope]=useState<ProductScope>('all');
