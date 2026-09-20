@@ -129,6 +129,7 @@ function validTaxIdCandidate(raw:string|undefined|null){
   if(!raw)return undefined;
   const value=normalizeTaxId(raw);
   if(!value||taxIdError(value,false))return undefined;
+  if(/^[A-Z]{2}/.test(value)&&!knownTaxPrefixes.has(value.slice(0,2)))return undefined;
   return value;
 }
 
