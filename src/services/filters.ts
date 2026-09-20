@@ -56,16 +56,16 @@ export function dateFilterForPreset(preset: PeriodPreset, now = new Date()): Dat
   return { preset, from: range?.from || '', to: range?.to || '' };
 }
 
-export function defaultDateFilter(): DateRangeFilter {
-  return dateFilterForPreset('current_quarter');
+export function defaultDateFilter(preset: PeriodPreset = 'current_quarter', now = new Date()): DateRangeFilter {
+  return dateFilterForPreset(preset, now);
 }
 
 export function filterForPreset(preset: PeriodPreset, supplierId = '', now = new Date()): InvoiceFilter {
   return { ...dateFilterForPreset(preset, now), supplierId, categoryId: '', status: '', source: '' };
 }
 
-export function defaultInvoiceFilter(): InvoiceFilter {
-  return filterForPreset('current_quarter');
+export function defaultInvoiceFilter(preset: PeriodPreset = 'current_quarter', now = new Date()): InvoiceFilter {
+  return filterForPreset(preset, '', now);
 }
 
 export function filterInvoices(invoices: Invoice[], filter: InvoiceFilter) {
