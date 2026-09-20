@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Banknote, CalendarDays, CheckCircle2, Download, Eye, FileCheck2, FilePenLine,
+  BadgeEuro, Banknote, Calculator, CalendarDays, CheckCircle2, Download, Eye, FileCheck2, FilePenLine,
   ImagePlus, ListOrdered, Mail, PackageSearch, Pencil, Plus, Printer, ReceiptText, RotateCcw, Search, Settings2,
   Trash2, UserRound, WalletCards, X,
 } from 'lucide-react';
@@ -28,6 +28,9 @@ import { PostalAddressFields } from '../components/forms/PostalAddressFields';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
 import { SelectField } from '../components/forms/SelectField';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
+import { StatCard } from '../components/StatCard';
+import { defaultDateFilter, periodLabel } from '../services/filters';
 import '../sales.css';
 
 const today=()=>new Date().toISOString().slice(0,10);
@@ -204,18 +207,27 @@ export function SalesInvoices({
   selectedIds=[],
   onSelectedIdsChange,
   onExportSelected,
+  onFiltersChange,
 }:{
   selectedIds?:string[];
   onSelectedIdsChange?:(ids:string[])=>void;
   onExportSelected?:(ids:string[])=>void;
+  onFiltersChange?:(filters:{query:string;status:string;from:string;to:string})=>void;
 }={}){
   const [invoices,setInvoices]=useState<SalesInvoice[]>([]);const [clients,setClients]=useState<Client[]>([]);const [products,setProducts]=useState<BillableProduct[]>([]);const [settings,setSettings]=useState<BusinessSettings>({legalName:'ZENVIA COMMERCE SL',countryCode:'ES'});const [branding,setBranding]=useState<CompanyBranding>({ownerId:'',logoPath:null,logoDataUrl:null});
-  const [query,setQuery]=useState('');const [status,setStatus]=useState('all');const [loading,setLoading]=useState(true);const [error,setError]=useState('');
+  const [query,setQuery]=useState('');const [status,setStatus]=useState('all');const [dateFilter,setDateFilter]=useState(defaultDateFilter);const [loading,setLoading]=useState(true);const [error,setError]=useState('');
   const [modal,setModal]=useState(false);const [editing,setEditing]=useState<SalesInvoice|null>(null);const [detail,setDetail]=useState<SalesInvoice|null>(null);const [businessModal,setBusinessModal]=useState(false);const [seriesModal,setSeriesModal]=useState(false);const [paymentInvoice,setPaymentInvoice]=useState<SalesInvoice|null>(null);const [sendInvoice,setSendInvoice]=useState<SalesInvoice|null>(null);const [busyId,setBusyId]=useState<string|null>(null);const [bulkDeleting,setBulkDeleting]=useState(false);const [bulkIssuing,setBulkIssuing]=useState(false);
   const refresh=async()=>{setLoading(true);try{await ensureSalesSeries(new Date().getFullYear());const [nextInvoices,nextClients,nextSettings,nextProducts,nextBranding]=await Promise.all([loadSalesInvoices(),loadClients(),loadBusinessSettings(),loadBillableProducts(),loadCompanyBranding()]);setInvoices(nextInvoices);setClients(nextClients);setSettings(nextSettings);setProducts(nextProducts);setBranding(nextBranding);setDetail(current=>current?nextInvoices.find(item=>item.id===current.id)||null:null);setError('');}catch(e){setError(errorMessage(e,'No se pudo cargar la facturación.'));}finally{setLoading(false);}};
   useEffect(()=>{void refresh();},[]);
-  const filtered=useMemo(()=>{const q=query.trim().toLowerCase();return invoices.filter(i=>(status==='all'||i.status===status)&&(!q||[i.invoiceNumber||'borrador',i.clientName,i.clientTaxId||'',i.issuerTaxId||''].some(v=>v.toLowerCase().includes(q))));},[invoices,query,status]);
-  useEffect(()=>{onSelectedIdsChange?.([]);},[query,status]);
+  const filtered=useMemo(()=>{const q=query.trim().toLowerCase();return invoices.filter(i=>{
+    if(status!=='all'&&i.status!==status)return false;
+    if(dateFilter.from&&i.issueDate<dateFilter.from)return false;
+    if(dateFilter.to&&i.issueDate>dateFilter.to)return false;
+    if(q&&![i.invoiceNumber||'borrador',i.clientName,i.clientTaxId||'',i.issuerTaxId||''].some(v=>v.toLowerCase().includes(q)))return false;
+    return true;
+  });},[invoices,query,status,dateFilter]);
+  useEffect(()=>{onSelectedIdsChange?.([]);},[query,status,dateFilter]);
+  useEffect(()=>{onFiltersChange?.({query,status,from:dateFilter.from,to:dateFilter.to});},[query,status,dateFilter,onFiltersChange]);
   const selectedSet=useMemo(()=>new Set(selectedIds),[selectedIds]);
   const selectedVisible=filtered.filter(invoice=>selectedSet.has(invoice.id));
   const deletableSelected=selectedVisible.filter(invoice=>invoice.status==='draft'||invoice.status==='issued');
@@ -225,7 +237,15 @@ export function SalesInvoices({
   const toggleInvoice=(id:string,checked:boolean)=>{const next=new Set(selectedSet);if(checked)next.add(id);else next.delete(id);changeSelection(next);};
   const toggleAllVisible=(checked:boolean)=>{const next=new Set(selectedSet);for(const invoice of filtered){if(checked)next.add(invoice.id);else next.delete(invoice.id);}changeSelection(next);};
 
-  const totals=useMemo(()=>({issued:invoices.filter(i=>i.status!=='draft').reduce((s,i)=>s+i.totalAmount,0),pending:invoices.filter(i=>i.invoiceType==='standard'&&!['draft','paid','rectified'].includes(i.status)).reduce((s,i)=>s+Math.max(0,i.totalAmount-i.paidAmount),0),drafts:invoices.filter(i=>i.status==='draft').length}),[invoices]);
+  const selectedPeriod=periodLabel(dateFilter);
+  const totals=useMemo(()=>{
+    const issuedRows=filtered.filter(invoice=>invoice.status!=='draft');
+    const issued=issuedRows.reduce((sum,invoice)=>sum+invoice.totalAmount,0);
+    const tax=issuedRows.reduce((sum,invoice)=>sum+invoice.taxAmount,0);
+    const pending=filtered.filter(invoice=>invoice.invoiceType==='standard'&&!['draft','paid','rectified'].includes(invoice.status)).reduce((sum,invoice)=>sum+Math.max(0,invoice.totalAmount-invoice.paidAmount),0);
+    const drafts=filtered.filter(invoice=>invoice.status==='draft').length;
+    return {issued,tax,pending,drafts,count:issuedRows.length,average:issuedRows.length?issued/issuedRows.length:0};
+  },[filtered]);
   const openNew=()=>{if(!clients.length){showError('Crea al menos un cliente antes de preparar una factura.');return;}setEditing(null);setModal(true);};
   const edit=(invoice:SalesInvoice)=>{setDetail(null);setEditing(invoice);setModal(true);};
   const reopenForEdit=async(invoice:SalesInvoice)=>{
@@ -414,8 +434,16 @@ export function SalesInvoices({
     finally{setBusyId(null);}
   };
   return <div className="page"><div className="pageHead"><div><div className="eyebrow">VENTAS</div><h1>Facturación</h1><p>Borradores, series, registros IVA, emisión, envío por Gmail, cobros y rectificativas desde un único sitio.</p></div><div className="actions"><button className="secondary" onClick={()=>setSeriesModal(true)}><ListOrdered size={17}/> Series</button><button className="secondary" onClick={()=>setBusinessModal(true)}><Settings2 size={17}/> Datos fiscales</button><button className="primary" onClick={openNew}>+ Nueva factura</button></div></div>
-    <div className="stats salesStats"><div className="stat"><div className="statIcon"><ReceiptText/></div><div><span>Facturado</span><strong>{money(totals.issued)}</strong><small>Incluye rectificativas</small></div></div><div className="stat"><div className="statIcon"><Banknote/></div><div><span>Pendiente de cobro</span><strong>{money(totals.pending)}</strong><small>Facturas ordinarias vivas</small></div></div><div className="stat"><div className="statIcon"><FilePenLine/></div><div><span>Borradores</span><strong>{totals.drafts}</strong><small>Pendientes de emitir</small></div></div></div>
-    <div className="toolbar salesToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente, CIF, VAT o nº factura…"/></div><SelectField value={status} onChange={setStatus} ariaLabel="Estado de factura" options={[{value:'all',label:'Todos los estados'},{value:'draft',label:'Borradores'},{value:'issued',label:'Emitidas'},{value:'sent',label:'Enviadas'},{value:'partially_paid',label:'Cobro parcial'},{value:'paid',label:'Cobradas'},{value:'rectified',label:'Rectificadas'}]}/></div>
+    <PeriodFilterPanel filter={dateFilter} onChange={setDateFilter} title="Periodo de facturación"/>
+    <div className="stats salesStats normalizedKpiStats">
+      <StatCard label="Facturado" value={money(totals.issued)} sub={selectedPeriod} icon={<ReceiptText/>}/>
+      <StatCard label="IVA repercutido" value={money(totals.tax)} sub={selectedPeriod} icon={<BadgeEuro/>}/>
+      <StatCard label="Pendiente de cobro" value={money(totals.pending)} sub="Facturas ordinarias vivas" icon={<Banknote/>}/>
+      <StatCard label="Facturas emitidas" value={String(totals.count)} sub={selectedPeriod} icon={<CalendarDays/>}/>
+      <StatCard label="Borradores" value={String(totals.drafts)} sub="Pendientes de emitir" icon={<FilePenLine/>}/>
+      <StatCard label="Ticket medio" value={money(totals.average)} sub="Sobre facturas emitidas" icon={<Calculator/>}/>
+    </div>
+    <div className="toolbar salesToolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente, CIF, VAT o nº factura…"/></div><SelectField value={status} onChange={setStatus} ariaLabel="Estado de factura" options={[{value:'all',label:'Todos los estados'},{value:'draft',label:'Borradores'},{value:'issued',label:'Emitidas'},{value:'sent',label:'Enviadas'},{value:'partially_paid',label:'Cobro parcial'},{value:'paid',label:'Cobradas'},{value:'rectified',label:'Rectificadas'}]}/><span className="filterResultCount">{filtered.length} factura{filtered.length===1?'':'s'} · {selectedPeriod}</span></div>
     {filtered.length>0&&<BulkSelectionToolbar selectedCount={selectedVisible.length} totalCount={filtered.length} allSelected={allVisibleSelected} onToggleAll={toggleAllVisible} label="facturas visibles">
       <button className="secondary" type="button" disabled={!issuableSelected.length||bulkIssuing||bulkDeleting} onClick={()=>void issueSelected()}><FileCheck2 size={15}/> {bulkIssuing?'Emitiendo…':`Emitir seleccionadas (${issuableSelected.length})`}</button>
       <button className="secondary dangerText" type="button" disabled={!deletableSelected.length||bulkDeleting||bulkIssuing} onClick={()=>void removeSelected()}><Trash2 size={15}/> {bulkDeleting?'Eliminando…':`Eliminar seleccionadas (${deletableSelected.length})`}</button>
