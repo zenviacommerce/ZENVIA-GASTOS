@@ -9,6 +9,7 @@ import { SupplierModal } from './components/SupplierModal';
 import { ToastHost } from './components/ToastHost';
 import { AuthScreen } from './components/AuthScreen';
 import { PasskeySetup } from './components/PasskeySetup';
+import { SettingsProvider } from './context/SettingsContext';
 import { Dashboard } from './pages/Dashboard';
 import { ExpenseInvoicesHub } from './pages/ExpenseInvoicesHub';
 import { SalesInvoices } from './pages/SalesInvoices';
@@ -182,7 +183,7 @@ export default function App(){
    await runAction(async()=>{await deleteSupplier(supplier.id);await refresh()},'No se pudo eliminar el proveedor.');
  };
 
- return <div className="app"><ToastHost/><Sidebar page={page} onChange={navigate} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme} allowedPages={allowedPages} isAdmin={access.role==='admin'} user={{fullName:access.fullName,email:access.email||session.user.email||'',role:access.role}}/><main>
+ return <SettingsProvider userId={userId}><div className="app"><ToastHost/><Sidebar page={page} onChange={navigate} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme} allowedPages={allowedPages} isAdmin={access.role==='admin'} user={{fullName:access.fullName,email:access.email||session.user.email||'',role:access.role}}/><main>
    <button className="mobileLogoutButton" onClick={()=>supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut size={19}/></button>
    <button className="mobileThemeToggle" onClick={toggleTheme} title={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'} aria-label={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'}>{theme==='dark'?<Sun size={19}/>:<Moon size={19}/>}</button>
    <PasskeySetup userId={session.user.id}/>
@@ -202,5 +203,5 @@ export default function App(){
  {can('invoices')&&<BulkInvoiceImportModal open={bulkUpload} onClose={()=>setBulkUpload(false)} categories={data.categories} existingInvoices={data.invoices} onSave={saveBulkInvoice} onFinished={finishBulkImport}/>} 
  {can('products')&&<ProductModal open={productModal} product={productToEdit} suppliers={data.suppliers} onClose={closeProductModal} onSave={saveProduct}/>} 
  {can('suppliers')&&<SupplierModal open={supplierModal} supplier={supplierToEdit} onClose={closeSupplierModal} onSave={saveSupplier}/>} 
- </div>
+ </div></SettingsProvider>
 }
