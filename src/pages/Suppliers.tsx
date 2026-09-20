@@ -119,7 +119,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  const paged=useMemo(()=>filtered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[filtered,page]);
  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,filter,period,dateFrom,dateTo]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
- const totals=useMemo(()=>({spent:suppliers.reduce((sum,s)=>sum+(metrics.get(s.id)?.total||0),0),invoices:suppliers.reduce((sum,s)=>sum+(metrics.get(s.id)?.count||0),0),active:suppliers.filter(s=>(metrics.get(s.id)?.count||0)>0).length}),[suppliers,metrics]);
+ const totals=useMemo(()=>({spent:filtered.reduce((sum,s)=>sum+(metrics.get(s.id)?.total||0),0),invoices:filtered.reduce((sum,s)=>sum+(metrics.get(s.id)?.count||0),0),active:filtered.filter(s=>(metrics.get(s.id)?.count||0)>0).length}),[filtered,metrics]);
 
  const remove=async(supplier:Supplier)=>{
    const confirmed=await confirmAction({title:'Eliminar proveedor',message:`Se eliminará “${supplier.name}”.`,confirmLabel:'Eliminar',tone:'danger',details:['Las facturas existentes no se borrarán; quedarán sin proveedor asignado.']});
@@ -163,7 +163,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
     </div>
 
     <div className="stats masterStats">
-      <div className="stat"><div className="statIcon"><Building2/></div><div><span>Proveedores con actividad</span><strong>{totals.active}</strong><small>de {suppliers.length} registrados · {periodLabel.toLowerCase()}</small></div></div>
+      <div className="stat"><div className="statIcon"><Building2/></div><div><span>Proveedores con actividad</span><strong>{totals.active}</strong><small>de {filtered.length} visibles · {periodLabel.toLowerCase()}</small></div></div>
       <div className="stat"><div className="statIcon"><ShoppingCart/></div><div><span>Gasto del periodo</span><strong>{money(totals.spent)}</strong><small>{periodLabel}</small></div></div>
       <div className="stat"><div className="statIcon"><FileText/></div><div><span>Facturas recibidas</span><strong>{totals.invoices}</strong><small>{periodLabel}</small></div></div>
     </div>
