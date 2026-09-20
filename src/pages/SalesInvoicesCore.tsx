@@ -38,7 +38,7 @@ const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:
 const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
 const statusLabel=(status:SalesInvoice['status'])=>({draft:'Borrador',issued:'Emitida',sent:'Enviada',partially_paid:'Cobro parcial',paid:'Cobrada',rectified:'Rectificada'}[status]);
 const statusClass=(status:SalesInvoice['status'])=>`salesStatus ${status}`;
-const isOverdueInvoice=(invoice:SalesInvoice)=>invoice.invoiceType==='standard'&&!['draft','paid','rectified'].includes(invoice.status)&&Boolean(invoice.dueDate)&&invoice.dueDate!>=today()&&Math.max(0,invoice.totalAmount-invoice.paidAmount)>0.005;
+const isOverdueInvoice=(invoice:SalesInvoice)=>invoice.invoiceType==='standard'&&!['draft','paid','rectified'].includes(invoice.status)&&invoice.dueDate!=null&&invoice.dueDate<today()&&Math.max(0,invoice.totalAmount-invoice.paidAmount)>0.005;
 const regionNames=typeof Intl!=='undefined'&&'DisplayNames' in Intl?new Intl.DisplayNames(['es'],{type:'region'}):null;
 const countryName=(code:string)=>regionNames?.of(code)||code;
 type CollectionFilter='all'|'open'|'overdue'|'paid';
