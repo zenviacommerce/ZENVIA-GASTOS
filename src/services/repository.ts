@@ -153,14 +153,20 @@ async function ensureSupplier(name: string, contactInput: SupplierProfileData = 
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score);
 
-  const match = ranked[0]?.supplier;
+  const bestMatch = ranked[0];
+  const match = bestMatch?.supplier;
   if (match?.id) {
     const patch: Record<string, string> = {};
-    if (!match.tax_id && contact.taxId) patch.tax_id = contact.taxId;
-    if (!match.email && contact.email) patch.email = contact.email;
-    if (!match.phone && contact.phone) patch.phone = contact.phone;
-    if (!match.address && contact.address) patch.address = contact.address;
-    if (!match.website && contact.website) patch.website = contact.website;
+    // Solo enriquecemos datos fiscales/contacto cuando la identidad es exacta
+    // o coincide el propio identificador fiscal. Una coincidencia por nombre
+    // abreviado sirve para reutilizar el proveedor, pero no para copiar datos
+    // potencialmente pertenecientes al bloque del cliente de la factura.
+    const safeToEnrich = (bestMatch?.score ?? 0) >= 100;
+    if (safeToEnrich && !match.tax_id && contact.taxId) patch.tax_id = contact.taxId;
+    if (safeToEnrich && !match.email && contact.email) patch.email = contact.email;
+    if (safeToEnrich && !match.phone && contact.phone) patch.phone = contact.phone;
+    if (safeToEnrich && !match.address && contact.address) patch.address = contact.address;
+    if (safeToEnrich && !match.website && contact.website) patch.website = contact.website;
     if (supplierTypeHint === 'goods') {
       if (!match.supplier_type || match.supplier_type === 'unclassified') patch.supplier_type = 'goods';
       else if (match.supplier_type === 'service') patch.supplier_type = 'both';
