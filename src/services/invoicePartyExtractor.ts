@@ -125,12 +125,36 @@ function extractName(block:string[],options:Options){
   return hinted||undefined;
 }
 
+function validTaxIdCandidate(raw:string|undefined|null){
+  if(!raw)return undefined;
+  const value=normalizeTaxId(raw);
+  if(!value||taxIdError(value,false))return undefined;
+  return value;
+}
+
 function extractTaxId(block:string[]){
   const joined=block.join(' ');
-  const labelled=joined.match(/\b(?:CIF|NIF|NIE|VAT(?:\s*(?:ID|NO|NUMBER))?|TAX\s*ID)\s*[:#-]?\s*([A-Z]{0,2}\s*[A-Z0-9](?:[\s.-]*[A-Z0-9]){6,14})/i)?.[1];
-  if(!labelled)return undefined;
-  const value=normalizeTaxId(labelled);
-  return taxIdError(value,false)?undefined:value;
+  const labelled=joined.match(/\b(?:CIF|NIF|NIE|VAT(?:\s*(?:ID|NO|NUMBER))?|TAX\s*ID|TVA|UST[-\s]?ID|UID)\s*[:#-]?\s*([A-Z]{0,2}\s*[A-Z0-9](?:[\s.-]*[A-Z0-9]){6,14})/i)?.[1];
+  const labelledValue=validTaxIdCandidate(labelled);
+  if(labelledValue)return labelledValue;
+
+  // Muchas facturas B2B muestran el CIF/VAT como una línea independiente justo
+  // debajo del nombre del cliente, sin prefijo "CIF:" o "VAT:". El importador
+  // anterior ignoraba esos casos. Como este bloque ya está acotado al receptor,
+  // podemos buscar identificadores fiscales válidos sin confundirlos con el emisor.
+  const candidatePatterns=[
+    /\b(?:[ABCDEFGHJNPQRSUVW]\s*\d(?:[\s.-]*\d){6}[\s.-]*[0-9A-J])\b/gi,
+    /\b(?:\d(?:[\s.-]*\d){7}[\s.-]*[A-Z])\b/gi,
+    /\b(?:[XYZ]\s*\d(?:[\s.-]*\d){6}[\s.-]*[A-Z])\b/gi,
+    /\b(?:[A-Z]{2}\s*[A-Z0-9](?:[\s.-]*[A-Z0-9]){5,11})\b/gi,
+  ];
+  for(const pattern of candidatePatterns){
+    for(const match of joined.matchAll(pattern)){
+      const value=validTaxIdCandidate(match[0]);
+      if(value)return value;
+    }
+  }
+  return undefined;
 }
 
 function extractEmail(block:string[]){
