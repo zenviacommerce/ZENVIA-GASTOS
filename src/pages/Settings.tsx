@@ -22,7 +22,7 @@ import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
 import { showError, showSuccess } from '../services/toast';
-import type { AmazonSettings, ClientsSettings, ExpensesSettings, IntegrationsSettings, OrdersSettings, ProductsSettings, SalesSettings, ShippingSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
+import type { AmazonSettings, ClientsSettings, ExpensesSettings, IntegrationsSettings, NotificationsSettings, NotificationSetting, OrdersSettings, ProductsSettings, SalesSettings, ShippingSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 import { loadManagedSalesSeries, loadTaxRegistrations, type ManagedSalesSeries, type TaxRegistration } from '../services/salesConfig';
@@ -978,6 +978,77 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
   </section>;
 }
 
+function AlertsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {settings,updateSection,resetSection}=useSettings();
+  const [draft,setDraft]=useState<NotificationsSettings>(settings.notifications);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{setDraft(settings.notifications);onDirtyChange(false)},[settings.notifications,onDirtyChange]);
+
+  const definitions:Array<{
+    key:keyof NotificationsSettings;
+    label:string;
+    description:string;
+    threshold?:{label:string;unit:string;min:number;max:number;step:number;fallback:number};
+  }>=[
+    {key:'overdueSalesInvoice',label:'Facturas de venta vencidas',description:'Avisa cuando una factura emitida mantiene importe pendiente después de su vencimiento.',threshold:{label:'Retraso mínimo',unit:'días',min:0,max:365,step:1,fallback:0}},
+    {key:'pendingExpenseReview',label:'Gastos pendientes de revisión',description:'Detecta facturas recibidas que siguen en estado pendiente.',threshold:{label:'Antigüedad mínima',unit:'días',min:0,max:365,step:1,fallback:0}},
+    {key:'pendingOrder',label:'Pedidos pendientes',description:'Avisa cuando un pedido lleva demasiado tiempo sin completarse.',threshold:{label:'Tiempo mínimo',unit:'horas',min:1,max:720,step:1,fallback:24}},
+    {key:'missingTracking',label:'Pedidos sin seguimiento',description:'Detecta pedidos enviados o etiquetados que todavía no tienen tracking.',threshold:{label:'Espera mínima',unit:'horas',min:0,max:168,step:1,fallback:0}},
+    {key:'amazonError',label:'Errores de Amazon',description:'Muestra errores recientes del estado o sincronización de Amazon.'},
+    {key:'sendcloudError',label:'Errores de Sendcloud',description:'Muestra errores recientes de conexión o sincronización de Sendcloud.'},
+    {key:'gmailError',label:'Errores de Gmail',description:'Avisa si Gmail no está disponible o la conexión falla.'},
+    {key:'productWithoutCost',label:'Productos sin coste',description:'Detecta productos sin un coste de compra válido.'},
+    {key:'negativeMargin',label:'Margen bajo o negativo',description:'Avisa cuando el margen estimado de un producto cae por debajo del umbral.',threshold:{label:'Margen mínimo',unit:'%',min:-100,max:100,step:0.5,fallback:0}},
+    {key:'costIncrease',label:'Subidas de coste',description:'Avisa cuando el último coste supera al anterior por encima del porcentaje indicado.',threshold:{label:'Subida mínima',unit:'%',min:0,max:1000,step:0.5,fallback:10}},
+    {key:'clientMissingTaxId',label:'Clientes sin NIF/VAT',description:'Detecta clientes que no tienen identificación fiscal informada.'},
+    {key:'supplierMissingTaxId',label:'Proveedores sin NIF/VAT',description:'Detecta proveedores que no tienen identificación fiscal informada.'},
+  ];
+
+  const patch=(key:keyof NotificationsSettings,changes:Partial<NotificationSetting>)=>{
+    setDraft(current=>({...current,[key]:{...current[key],...changes}}));
+    onDirtyChange(true);
+  };
+
+  const save=async()=>{
+    setSaving(true);
+    try{await updateSection('notifications',draft);onDirtyChange(false);showSuccess('Configuración de alertas guardada.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración de alertas.');}
+    finally{setSaving(false);}
+  };
+
+  const restore=async()=>{
+    if(!window.confirm('Se restaurarán los valores predeterminados de Alertas. ¿Continuar?'))return;
+    setSaving(true);
+    try{await resetSection('notifications');onDirtyChange(false);showSuccess('Valores predeterminados de Alertas restaurados.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar las alertas.');}
+    finally{setSaving(false);}
+  };
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero"><div className="settingsSectionIcon"><BellRing size={22}/></div><div><h2>Alertas y automatizaciones</h2><p>Alertas operativas derivadas de los datos reales de la aplicación. Por ahora, el canal implementado es dentro de la aplicación.</p></div></div>
+    <div className="settingsSubsection">
+      <h3>Alertas</h3>
+      <p className="settingsHelpText">Las alertas no crean registros ni envían correos: se calculan al vuelo y aparecen en la campana global.</p>
+      <div className="settingsAlertGrid">
+        {definitions.map(definition=>{
+          const value=draft[definition.key];
+          const thresholdValue=value.threshold??definition.threshold?.fallback??0;
+          return <div className="settingsAlertCard" key={definition.key}>
+            <div className="settingsAlertCardHead">
+              <div><strong>{definition.label}</strong><small>{definition.description}</small></div>
+              <label className="settingsMiniToggle"><input type="checkbox" checked={value.enabled} onChange={e=>patch(definition.key,{enabled:e.target.checked})}/><span>Activa</span></label>
+            </div>
+            <label className="settingsToggleField"><input type="checkbox" checked={value.inApp} disabled={!value.enabled} onChange={e=>patch(definition.key,{inApp:e.target.checked})}/><span><strong>Dentro de la aplicación</strong><small>Mostrar esta alerta en el centro global.</small></span></label>
+            {definition.threshold&&<label className="settingsField settingsAlertThreshold"><span>{definition.threshold.label}</span><div className="settingsNumberWithSuffix"><input type="number" min={definition.threshold.min} max={definition.threshold.max} step={definition.threshold.step} value={thresholdValue} disabled={!value.enabled} onChange={e=>patch(definition.key,{threshold:Number(e.target.value)})}/><em>{definition.threshold.unit}</em></div></label>}
+          </div>;
+        })}
+      </div>
+    </div>
+    <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+  </section>;
+}
+
 function ProductsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   const {settings,updateSection,resetSection}=useSettings();
   const [draft,setDraft]=useState<ProductsSettings>(settings.products);
@@ -1359,7 +1430,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='amazon'?<AmazonSection onDirtyChange={setDirty}/>:active&&active.id==='integrations'?<IntegrationsSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='amazon'?<AmazonSection onDirtyChange={setDirty}/>:active&&active.id==='integrations'?<IntegrationsSection onDirtyChange={setDirty}/>:active&&active.id==='automations'?<AlertsSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
