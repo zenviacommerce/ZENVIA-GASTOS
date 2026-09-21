@@ -16,6 +16,8 @@ export type Client = {
   province?: string | null;
   countryCode: string;
   paymentTermsDays: number;
+  defaultVatRate?: number | null;
+  defaultPaymentMethod?: string | null;
   notes?: string | null;
 };
 
@@ -136,11 +138,11 @@ const addressFrom=(row:any)=>[row?.address_line1,row?.address_line2,[row?.postal
 export async function loadClients():Promise<Client[]> {
   const {data,error}=await supabase.from('clients').select('*').eq('active',true).order('name');
   if(error)throw error;
-  return (data??[]).map((row:any)=>({id:row.id,name:row.name,taxId:row.tax_id,email:row.email,phone:row.phone,addressLine1:row.address_line1,addressLine2:row.address_line2,postalCode:row.postal_code,city:row.city,province:row.province,countryCode:row.country_code||'ES',paymentTermsDays:Number(row.payment_terms_days||0),notes:row.notes}));
+  return (data??[]).map((row:any)=>({id:row.id,name:row.name,taxId:row.tax_id,email:row.email,phone:row.phone,addressLine1:row.address_line1,addressLine2:row.address_line2,postalCode:row.postal_code,city:row.city,province:row.province,countryCode:row.country_code||'ES',paymentTermsDays:Number(row.payment_terms_days||0),defaultVatRate:row.default_vat_rate==null?null:Number(row.default_vat_rate),defaultPaymentMethod:row.default_payment_method||null,notes:row.notes}));
 }
 
 function clientRow(input:ClientInput){
-  return {name:sanitizeDatabaseSingleLine(input.name),tax_id:nullable(input.taxId),email:nullable(input.email)?.toLowerCase()||null,phone:nullable(input.phone),address_line1:nullable(input.addressLine1),address_line2:nullable(input.addressLine2),postal_code:nullable(input.postalCode),city:nullable(input.city),province:nullable(input.province),country_code:sanitizeDatabaseSingleLine(input.countryCode||'ES').toUpperCase().slice(0,2),payment_terms_days:Math.max(0,Math.round(input.paymentTermsDays||0)),notes:nullable(input.notes)};
+  return {name:sanitizeDatabaseSingleLine(input.name),tax_id:nullable(input.taxId),email:nullable(input.email)?.toLowerCase()||null,phone:nullable(input.phone),address_line1:nullable(input.addressLine1),address_line2:nullable(input.addressLine2),postal_code:nullable(input.postalCode),city:nullable(input.city),province:nullable(input.province),country_code:sanitizeDatabaseSingleLine(input.countryCode||'ES').toUpperCase().slice(0,2),payment_terms_days:Math.max(0,Math.round(input.paymentTermsDays||0)),default_vat_rate:input.defaultVatRate==null?null:Math.min(100,Math.max(0,Number(input.defaultVatRate))),default_payment_method:nullable(input.defaultPaymentMethod),notes:nullable(input.notes)};
 }
 
 export async function addClient(input:ClientInput){const {data,error}=await supabase.from('clients').insert(clientRow(input)).select('id').single();if(error)throw error;return data.id as string;}
