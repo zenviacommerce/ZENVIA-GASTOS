@@ -9,10 +9,12 @@ declare
   v_raw text;
   v_days integer := 30;
 begin
-  select s.config #>> '{sales,defaultDueDays}'
-    into v_raw
-  from public.app_settings s
-  where s.owner_id=p_owner;
+  select coalesce((
+    select s.config #>> '{sales,defaultDueDays}'
+    from public.app_settings s
+    where s.owner_id=p_owner
+  ),'30')
+  into v_raw;
 
   if v_raw is not null and v_raw ~ '^[0-9]{1,3}$' then
     v_days := v_raw::integer;
