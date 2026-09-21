@@ -83,7 +83,7 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
     }
     setError('');
     loadTaxRegistrations().then(rows=>{const active=rows.filter(item=>item.active);setTaxRegistrations(active);setTaxRegistrationId(current=>active.some(item=>item.id===current)?current:(active.find(item=>item.isDefault)?.id||active[0]?.id||''));}).catch(e=>setError(errorMessage(e,'No se pudieron cargar los registros IVA.')));
-  },[open,invoice,clients]);
+  },[open,invoice,clients,settings.sales.defaultDueDays]);
 
   useEffect(()=>{
     if(!open||!issueDate)return;
