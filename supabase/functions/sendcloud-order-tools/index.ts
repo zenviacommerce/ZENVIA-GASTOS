@@ -40,14 +40,18 @@ async function authenticate(req:Request,admin:any):Promise<Caller>{
   if(!caller?.active)throw new Error('Tu acceso está desactivado.');const permissions=Array.isArray(caller.permissions)?caller.permissions:[];
   if(caller.role!=='admin'&&!permissions.includes('orders'))throw new Error('No tienes permiso para gestionar pedidos.');return caller as Caller;
 }
+async function workspaceConfig(admin:any,ownerId:string){
+  const {data,error}=await admin.from('app_settings').select('config').eq('owner_id',ownerId).maybeSingle();
+  if(error)throw error;
+  const config=(data?.config&&typeof data.config==='object')?data.config:{};
+  return {orders:(config as any).orders||{},shipping:(config as any).shipping||{}};
+}
 function clean(v:unknown){return String(v??'').trim();}
 function statusCode(v:unknown){return clean(v).toLowerCase();}
 function canEdit(v:unknown){const s=statusCode(v);return !s.includes('cancel')&&!['fulfilled','shipped','delivered'].includes(s);}
 function toKg(value:unknown,unit:unknown){const n=Number(value);if(!Number.isFinite(n)||n<=0)return null;const u=clean(unit).toLowerCase();if(u==='g')return n/1000;if(u==='lbs'||u==='lb')return n*0.45359237;return n;}
-function orderWeightKg(order:any){const w=order?.raw_payload?.shipping_details?.measurement?.weight;return toKg(w?.value,w?.unit)||1;}
+function orderWeightKg(order:any,fallbackWeightKg=1){const w=order?.raw_payload?.shipping_details?.measurement?.weight;return toKg(w?.value,w?.unit)||Math.max(0.01,Number(fallbackWeightKg)||1);}
 function friendlyCarrier(code:unknown){const v=clean(code),l=v.toLowerCase();if(l.includes('correos'))return 'Correos';if(l.includes('mrw'))return 'MRW';return v||'Transportista';}
-function isBalearicAddress(address:any){const country=clean(address?.country_code).toUpperCase(),postal=clean(address?.postal_code).replace(/\s+/g,'');return country==='ES'&&/^07\d{3}$/.test(postal);}
-function isMrwOption(option:any){return `${option?.carrierCode||''} ${option?.carrierName||''} ${option?.name||''} ${option?.code||''}`.toLowerCase().includes('mrw');}
 
 // Sendcloud v3 only accepts state_province_code for these destination countries.
 // Spain is deliberately excluded: for ES the field must be omitted entirely.
@@ -73,19 +77,30 @@ function normalizeOption(option:any){
 async function senderAddress(){
   try{const {data}=await sendcloudJson('/addresses/sender-addresses');return Array.isArray(data?.data)?data.data[0]||null:null}catch{return null}
 }
+function configuredSender(shipping:any){
+  const country=clean(shipping?.senderCountryCode).toUpperCase(),postal=clean(shipping?.senderPostalCode),city=clean(shipping?.senderCity),address=clean(shipping?.senderAddress);
+  if(!country&&!postal&&!city&&!address)return null;
+  return {country_code:country||undefined,postal_code:postal||undefined,city:city||undefined,address_line_1:address||undefined};
+}
+function enabledCarrier(option:any,enabled:unknown){
+  const values=Array.isArray(enabled)?enabled.map(value=>clean(value).toLowerCase()).filter(Boolean):[];
+  if(!values.length)return true;
+  const haystack=`${option?.carrierCode||''} ${option?.carrierName||''} ${option?.code||''} ${option?.name||''}`.toLowerCase();
+  return values.some(value=>haystack.includes(value));
+}
 
 Deno.serve(async(req:Request)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders});if(req.method!=='POST')return fail('Método no permitido.',405);
   const url=Deno.env.get('SUPABASE_URL')||'',adminKey=getAdminKey();if(!url||!adminKey)return fail('Configuración del backend no disponible.',500);
   const admin=createClient(url,adminKey,{auth:{persistSession:false,autoRefreshToken:false}});
   try{
-    const caller=await authenticate(req,admin),body=await req.json().catch(()=>({})),action=clean(body?.action);
+    const caller=await authenticate(req,admin),body=await req.json().catch(()=>({})),action=clean(body?.action),config=await workspaceConfig(admin,caller.data_owner_id),ordersConfig=config.orders,shippingConfig=config.shipping;
     if(!credentials().configured)return fail('Sendcloud todavía no está conectado.',503);
     const orderId=clean(body?.orderId);if(!orderId)return fail('Falta el pedido.');
     const {data:order,error}=await admin.from('fulfillment_orders').select('*').eq('id',orderId).eq('owner_id',caller.data_owner_id).maybeSingle();if(error)throw error;if(!order)return fail('Pedido no encontrado.',404);
 
     if(action==='validate_address'){
-      const address=order.shipping_address||{},carrierCode=clean(body?.carrierCode||'mrw').toLowerCase();
+      const address=order.shipping_address||{},carrierCode=clean(body?.carrierCode||ordersConfig.defaultCarrier||'mrw').toLowerCase();
       const normalizedState=normalizeStateProvince(address.country_code,address.state_province_code);
       const payloadAddress:any={
         address_line_1:address.address_line_1||undefined,
@@ -125,7 +140,7 @@ Deno.serve(async(req:Request)=>{
 
     if(action==='shipping_options'){
       if(!canEdit(order.source_status)||order.sendcloud_parcel_id)return fail('Este pedido ya no admite una nueva etiqueta.',409);
-      let address=order.shipping_address||{};const sender=await senderAddress(),weightKg=orderWeightKg(order),balearic=isBalearicAddress(address);
+      let address=order.shipping_address||{};const sender=configuredSender(shippingConfig)||await senderAddress(),weightKg=orderWeightKg(order,shippingConfig.fallbackWeightKg);
       const normalizedState=normalizeStateProvince(address.country_code,address.state_province_code);
       if(clean(address.state_province_code)!==clean(normalizedState)){
         const correctedAddress={...address,state_province_code:normalizedState};
@@ -151,8 +166,8 @@ Deno.serve(async(req:Request)=>{
         requestBody.from_address=fromAddress;
       }
       const {data}=await sendcloudJson('/shipping-options',{method:'POST',body:JSON.stringify(requestBody)});
-      const options=(data?.data||[]).map(normalizeOption).filter((x:any)=>x.code).filter((x:any)=>!balearic||!isMrwOption(x));
-      return response({weightKg,options,message:balearic?'Destino Baleares: MRW oculto. Utiliza Correos.':data?.message||null});
+      const options=(data?.data||[]).map(normalizeOption).filter((x:any)=>x.code).filter((x:any)=>enabledCarrier(x,shippingConfig.enabledCarriers));
+      return response({weightKg,options,message:options.length?data?.message||null:'No hay servicios disponibles entre los transportistas habilitados.'});
     }
 
     if(action==='update_order'){
