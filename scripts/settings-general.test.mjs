@@ -30,3 +30,20 @@ test('business settings schema contains website before General UI depends on it'
   assert.match(migration,/alter table public\.business_settings/i);
   assert.match(migration,/add column if not exists website text/i);
 });
+
+
+test('General locale and currency settings have visible runtime consumers',async()=>{
+  const dashboard=await read('../src/pages/Dashboard.tsx');
+  const expenses=await read('../src/pages/Invoices.tsx');
+  const alerts=await read('../src/components/AlertCenter.tsx');
+  const settingsPage=await read('../src/pages/Settings.tsx');
+  const pdf=await read('../src/services/salesInvoicePdf.ts');
+  for(const source of [dashboard,expenses,settingsPage])assert.match(source,/settings\.general/);
+  assert.match(dashboard,/formatAppMoney/);
+  assert.match(expenses,/formatAppMoney/);
+  assert.match(expenses,/formatAppDate/);
+  assert.match(alerts,/formatAppDateTime/);
+  assert.match(pdf,/generalSettings\.documentLanguage/);
+  assert.match(pdf,/formatAppDate/);
+  assert.match(pdf,/formatAppMoney/);
+});
