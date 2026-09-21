@@ -118,7 +118,7 @@ export async function syncSendcloudOrders(history=false,retryTracking=true,autom
   if(retryTracking){
     try{
       const rule=await loadAutomationRule('order_label_created');
-      if(rule.enabled&&rule.config.retryConfirmation)await invokeAmazonTracking({action:'retry_pending',limit:10});
+      if(rule.enabled&&rule.config.retryConfirmation&&rule.config.saveTracking)await invokeAmazonTracking({action:'retry_pending',limit:10});
     }catch{/* Amazon tracking is retried on the next enabled Sendcloud sync. */}
   }
   return result;
