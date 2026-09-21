@@ -1,8 +1,12 @@
 import { deleteInvoice } from './repository';
 import { supabase } from './supabase';
 import { loadGmailImports, updateGmailImport, type GmailCandidate } from './gmail';
+import { loadAppSettings } from './settings';
+import { expenseImportPolicyFromSettings } from './expenseImportPolicy';
 
 export async function deleteInvoiceWithGmailRecovery(invoiceId: string, filePath?: string | null) {
+  const loadedSettings=await loadAppSettings();
+  const policy=expenseImportPolicyFromSettings(loadedSettings.settings.expenses);
   const { data: gmailLinks, error: gmailReadError } = await supabase
     .from('gmail_imports')
     .select('id,metadata')
@@ -12,7 +16,7 @@ export async function deleteInvoiceWithGmailRecovery(invoiceId: string, filePath
 
   await deleteInvoice(invoiceId, filePath);
 
-  if (!gmailLinks?.length) return;
+  if (!gmailLinks?.length||!policy.allowReimportDeleted) return;
 
   const reopenedAt = new Date().toISOString();
   const updates = await Promise.all(gmailLinks.map(link => supabase
@@ -36,7 +40,10 @@ export async function deleteInvoiceWithGmailRecovery(invoiceId: string, filePath
 }
 
 export async function loadRecoverableGmailImports(): Promise<GmailCandidate[]> {
+  const loadedSettings=await loadAppSettings();
+  const policy=expenseImportPolicyFromSettings(loadedSettings.settings.expenses);
   const imports = await loadGmailImports();
+  if(!policy.allowReimportDeleted)return imports;
   const stale = imports.filter(item => item.id && item.status === 'imported' && !item.invoiceId);
   if (!stale.length) return imports;
 
