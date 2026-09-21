@@ -19,7 +19,11 @@ import {
   type FulfillmentOrder, type LocalPrinter, type ManualOrderItem, type OrderChannel, type OrderUpdateInput,
   type SendcloudStatus, type ShippingOption,
 } from '../services/orders';
-import { labelPdfFilename, selectAutomaticShippingOption, uniqueLabelPdfFilename } from '../services/orderLabelFiles';
+import { bulkLabelZipFilename, labelPdfFilename, uniqueLabelPdfFilename } from '../services/orderLabelFiles';
+import { selectShippingOptionByRules } from '../services/shippingRuleCore';
+import { defaultShippingRules, loadShippingRules, type ShippingRule } from '../services/shippingRules';
+import { prepareLabelPdf } from '../services/labelPdf';
+import { useSettings } from '../context/SettingsContext';
 import { loadAmazonProductImages } from '../services/amazon';
 import { listTransportTariffs, type TransportTariffDocument } from '../services/transportTariffs';
 import {
@@ -172,14 +176,14 @@ function LabelModal({order,options,loading,onClose,onCreate}:{order:FulfillmentO
   </section></div>;
 }
 
-function ManualOrderModal({status,saving,onClose,onSave}:{status:SendcloudStatus;saving:boolean;onClose:()=>void;onSave:(value:any)=>void}){
+function ManualOrderModal({status,saving,defaultCountryCode,fallbackWeightKg,onClose,onSave}:{status:SendcloudStatus;saving:boolean;defaultCountryCode:string;fallbackWeightKg:number;onClose:()=>void;onSave:(value:any)=>void}){
   const apiIntegrations=status.integrations.filter(item=>item.channel==='other');
   const suggested=apiIntegrations.find(item=>item.isApi)||apiIntegrations[0];
   const [integrationId,setIntegrationId]=useState(suggested?.id||0);
   const [orderNumber,setOrderNumber]=useState(`MAN-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${String(Date.now()).slice(-5)}`);
   const [customerName,setCustomerName]=useState(''); const [email,setEmail]=useState(''); const [phone,setPhone]=useState('');
-  const [address,setAddress]=useState(''); const [houseNumber,setHouseNumber]=useState(''); const [postalCode,setPostalCode]=useState(''); const [city,setCity]=useState(''); const [countryCode,setCountryCode]=useState('ES');
-  const [weightKg,setWeightKg]=useState(1); const [items,setItems]=useState<ManualOrderItem[]>([{name:'',sku:'',quantity:1,unitPrice:0}]);
+  const [address,setAddress]=useState(''); const [houseNumber,setHouseNumber]=useState(''); const [postalCode,setPostalCode]=useState(''); const [city,setCity]=useState(''); const [countryCode,setCountryCode]=useState(defaultCountryCode||'ES');
+  const [weightKg,setWeightKg]=useState(fallbackWeightKg||1); const [items,setItems]=useState<ManualOrderItem[]>([{name:'',sku:'',quantity:1,unitPrice:0}]);
   const updateItem=(index:number,key:keyof ManualOrderItem,value:string|number)=>setItems(prev=>prev.map((item,i)=>i===index?{...item,[key]:value}:item));
   return <div className="modalBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><section className="modal ordersManualModal">
     <div className="modalHead"><div><h3>Nuevo pedido manual</h3><p>Se creará también en Sendcloud para que puedas generar la etiqueta desde aquí.</p></div><button onClick={onClose}><X size={18}/></button></div>
@@ -193,9 +197,11 @@ function ManualOrderModal({status,saving,onClose,onSave}:{status:SendcloudStatus
 }
 
 export function Orders(){
+  const {settings,preferences,updatePreferences}=useSettings();
+  const initialChannel=settings.orders.defaultChannel==='amazon'?'amazon':settings.orders.defaultChannel==='shopify'?'shopify':settings.orders.defaultChannel==='manual'||settings.orders.defaultChannel==='other'?'other':'all';
   const [orders,setOrders]=useState<FulfillmentOrder[]>([]),[status,setStatus]=useState<SendcloudStatus|null>(null);
   const [loading,setLoading]=useState(true),[syncing,setSyncing]=useState(false),[error,setError]=useState('');
-  const [query,setQuery]=useState(''),[channel,setChannel]=useState<'all'|OrderChannel>('all'),[state,setState]=useState<OrderFilter>('pending'),[trackingFilter,setTrackingFilter]=useState<TrackingFilter>('all'),[countryFilter,setCountryFilter]=useState('all'),[carrierFilter,setCarrierFilter]=useState('all');
+  const [query,setQuery]=useState(''),[channel,setChannel]=useState<'all'|OrderChannel>(initialChannel),[state,setState]=useState<OrderFilter>('pending'),[trackingFilter,setTrackingFilter]=useState<TrackingFilter>('all'),[countryFilter,setCountryFilter]=useState('all'),[carrierFilter,setCarrierFilter]=useState('all');
   const [selected,setSelected]=useState<FulfillmentOrder|null>(null),[labelOrder,setLabelOrder]=useState<FulfillmentOrder|null>(null),[options,setOptions]=useState<ShippingOption[]>([]),[optionsLoading,setOptionsLoading]=useState(false),[busyOrder,setBusyOrder]=useState<string|null>(null);
   const [printers,setPrinters]=useState<LocalPrinter[]>([]),[printer,setPrinter]=useState(getSavedPrinter()),[printerChecking,setPrinterChecking]=useState(false);
   const [dateFilter,setDateFilter]=useState(defaultDateFilter);
@@ -206,11 +212,13 @@ export function Orders(){
   const [tariffs,setTariffs]=useState<TransportTariffDocument[]>([]),[shippingPreviews,setShippingPreviews]=useState<Record<string,ShippingPricePreview>>({});
   const [editValidationIssues,setEditValidationIssues]=useState<OrderValidationIssue[]>([]);
   const [amazonImages,setAmazonImages]=useState<Record<string,string>>({});
+  const [shippingRules,setShippingRules]=useState<ShippingRule[]>(()=>defaultShippingRules());
 
   const refresh=useCallback(async()=>{try{setOrders(await listFulfillmentOrders())}catch(e){setError(errorMessage(e,'No se pudieron cargar los pedidos.'))}},[]);
   const refreshStatus=useCallback(async()=>{try{setStatus(await getSendcloudStatus())}catch(e){setStatus({configured:false,integrations:[],message:errorMessage(e,'No se pudo comprobar Sendcloud.')})}},[]);
   const refreshTariffs=useCallback(async()=>{try{setTariffs(await listTransportTariffs())}catch{/* El precio real seleccionado seguirá disponible aunque no haya tarifa estimada. */}},[]);
   useEffect(()=>{(async()=>{setLoading(true);await Promise.all([refresh(),refreshStatus(),refreshTariffs()]);setLoading(false)})()},[refresh,refreshStatus,refreshTariffs]);
+  useEffect(()=>{let active=true;loadShippingRules({ensureDefaults:false}).then(rows=>{if(active)setShippingRules(rows.length?rows:defaultShippingRules())}).catch(()=>{if(active)setShippingRules(defaultShippingRules())});return()=>{active=false}},[]);
   useEffect(()=>{
     const asins=Array.from(new Set(orders
       .filter(order=>order.sourceChannel==='amazon')
@@ -226,8 +234,8 @@ export function Orders(){
     return()=>{cancelled=true};
   },[orders]);
 
-  const sync=useCallback(async(silent=false,history=false)=>{if(syncing)return;setSyncing(true);if(!silent)setError('');try{const result=await syncSendcloudOrders(history);setStatus({configured:true,integrations:result.integrations});await refresh();if(history)markHistorySyncDone();if(!silent)showSuccess(`${result.synced} pedidos actualizados desde Sendcloud.`)}catch(e){const message=errorMessage(e,'No se pudieron actualizar los pedidos.');if(!silent)showError(message)}finally{setSyncing(false)}},[refresh,syncing]);
-  useEffect(()=>{if(!status?.configured)return;void sync(true,shouldRunHistorySync());const timer=window.setInterval(()=>void sync(true,false),60000);return()=>window.clearInterval(timer)},[status?.configured]);
+  const sync=useCallback(async(silent=false,history=false)=>{if(syncing)return;setSyncing(true);if(!silent)setError('');try{const result=await syncSendcloudOrders(history,settings.orders.retryTrackingConfirmation);setStatus({configured:true,integrations:result.integrations});await refresh();if(history)markHistorySyncDone();if(!silent)showSuccess(`${result.synced} pedidos actualizados desde Sendcloud.`)}catch(e){const message=errorMessage(e,'No se pudieron actualizar los pedidos.');if(!silent)showError(message)}finally{setSyncing(false)}},[refresh,syncing,settings.orders.retryTrackingConfirmation]);
+  useEffect(()=>{if(!status?.configured)return;void sync(true,shouldRunHistorySync());const timer=window.setInterval(()=>void sync(true,false),Math.max(30,settings.orders.refreshSeconds)*1000);return()=>window.clearInterval(timer)},[status?.configured,sync,settings.orders.refreshSeconds]);
 
   const dateFrom=dateFilter.from,dateTo=dateFilter.to;
   const selectedPeriod=periodLabel(dateFilter);
@@ -264,21 +272,60 @@ export function Orders(){
   const toggleAllOrders=(checked:boolean)=>setCheckedIds(checked?new Set(selectableOrders.map(order=>order.id)):new Set());
   useEffect(()=>{setCheckedIds(new Set())},[query,channel,state,trackingFilter,countryFilter,carrierFilter,dateFrom,dateTo]);
 
+  const labelFilenameOptions={strategy:settings.orders.labelFilenameStrategy,template:settings.orders.customLabelFilenameTemplate};
+  const enabledShippingOptions=(available:ShippingOption[])=>{
+    const enabled=settings.shipping.enabledCarriers.map(value=>value.trim().toLowerCase()).filter(Boolean);
+    if(!enabled.length)return available;
+    return available.filter(option=>{
+      const haystack=`${option.carrierCode||''} ${option.carrierName||''}`.toLowerCase();
+      return enabled.some(value=>haystack.includes(value));
+    });
+  };
+  const automaticShippingOption=(order:FulfillmentOrder,available:ShippingOption[])=>{
+    const allowed=enabledShippingOptions(available);
+    const byRules=selectShippingOptionByRules(order,allowed,shippingRules);
+    if(byRules)return byRules;
+    const fallback=settings.orders.defaultCarrier?.trim().toLowerCase();
+    return fallback?allowed.find(option=>`${option.carrierCode||''} ${option.carrierName||''}`.toLowerCase().includes(fallback))||null:null;
+  };
+  const validationCarrier=(order:FulfillmentOrder)=>settings.orders.defaultCarrier||defaultCarrierCode(order);
+
   const prepare=async(order:FulfillmentOrder)=>{
     if(!canPrepareOrder(order)){showError('Este pedido ya no admite una nueva etiqueta.');return}
-    const local=validateOrderForCarrier(order);
-    if(local.blocking){setEditValidationIssues(local.issues);setEditOrder(order);showError('El pedido tiene datos obligatorios incompletos. Revísalos antes de continuar.');return}
-    setLabelOrder(order);setOptions([]);setOptionsLoading(true);
+    setOptions([]);setOptionsLoading(true);
     try{
       const result=await getShippingOptions(order.id);
-      setOptions(result.options);
-      if(!result.options.length)showError('Sendcloud no devuelve servicios disponibles para este pedido.');
+      const allowed=enabledShippingOptions(result.options);
+      const automatic=automaticShippingOption(order,allowed);
+      const carrier=automatic?.carrierCode||validationCarrier(order);
+      const local=validateOrderForCarrier(order,carrier);
+      if(local.blocking){setEditValidationIssues(local.issues);setEditOrder(order);showError('El pedido tiene datos obligatorios incompletos. Revísalos antes de continuar.');return}
+      if(!allowed.length){showError('No hay servicios disponibles entre los transportistas habilitados.');return}
+      if(settings.orders.generateLabelAutomatically){
+        if(automatic){await createLabel(automatic,order);return}
+        if(settings.shipping.noValidMethodBehavior==='error'){showError('Ninguna regla automática encuentra un servicio válido para este pedido.');return}
+      }
+      setLabelOrder(order);
+      setOptions(allowed);
     }catch(e){
       showError(errorMessage(e,'No se pudieron consultar los servicios y precios.'));
     }finally{setOptionsLoading(false)}
   };
-  const handleBlob=async(blob:Blob,order:FulfillmentOrder,mode:'print'|'download')=>{if(mode==='download'){downloadLabel(blob,labelPdfFilename(order));return}if(printer){try{await printLabelWithClient(blob,printer);showSuccess('Etiqueta enviada a la impresora.');return}catch{/* PDF */}}openLabelForPrint(blob)};
-  const createLabel=async(option:ShippingOption|null)=>{if(!labelOrder)return;const order=labelOrder;setBusyOrder(order.id);setLabelOrder(null);try{const result=await createOrderLabel(order.id,option),blob=labelBlob(result);const freshOrders=await listFulfillmentOrders();const fresh=freshOrders.find(item=>item.id===order.id)||order;setOrders(freshOrders);setSelected(fresh);downloadLabel(blob,labelPdfFilename(fresh));showSuccess(`Etiqueta creada y descargada${result.trackingNumber?` · ${result.trackingNumber}`:''}.`)}catch(e){showError(errorMessage(e,'No se pudo crear la etiqueta.'))}finally{setBusyOrder(null)}};
+  const handleBlob=async(blob:Blob,order:FulfillmentOrder,mode:'print'|'download')=>{
+    const prepared=await prepareLabelPdf(blob,settings.shipping);
+    if(mode==='download'){downloadLabel(prepared,labelPdfFilename(order,labelFilenameOptions));return}
+    if(preferences.labelPrinterId){try{await printLabelWithClient(prepared,preferences.labelPrinterId);showSuccess('Etiqueta enviada a la impresora.');return}catch{/* PDF */}}
+    openLabelForPrint(prepared);
+  };
+  const createLabel=async(option:ShippingOption|null,explicitOrder:FulfillmentOrder|null=labelOrder)=>{if(!explicitOrder)return;const order=explicitOrder;setBusyOrder(order.id);setLabelOrder(null);try{
+    const result=await createOrderLabel(order.id,option,settings.orders.pushTrackingToMarketplace),blob=labelBlob(result);
+    const freshOrders=await listFulfillmentOrders();const fresh=freshOrders.find(item=>item.id===order.id)||order;setOrders(freshOrders);setSelected(fresh);
+    if(settings.orders.downloadLabelAfterCreation&&settings.shipping.autoDownload){
+      const prepared=await prepareLabelPdf(blob,settings.shipping);
+      downloadLabel(prepared,labelPdfFilename(fresh,labelFilenameOptions));
+    }
+    showSuccess(`Etiqueta creada${result.trackingNumber?` · ${result.trackingNumber}`:''}.`);
+  }catch(e){showError(errorMessage(e,'No se pudo crear la etiqueta.'))}finally{setBusyOrder(null)}};
   const existingLabel=async(order:FulfillmentOrder,mode:'print'|'download')=>{setBusyOrder(order.id);try{const result=await fetchOrderLabel(order.id);await handleBlob(labelBlob(result),order,mode)}catch(e){showError(errorMessage(e,'No se pudo recuperar la etiqueta.'))}finally{setBusyOrder(null)}};
   const generateLabels=async(targets:FulfillmentOrder[],scope:'pendientes'|'seleccionadas')=>{
     if(!targets.length){showSuccess(scope==='seleccionadas'?'No hay pedidos seleccionados que admitan etiqueta.':'No hay pedidos pendientes en el periodo seleccionado.');return;}
@@ -289,16 +336,17 @@ export function Orders(){
       try{
         const local=validateOrderForCarrier(order);if(local.blocking)throw new Error(local.issues[0]?.message||'El pedido necesita revisión antes de generar la etiqueta.');
         const shipping=await getShippingOptions(order.id);
-        const option=selectAutomaticShippingOption(order,shipping.options);
-        if(!option)throw new Error('No se encontró el servicio automático MRW 19:00 / Correos Baleares.');
-        const result=await createOrderLabel(order.id,option);
-        zip.file(uniqueLabelPdfFilename(order,usedNames),result.base64,{base64:true});
+        const option=automaticShippingOption(order,shipping.options);
+        if(!option)throw new Error('No se encontró un servicio válido según las reglas automáticas de envío.');
+        const result=await createOrderLabel(order.id,option,settings.orders.pushTrackingToMarketplace);
+        const prepared=await prepareLabelPdf(labelBlob(result),settings.shipping);
+        zip.file(uniqueLabelPdfFilename(order,usedNames,labelFilenameOptions),prepared);
         generated+=1;
       }catch(e){failed.push(`${order.orderNumber||order.orderId||order.id}: ${errorMessage(e,'Error al generar etiqueta')}`)}
       finally{processed+=1;setBulkProgress(`${processed}/${targets.length}`)}
     }
     try{
-      if(generated){const blob=await zip.generateAsync({type:'blob'});downloadBlob(blob,`etiquetas_${scope}_${iso(new Date())}.zip`)}
+      if(generated){const blob=await zip.generateAsync({type:'blob'});downloadBlob(blob,bulkLabelZipFilename(settings.orders.bulkZipFilenameTemplate,scope,iso(new Date())))}
       const freshOrders=await listFulfillmentOrders();setOrders(freshOrders);setCheckedIds(new Set());setSelected(current=>current?freshOrders.find(item=>item.id===current.id)||null:null);
       if(failed.length){const detail=failed.slice(0,3).join(' · ');showError(`${generated} etiquetas generadas. ${failed.length} no se pudieron generar${detail?`: ${detail}`:''}`)}
       else showSuccess(`${generated} etiquetas generadas y descargadas en un ZIP.`);
@@ -307,7 +355,7 @@ export function Orders(){
   };
   const generatePendingLabels=()=>generateLabels(pendingOrders,'pendientes');
   const generateSelectedLabels=()=>generateLabels(selectedOrders,'seleccionadas');
-  const detectPrinters=async()=>{setPrinterChecking(true);try{const found=await listLocalPrinters();setPrinters(found);const chosen=printer||found.find(item=>item.default)?.id||found[0]?.id||'';setPrinter(chosen);savePrinter(chosen);showSuccess(found.length?`${found.length} impresora${found.length===1?'':'s'} detectada${found.length===1?'':'s'}.`:'No se han encontrado impresoras.')}catch{setPrinters([]);showError('No se detecta el Print Client de Sendcloud. Puedes imprimir desde PDF.')}finally{setPrinterChecking(false)}};
+  const detectPrinters=async()=>{setPrinterChecking(true);try{const found=await listLocalPrinters();setPrinters(found);const chosen=preferences.labelPrinterId||found.find(item=>item.default)?.id||found[0]?.id||'';setPrinter(chosen);if(chosen)await updatePreferences({...preferences,labelPrinterId:chosen});showSuccess(found.length?`${found.length} impresora${found.length===1?'':'s'} detectada${found.length===1?'':'s'}.`:'No se han encontrado impresoras.')}catch{setPrinters([]);showError('No se detecta el Print Client de Sendcloud. Puedes imprimir desde PDF.')}finally{setPrinterChecking(false)}};
   const saveManual=async(value:any)=>{setManualSaving(true);try{const result=await createManualOrder(value);await refresh();setManualOpen(false);showSuccess(`Pedido ${result.orderNumber} creado en ZENVIA y Sendcloud.`)}catch(e){showError(errorMessage(e,'No se pudo crear el pedido manual.'))}finally{setManualSaving(false)}};
   const saveEdit=async(value:OrderUpdateInput)=>{if(!editOrder)return;setEditSaving(true);try{await updateFulfillmentOrder(editOrder.id,value);const freshOrders=await listFulfillmentOrders();setOrders(freshOrders);const fresh=freshOrders.find(item=>item.id===editOrder.id)||editOrder;setSelected(fresh);setEditValidationIssues([]);setEditOrder(null);showSuccess('Pedido actualizado en ZENVIA y Sendcloud.')}catch(e){showError(errorMessage(e,'No se pudo actualizar el pedido.'))}finally{setEditSaving(false)}};
 
@@ -334,14 +382,14 @@ export function Orders(){
     {selectableOrders.length>0&&<BulkSelectionToolbar selectedCount={selectedOrders.length} totalCount={selectableOrders.length} allSelected={allSelectableSelected} onToggleAll={toggleAllOrders} label="pedidos con etiqueta pendiente">
       <button className="primary" type="button" disabled={!selectedOrders.length||bulkGenerating||syncing||!status?.configured} onClick={()=>void generateSelectedLabels()}><Download size={15}/> {bulkGenerating&&selectedOrders.length?`Generando ${bulkProgress}`:`Generar etiquetas seleccionadas (${selectedOrders.length})`}</button>
     </BulkSelectionToolbar>}
-    {printer&&<div className="ordersPrinterBar"><Printer size={15}/><span>Impresora directa:</span>{printers.length?<SearchableSelect value={printer} options={printers.map(item=>({value:item.id,label:`${item.name}${item.default?' · predeterminada':''}`,searchText:item.name}))} onChange={value=>{setPrinter(value);savePrinter(value)}} searchPlaceholder="Buscar impresora…" ariaLabel="Impresora directa"/>:<strong>{printer}</strong>}<button className="link" onClick={()=>{setPrinter('');savePrinter('')}}>Usar PDF</button></div>}
+    {printer&&<div className="ordersPrinterBar"><Printer size={15}/><span>Impresora directa:</span>{printers.length?<SearchableSelect value={printer} options={printers.map(item=>({value:item.id,label:`${item.name}${item.default?' · predeterminada':''}`,searchText:item.name}))} onChange={value=>{setPrinter(value);void updatePreferences({...preferences,labelPrinterId:value})}} searchPlaceholder="Buscar impresora…" ariaLabel="Impresora directa"/>:<strong>{printer}</strong>}<button className="link" onClick={()=>{setPrinter('');void updatePreferences({...preferences,labelPrinterId:null})}}>Usar PDF</button></div>}
 
     <section className="card tableCard ordersTableCard">{loading?<div className="emptyState large"><LoaderCircle className="spin"/> Cargando pedidos…</div>:filtered.length?<table className="ordersTable"><thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allSelectableSelected} disabled={!selectableOrders.length} onChange={toggleAllOrders} label={allSelectableSelected?'Deseleccionar pedidos pendientes':'Seleccionar pedidos pendientes'}/></th><th>Canal</th><th>Pedido</th><th>Cliente</th><th>Productos</th><th>Destino</th><th>Transportista</th><th>Envío</th><th>Peso</th><th className="right">Unidades</th><th className="right">Total</th><th>Estado</th><th>Seguimiento</th><th>Fecha pedido</th><th>Fecha etiqueta</th><th></th></tr></thead><tbody>{filtered.map(order=>{const stateInfo=orderState(order),tracking=trackingState(order),validation=validateOrderForCarrier(order),shipping=shippingPriceForOrder(order,shippingPreviews[order.id]||tariffPreviews[order.id]),first=order.items[0],rest=order.items.slice(1,3);return <tr key={order.id} className={`clickableRow ${checkedIds.has(order.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(order)}><td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(order.id)} disabled={!canPrepareOrder(order)} onChange={checked=>toggleOrder(order.id,checked)} label={canPrepareOrder(order)?`Seleccionar pedido ${order.orderNumber||order.orderId}`:'Este pedido ya no admite una nueva etiqueta'}/></td><td><span className={`ordersChannel ${order.sourceChannel}`}>{channelLabel(order)}</span></td><td><strong>{order.orderNumber||order.orderId||order.sendcloudId}</strong><small>{order.integrationName||''}</small></td><td>{order.customerName||text(order.shippingAddress.name)||'—'}{validation.blocking&&<small className="ordersValidationWarn"><AlertCircle size={12}/> Revisar</small>}</td><td className="ordersProductsCell" aria-label={productsText(order)}>{first?<div className="ordersProductIdentity">{order.sourceChannel==='amazon'&&(itemImageUrl(first,amazonImages)?<img className="ordersProductThumb" src={itemImageUrl(first,amazonImages)} alt="" loading="lazy" referrerPolicy="no-referrer"/>:<span className="ordersProductThumb ordersProductThumbPlaceholder"><ImageOff size={16}/></span>)}<div><strong>{itemLabel(first)}{itemQty(first)>1?` ×${itemQty(first)}`:''}</strong>{rest.length>0&&<small>{rest.map(item=>`${itemLabel(item)}${itemQty(item)>1?` ×${itemQty(item)}`:''}`).join(' · ')}{order.items.length>3?` · +${order.items.length-3} más`:''}</small>}</div></div>:'—'}</td><td>{text(order.shippingAddress.country_code)||'—'} · {text(order.shippingAddress.postal_code)||''}</td><td><strong className="ordersCarrierText">{carrierLabel(order)}</strong></td><td><strong className="ordersShippingPrice">{shipping?money(shipping.totalAmount,shipping.currency):'—'}</strong>{shipping&&shipping.source!=='recorded'&&<small>estimado</small>}</td><td><strong>{weightLabel(order)}</strong></td><td className="right"><strong>{order.items.reduce((sum,item)=>sum+itemQty(item),0)}</strong></td><td className="right"><strong>{money(order.totalAmount,order.currency||'EUR')}</strong></td><td><span className={`ordersState ${stateInfo.className}`}>{stateInfo.className==='ready'?<PackageCheck size={13}/>:stateInfo.className==='pending'?<Truck size={13}/>:<AlertCircle size={13}/>} {stateInfo.label}</span></td><td><span className={`ordersTracking ${tracking.className}`} aria-label={order.trackingStatusMessage||tracking.label}>{tracking.label}</span></td><td>{dateLabel(order.orderCreatedAt)}</td><td>{dateLabel(labelTimestamp(order))}</td><td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay pedidos para estos filtros y fechas.</div>}</section>
     <div className="ordersMobileList">{filtered.map(order=>{const stateInfo=orderState(order),tracking=trackingState(order),validation=validateOrderForCarrier(order),shipping=shippingPriceForOrder(order,shippingPreviews[order.id]||tariffPreviews[order.id]);return <div className={`bulkMobileSelectableRow ${checkedIds.has(order.id)?'selected':''}`} key={order.id}><BulkSelectCheckbox checked={checkedIds.has(order.id)} disabled={!canPrepareOrder(order)} onChange={checked=>toggleOrder(order.id,checked)} label={canPrepareOrder(order)?`Seleccionar pedido ${order.orderNumber||order.orderId}`:'Este pedido ya no admite una nueva etiqueta'}/><button className="card ordersMobileRow" onClick={()=>setSelected(order)}><div><span className={`ordersChannel ${order.sourceChannel}`}>{channelLabel(order)}</span><strong>{order.orderNumber||order.orderId}</strong><small>{order.customerName||'Cliente'} · {weightLabel(order)} · {carrierLabel(order)} · Envío {shipping?money(shipping.totalAmount,shipping.currency):'—'}</small>{validation.blocking&&<small className="ordersValidationWarn"><AlertCircle size={12}/> Revisar pedido</small>}<small>Pedido {dateLabel(order.orderCreatedAt)} · Etiqueta {dateLabel(labelTimestamp(order))}</small>{order.items[0]&&<div className="ordersMobileProductRow">{order.sourceChannel==='amazon'&&(itemImageUrl(order.items[0],amazonImages)?<img className="ordersProductThumb" src={itemImageUrl(order.items[0],amazonImages)} alt="" loading="lazy" referrerPolicy="no-referrer"/>:<span className="ordersProductThumb ordersProductThumbPlaceholder"><ImageOff size={15}/></span>)}<small className="ordersMobileProduct">{itemLabel(order.items[0])}{order.items.length>1?` · +${order.items.length-1} producto${order.items.length-1===1?'':'s'}`:''}</small></div>}</div><div><b>{money(order.totalAmount,order.currency||'EUR')}</b><span className={`ordersState ${stateInfo.className}`}>{stateInfo.label}</span><span className={`ordersTracking ${tracking.className}`}>{tracking.label}</span></div><ChevronRight size={18}/></button></div>})}</div>
 
     {selected&&(()=>{const current=orders.find(item=>item.id===selected.id)||selected;const validation=validateOrderForCarrier(current);const shipping=shippingPriceForOrder(current,shippingPreviews[current.id]||tariffPreviews[current.id]);return <OrderDrawer order={current} shippingPrice={shipping} validationIssues={validation.issues} onClose={()=>setSelected(null)} onEdit={()=>{setEditValidationIssues(validation.issues);setEditOrder(current)}} onPrepare={()=>prepare(current)} onPrint={()=>existingLabel(current,'print')} onDownload={()=>existingLabel(current,'download')} busy={busyOrder===selected.id}/>})()} 
     {labelOrder&&<LabelModal order={labelOrder} options={options} loading={optionsLoading} onClose={()=>setLabelOrder(null)} onCreate={createLabel}/>} 
-    {manualOpen&&status&&<ManualOrderModal status={status} saving={manualSaving} onClose={()=>setManualOpen(false)} onSave={saveManual}/>} 
-    {editOrder&&<OrderEditModal order={editOrder} saving={editSaving} validationIssues={editValidationIssues} onClose={()=>{setEditValidationIssues([]);setEditOrder(null)}} onSave={saveEdit}/>} 
+    {manualOpen&&status&&<ManualOrderModal status={status} saving={manualSaving} defaultCountryCode={settings.orders.originCountryCode} fallbackWeightKg={settings.shipping.fallbackWeightKg} onClose={()=>setManualOpen(false)} onSave={saveManual}/>} 
+    {editOrder&&<OrderEditModal order={editOrder} fallbackWeightKg={settings.shipping.fallbackWeightKg} saving={editSaving} validationIssues={editValidationIssues} onClose={()=>{setEditValidationIssues([]);setEditOrder(null)}} onSave={saveEdit}/>} 
   </div>;
 }
