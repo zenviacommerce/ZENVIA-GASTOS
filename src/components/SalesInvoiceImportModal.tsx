@@ -149,7 +149,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
     try{
       for(const item of ready){
         patch(item.id,{status:'importing'});
-        try{await createSalesInvoiceDraftFromCandidate(item.candidate!,settings.sales.defaultDueDays,settings.clients);patch(item.id,{status:'imported',candidate:{...item.candidate!,status:'imported'}});}
+        try{await createSalesInvoiceDraftFromCandidate(item.candidate!,settings.sales.defaultDueDays,settings.general.currencyCode,settings.clients);patch(item.id,{status:'imported',candidate:{...item.candidate!,status:'imported'}});}
         catch(error){patch(item.id,{status:'error',error:friendlySalesImportError(error)});}
       }
       await onFinished();
