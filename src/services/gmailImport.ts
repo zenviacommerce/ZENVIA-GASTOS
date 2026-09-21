@@ -6,6 +6,8 @@ import { supabase } from './supabase';
 import { downloadGmailAttachment, updateGmailImport, type GmailCandidate } from './gmail';
 import { isLikelySameSupplier, supplierIdentityKey } from './supplierIdentity';
 import { resolveEntityAlias } from './entityAliases';
+import { loadAppSettings } from './settings';
+import { expenseImportPolicyFromSettings } from './expenseImportPolicy';
 
 class NotInvoiceDocumentError extends Error {
   constructor(message: string) {
@@ -147,6 +149,8 @@ export async function importGmailCandidate(
   onProgress?: (message: string) => void,
 ) {
   if (!candidate.id) throw new Error('El adjunto de Gmail no está registrado todavía.');
+  const loadedSettings=await loadAppSettings();
+  const policy=expenseImportPolicyFromSettings(loadedSettings.settings.expenses);
 
   let stage = 'iniciando importación';
   try {
@@ -154,12 +158,22 @@ export async function importGmailCandidate(
     onProgress?.('Descargando adjunto de Gmail…');
     const downloadedFile = await downloadGmailAttachment(accessToken, candidate);
     const file = normalizeAttachmentFile(downloadedFile);
+    const isPdf=file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf');
+    if(policy.gmailPdfOnly&&!isPdf){
+      await updateGmailImport(candidate.id,'ignored',null,{ignoredBySetting:'gmailPdfOnly',ignoredAt:new Date().toISOString()});
+      throw new NotInvoiceDocumentError('El adjunto se ha ignorado porque Configuración permite importar desde Gmail únicamente archivos PDF.');
+    }
+    if(file.size>policy.maxAttachmentMb*1024*1024){
+      throw new Error(`El adjunto supera el máximo configurado de ${policy.maxAttachmentMb} MB.`);
+    }
 
     stage = 'comprobar duplicados';
     const fileHash = await sha256(file);
-    const existingInvoiceId = await findInvoiceByHash(fileHash);
-    if (existingInvoiceId) {
-      return markDuplicateAsImported(candidate, existingInvoiceId, 'file_hash');
+    if(policy.detectDuplicates){
+      const existingInvoiceId = await findInvoiceByHash(fileHash);
+      if (existingInvoiceId&&policy.blockHighConfidenceDuplicates) {
+        return markDuplicateAsImported(candidate, existingInvoiceId, 'file_hash');
+      }
     }
 
     // Los candidatos nuevos ya llegan validados desde la búsqueda. Para registros
@@ -196,9 +210,11 @@ export async function importGmailCandidate(
     const filenameInvoiceNumber = invoiceNumberFromFilename(candidate.attachmentName);
     const invoiceNumber = filenameInvoiceNumber || extraction.invoiceNumber;
 
-    const duplicateBySupplierNumber = await findInvoiceBySupplierAndNumber(supplierName, invoiceNumber);
-    if (duplicateBySupplierNumber) {
-      return markDuplicateAsImported(candidate, duplicateBySupplierNumber, 'supplier_invoice_number');
+    if(policy.detectDuplicates){
+      const duplicateBySupplierNumber = await findInvoiceBySupplierAndNumber(supplierName, invoiceNumber);
+      if (duplicateBySupplierNumber&&policy.blockHighConfidenceDuplicates) {
+        return markDuplicateAsImported(candidate, duplicateBySupplierNumber, 'supplier_invoice_number');
+      }
     }
 
     const invoiceInput: NewInvoiceInput = {
