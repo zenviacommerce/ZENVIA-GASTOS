@@ -11,8 +11,21 @@ type FulfillmentOrderRow={
 
 type AmazonOrderContext={amazonOrderId:string;marketplaceId:string;orderItems:Array<{orderItemId:string;quantity:number}>};
 export type AmazonTrackingSyncResult={orderId:string;amazonOrderId:string;status:'confirmed'|'already_synced';trackingNumber:string;packageReferenceId:string|null};
+export type AmazonTrackingOverride={trackingNumber?:string|null;trackingUrl?:string|null;parcelId?:number|string|null;carrierCode?:string|null;carrierName?:string|null;shippingServiceName?:string|null;labelCreatedAt?:string|null};
 
 function clean(value:unknown){return String(value??'').trim();}
+function withTrackingOverride(order:FulfillmentOrderRow,override?:AmazonTrackingOverride):FulfillmentOrderRow{
+  if(!override)return order;
+  return {
+    ...order,
+    tracking_number:override.trackingNumber??order.tracking_number,
+    sendcloud_parcel_id:override.parcelId??order.sendcloud_parcel_id,
+    carrier_code:override.carrierCode??order.carrier_code,
+    carrier_name:override.carrierName??order.carrier_name,
+    shipping_service_name:override.shippingServiceName??order.shipping_service_name,
+    label_created_at:override.labelCreatedAt??order.label_created_at,
+  };
+}
 function amazonOrderId(order:FulfillmentOrderRow){
   const candidates=[order.order_id,order.order_number].map(clean).filter(Boolean);
   const found=candidates.find(value=>/^\d{3}-\d{7}-\d{7}$/.test(value));
@@ -107,12 +120,14 @@ function packageReference(packages:any[],trackingNumber:string,parcelId:unknown)
   return {packageReferenceId:fallback,alreadySynced:false};
 }
 
-export async function syncAmazonTracking(admin:any,order:FulfillmentOrderRow):Promise<AmazonTrackingSyncResult>{
-  const trackingNumber=clean(order.tracking_number);if(order.source_channel!=='amazon')throw new Error('El pedido no procede de Amazon.');if(!trackingNumber)throw new Error('El pedido todavía no tiene número de seguimiento.');
-  const claimed=await claimAmazonTrackingAttempt(admin,order);
+export async function syncAmazonTracking(admin:any,order:FulfillmentOrderRow,override?:AmazonTrackingOverride):Promise<AmazonTrackingSyncResult>{
+  const requested=withTrackingOverride(order,override);
+  const trackingNumber=clean(requested.tracking_number);if(requested.source_channel!=='amazon')throw new Error('El pedido no procede de Amazon.');if(!trackingNumber)throw new Error('El pedido todavía no tiene número de seguimiento.');
+  const claimedRow=await claimAmazonTrackingAttempt(admin,requested);
+  const claimed=claimedRow?withTrackingOverride(claimedRow,override):null;
   if(!claimed){
     const state=await currentTrackingState(admin,order);
-    if(state?.amazon_tracking_synced_at)return {orderId:order.id,amazonOrderId:amazonOrderId(order),status:'already_synced',trackingNumber,packageReferenceId:positivePackageReference(state.sendcloud_parcel_id)};
+    if(state?.amazon_tracking_synced_at)return {orderId:requested.id,amazonOrderId:amazonOrderId(requested),status:'already_synced',trackingNumber,packageReferenceId:positivePackageReference(state.sendcloud_parcel_id??requested.sendcloud_parcel_id)};
     throw new Error('La confirmación del tracking de Amazon ya está en curso.');
   }
   let context:AmazonOrderContext|undefined;
