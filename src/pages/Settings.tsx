@@ -34,7 +34,7 @@ import { addShippingRule, deleteShippingRule, loadShippingRules, updateShippingR
 import { AMAZON_KPI_KEYS, loadAmazonStatus, type AmazonMarketplaceStatus } from '../services/amazon';
 import { loadIntegrationHealth, syncIntegration, testIntegrationConnection, type IntegrationHealth, type IntegrationId } from '../services/integrations';
 import { DEFAULT_AUTOMATION_RULES, loadAutomationRules, saveAutomationRule, type AutomationRule } from '../services/automationRules';
-import { findClientDuplicates, findInvoiceDuplicates, findProductDuplicates, findSupplierDuplicates, listClientsMissingTaxId, listProductsWithoutCost, listSuppliersMissingTaxId, mergeClient, mergeSupplier, previewClientMerge, previewSupplierMerge, runAmazonSync, runSendcloudSync, type DuplicateCandidate, type MergePreview } from '../services/maintenance';
+import { applyExpenseInvoiceReprocess, findClientDuplicates, findInvoiceDuplicates, findProductDuplicates, findSupplierDuplicates, listClientsMissingTaxId, listProductsWithoutCost, listReprocessableInvoices, listSuppliersMissingTaxId, mergeClient, mergeSupplier, previewClientMerge, previewExpenseInvoiceReprocess, previewPriceHistoryRebuild, previewProductCostRecalculation, previewSupplierMerge, previewSupplierProductRebuild, rebuildPriceHistoryLinks, rebuildSupplierProductLinks, recalculateProductCosts, runAmazonSync, runSendcloudSync, type DuplicateCandidate, type ExpenseInvoiceReprocessPreview, type MaintenanceRepairPreview, type MergePreview, type ReprocessableInvoiceOption } from '../services/maintenance';
 import { downloadSettingsExport, previewSettingsReset, resetAllSettingsToDefaults, type SettingsResetPreview } from '../services/settingsExport';
 import { DASHBOARD_KPI_DEFAULTS, TABLE_COLUMN_DEFAULTS, type PreferenceTableKey } from '../services/uiPreferences';
 
@@ -1508,8 +1508,19 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
   const [preview,setPreview]=useState<{kind:'supplier'|'client';data:MergePreview}|null>(null);
   const [diagnostics,setDiagnostics]=useState<Record<string,{count:number;names:string[]}>>({});
   const [resetPreview,setResetPreview]=useState<SettingsResetPreview|null>(null);
+  const [repairPreview,setRepairPreview]=useState<{kind:'costs'|'supplierLinks'|'priceHistory';data:MaintenanceRepairPreview}|null>(null);
+  const [reprocessOptions,setReprocessOptions]=useState<ReprocessableInvoiceOption[]>([]);
+  const [reprocessInvoiceId,setReprocessInvoiceId]=useState('');
+  const [reprocessPreview,setReprocessPreview]=useState<ExpenseInvoiceReprocessPreview|null>(null);
 
   useEffect(()=>{setDraft(settings.maintenance);onDirtyChange(false)},[settings.maintenance,onDirtyChange]);
+  useEffect(()=>{
+    let active=true;
+    listReprocessableInvoices()
+      .then(rows=>{if(active)setReprocessOptions(rows)})
+      .catch(()=>{if(active)setReprocessOptions([])});
+    return()=>{active=false};
+  },[]);
 
   const save=async()=>{
     setSaving(true);
@@ -1584,6 +1595,56 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
       if(kind==='sendcloud')await runSendcloudSync();else await runAmazonSync();
       showSuccess((kind==='sendcloud'?'Sendcloud':'Amazon')+' sincronizado.');
     }catch(e){showError(e instanceof Error?e.message:'No se pudo iniciar la sincronización.');}
+    finally{setBusy(null);}
+  };
+
+  const prepareRepair=async(kind:'costs'|'supplierLinks'|'priceHistory')=>{
+    setBusy('repair-preview:'+kind);
+    try{
+      const data=kind==='costs'
+        ?await previewProductCostRecalculation()
+        :kind==='supplierLinks'
+          ?await previewSupplierProductRebuild()
+          :await previewPriceHistoryRebuild();
+      setRepairPreview({kind,data});
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo preparar la vista previa de mantenimiento.');}
+    finally{setBusy(null);}
+  };
+
+  const applyRepair=async()=>{
+    if(!repairPreview)return;
+    const labels={costs:'recalcular los costes actuales',supplierLinks:'reconstruir relaciones producto-proveedor',priceHistory:'reconstruir enlaces del histórico de precios'} as const;
+    if(!window.confirm('Se va a '+labels[repairPreview.kind]+'. La operación no elimina histórico. ¿Continuar?'))return;
+    setBusy('repair-apply:'+repairPreview.kind);
+    try{
+      const data=repairPreview.kind==='costs'
+        ?await recalculateProductCosts()
+        :repairPreview.kind==='supplierLinks'
+          ?await rebuildSupplierProductLinks()
+          :await rebuildPriceHistoryLinks();
+      setRepairPreview({kind:repairPreview.kind,data});
+      showSuccess('Mantenimiento aplicado correctamente.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo aplicar el mantenimiento.');}
+    finally{setBusy(null);}
+  };
+
+  const prepareInvoiceReprocess=async()=>{
+    if(!reprocessInvoiceId){showError('Selecciona una factura para reprocesar.');return;}
+    setBusy('reprocess-preview');
+    try{setReprocessPreview(await previewExpenseInvoiceReprocess(reprocessInvoiceId));}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo reprocesar la factura para vista previa.');}
+    finally{setBusy(null);}
+  };
+
+  const confirmInvoiceReprocess=async()=>{
+    if(!reprocessPreview)return;
+    if(!window.confirm('Se actualizará la cabecera/extracción de esta factura con el parser actual. Las líneas y el histórico existente se conservarán. ¿Continuar?'))return;
+    setBusy('reprocess-apply');
+    try{
+      await applyExpenseInvoiceReprocess(reprocessPreview);
+      showSuccess('Factura reprocesada correctamente.');
+      setReprocessPreview(null);
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo aplicar el reprocesado.');}
     finally{setBusy(null);}
   };
 
@@ -1673,6 +1734,38 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
         <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void runDiagnostic('productsCost')}>Productos sin coste</button>
       </div>
       {Object.entries(diagnostics).map(([key,value])=><div className="settingsDiagnosticResult" key={key}><strong>{value.count}</strong><span>{value.names.length?value.names.join(' · '):'Sin incidencias'}</span></div>)}
+    </div>
+
+    <div className="settingsSubsection">
+      <h3>Reparaciones explícitas</h3>
+      <p className="settingsHelpText">Siempre se calcula una vista previa antes de modificar datos. Estas acciones no borran filas del histórico de precios.</p>
+      <div className="settingsMaintenanceActions">
+        <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void prepareRepair('costs')}>Vista previa · recalcular costes</button>
+        <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void prepareRepair('supplierLinks')}>Vista previa · producto ↔ proveedor</button>
+        <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void prepareRepair('priceHistory')}>Vista previa · histórico de precios</button>
+      </div>
+      {repairPreview&&<div className="settingsResetPreview">
+        <strong>Vista previa · {repairPreview.kind==='costs'?'Costes actuales':repairPreview.kind==='supplierLinks'?'Relaciones producto-proveedor':'Histórico de precios'}</strong>
+        <div className="settingsPreviewCounts">{Object.entries(repairPreview.data).filter(([key])=>!['ok','preview','message'].includes(key)).map(([key,value])=><span key={key}><strong>{String(value)}</strong><small>{key}</small></span>)}</div>
+        {repairPreview.data.message&&<small>{String(repairPreview.data.message)}</small>}
+        <div className="settingsInlineActions"><button type="button" className="secondary" onClick={()=>setRepairPreview(null)}>Cerrar</button>{repairPreview.data.preview!==false&&<button type="button" className="primary" disabled={busy!==null} onClick={()=>void applyRepair()}>Aplicar reparación</button>}</div>
+      </div>}
+
+      <div className="settingsMaintenanceReprocess">
+        <label className="settingsField"><span>Reprocesar una factura con el parser actual</span><SearchableSelect ariaLabel="Factura a reprocesar" value={reprocessInvoiceId} options={reprocessOptions.map(item=>({value:item.id,label:item.label,searchText:item.fileName||''}))} onChange={value=>{setReprocessInvoiceId(value);setReprocessPreview(null)}} placeholder="Selecciona una factura…" searchPlaceholder="Buscar por número, proveedor o fecha…"/></label>
+        <button type="button" className="secondary" disabled={busy!==null||!reprocessInvoiceId} onClick={()=>void prepareInvoiceReprocess()}>{busy==='reprocess-preview'?'Reprocesando…':'Vista previa de reprocesado'}</button>
+      </div>
+      {reprocessPreview&&<div className="settingsResetPreview">
+        <strong>{reprocessPreview.label}</strong>
+        <span>{reprocessPreview.changes.length?reprocessPreview.changes.join(' · ')+' cambiarán':'El parser no detecta cambios principales en la cabecera.'}</span>
+        <div className="settingsPreviewCounts">
+          <span><strong>{reprocessPreview.parsed.confidence.toLocaleString('es-ES',{style:'percent',maximumFractionDigits:0})}</strong><small>Confianza</small></span>
+          <span><strong>{reprocessPreview.parsed.lines.length}</strong><small>Líneas detectadas</small></span>
+          <span><strong>{reprocessPreview.parsed.total.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong><small>Total detectado</small></span>
+        </div>
+        {reprocessPreview.warnings.map(item=><small key={item}>{item}</small>)}
+        <div className="settingsInlineActions"><button type="button" className="secondary" onClick={()=>setReprocessPreview(null)}>Cancelar</button><button type="button" className="primary" disabled={busy!==null} onClick={()=>void confirmInvoiceReprocess()}>{busy==='reprocess-apply'?'Aplicando…':'Aplicar reprocesado'}</button></div>
+      </div>}
     </div>
 
     <div className="settingsSubsection">
