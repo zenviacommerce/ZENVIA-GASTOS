@@ -5,6 +5,7 @@ import { createInvoice } from './repository';
 import { supabase } from './supabase';
 import { downloadGmailAttachment, updateGmailImport, type GmailCandidate } from './gmail';
 import { isLikelySameSupplier, supplierIdentityKey } from './supplierIdentity';
+import { resolveEntityAlias } from './entityAliases';
 
 class NotInvoiceDocumentError extends Error {
   constructor(message: string) {
@@ -96,9 +97,11 @@ async function findInvoiceBySupplierAndNumber(supplierName: string, invoiceNumbe
     .select('id,name');
   if (supplierError) throw supplierError;
 
+  const alias=await resolveEntityAlias('supplier',cleanSupplier);
   const supplierKey=supplierIdentityKey(cleanSupplier);
   const supplierIds=(suppliers||[])
     .filter((supplier:any)=>{
+      if(alias?.targetEntityId===supplier.id)return true;
       const existingName=String(supplier.name||'');
       return supplierIdentityKey(existingName)===supplierKey
         || isLikelySameSupplier(existingName,cleanSupplier);
