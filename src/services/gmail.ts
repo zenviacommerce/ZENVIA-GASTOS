@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { loadAppSettings } from './settings';
+import { expenseImportPolicyFromSettings } from './expenseImportPolicy';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
@@ -262,8 +264,11 @@ export async function searchGmailInvoiceCandidates(
   months = 12,
   onProgress?: (message: string) => void,
 ): Promise<GmailCandidate[]> {
+  const loadedSettings=await loadAppSettings();
+  const policy=expenseImportPolicyFromSettings(loadedSettings.settings.expenses);
   const period = months >= 12 && months % 12 === 0 ? `${months / 12}y` : `${months}m`;
-  const q = encodeURIComponent(`has:attachment newer_than:${period} {filename:pdf filename:jpg filename:jpeg filename:png filename:webp}`);
+  const attachmentQuery=policy.gmailPdfOnly?'filename:pdf':'{filename:pdf filename:jpg filename:jpeg filename:png filename:webp}';
+  const q = encodeURIComponent(`has:attachment newer_than:${period} ${attachmentQuery}`);
   onProgress?.('Buscando correos con adjuntos…');
   const list = await gmailFetch<{ messages?: Array<{ id: string; threadId?: string }> }>(accessToken, `messages?maxResults=100&q=${q}`);
   const messages = list.messages || [];
@@ -285,6 +290,8 @@ export async function searchGmailInvoiceCandidates(
       const receivedAt = full.internalDate ? new Date(Number(full.internalDate)).toISOString() : null;
 
       return attachments
+        .filter(attachment => !policy.gmailPdfOnly || attachment.mimeType==='application/pdf' || attachment.filename.toLowerCase().endsWith('.pdf'))
+        .filter(attachment => !attachment.size || attachment.size<=policy.maxAttachmentMb*1024*1024)
         .filter(attachment => looksLikeInvoice(attachment.filename, subject, snippet, attachment.mimeType))
         .map(attachment => ({
           messageId: full.id || message.id,
