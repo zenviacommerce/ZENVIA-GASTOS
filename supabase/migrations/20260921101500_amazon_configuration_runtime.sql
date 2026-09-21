@@ -149,12 +149,12 @@ begin
         coalesce(o.vat_amount,ta.tax_amount,it.item_tax_total),
         coalesce(o.is_business_order,false)
       ) effective_vat_amount$new$;
-  if position(v_old in v_def)=0 then raise exception 'Expected VAT fragment not found in amazon_analytics_summary'; end if;
-  execute replace(v_def,v_old,v_new);
+  if position(v_old in v_def)>0 then execute replace(v_def,v_old,v_new);
+  elsif position(v_new in v_def)=0 then raise exception 'Expected VAT fragment not found in amazon_analytics_summary'; end if;
 
   select pg_get_functiondef('public.amazon_analytics_series(date,date,text[],text)'::regprocedure) into v_def;
-  if position(v_old in v_def)=0 then raise exception 'Expected VAT fragment not found in amazon_analytics_series'; end if;
-  execute replace(v_def,v_old,v_new);
+  if position(v_old in v_def)>0 then execute replace(v_def,v_old,v_new);
+  elsif position(v_new in v_def)=0 then raise exception 'Expected VAT fragment not found in amazon_analytics_series'; end if;
 
   select pg_get_functiondef('public.amazon_analytics_products(date,date,text[],text,integer,integer,text,text)'::regprocedure) into v_def;
   v_old := $old$coalesce(i.item_tax,case when coalesce(eo.is_business_order,false) then 0::numeric end) effective_item_tax$old$;
@@ -164,16 +164,16 @@ begin
              i.item_tax,
              coalesce(eo.is_business_order,false)
            ) effective_item_tax$new$;
-  if position(v_old in v_def)=0 then raise exception 'Expected VAT fragment not found in amazon_analytics_products'; end if;
-  execute replace(v_def,v_old,v_new);
+  if position(v_old in v_def)>0 then execute replace(v_def,v_old,v_new);
+  elsif position(v_new in v_def)=0 then raise exception 'Expected VAT fragment not found in amazon_analytics_products'; end if;
 
   select pg_get_functiondef('public.amazon_analytics_orders(date,date,text[],text,integer,integer)'::regprocedure) into v_def;
   v_old := $old$case when o.order_total is not null and o.vat_amount is not null and o.order_fx is not null then (o.order_total-o.vat_amount)*o.order_fx else 0 end::numeric net_sales,$old$;
   v_new := $new$case when o.order_total is not null and o.order_fx is not null then
         (o.order_total-private.amazon_effective_vat_amount(v_owner,o.order_total,o.vat_amount,coalesce(o.is_business_order,false)))*o.order_fx
         else 0 end::numeric net_sales,$new$;
-  if position(v_old in v_def)=0 then raise exception 'Expected net sales fragment not found in amazon_analytics_orders'; end if;
-  v_def:=replace(v_def,v_old,v_new);
+  if position(v_old in v_def)>0 then v_def:=replace(v_def,v_old,v_new);
+  elsif position(v_new in v_def)=0 then raise exception 'Expected net sales fragment not found in amazon_analytics_orders'; end if;
 
   v_old := $old$(o.order_total is not null and o.vat_amount is not null and o.order_fx is not null and coalesce(i.item_complete,false) and coalesce(f.missing_fx,0)=0) row_complete,$old$;
   v_new := $new$(o.order_total is not null
@@ -181,8 +181,9 @@ begin
         and o.order_fx is not null
         and coalesce(i.item_complete,false)
         and coalesce(f.missing_fx,0)=0) row_complete,$new$;
-  if position(v_old in v_def)=0 then raise exception 'Expected completeness fragment not found in amazon_analytics_orders'; end if;
-  execute replace(v_def,v_old,v_new);
+  if position(v_old in v_def)>0 then execute replace(v_def,v_old,v_new);
+  elsif position(v_new in v_def)=0 then raise exception 'Expected completeness fragment not found in amazon_analytics_orders';
+  else execute v_def; end if;
 end
 $migration$;
 
