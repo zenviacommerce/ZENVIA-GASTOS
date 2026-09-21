@@ -44,10 +44,12 @@ export function SettingsProvider({children,userId}:{children:ReactNode;userId?:s
   useEffect(()=>{
     if(userId!==undefined)return;
     let active=true;
-    supabase.auth.getSession().then(({data})=>{if(active)setAuthUserId(data.session?.user.id||null);});
+    supabase.auth.getSession()
+      .then(({data})=>{if(active)setAuthUserId(data.session?.user.id||null);})
+      .catch(()=>{if(active)setAuthUserId(null);});
     const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{if(active)setAuthUserId(session?.user.id||null);});
     return()=>{active=false;subscription.unsubscribe();};
-  },[effectiveUserId]);
+  },[userId]);
 
   const refresh=useCallback(async()=>{
     if(!effectiveUserId){
@@ -87,7 +89,7 @@ export function SettingsProvider({children,userId}:{children:ReactNode;userId?:s
     setWarnings(nextWarnings);
     setError(errors.length?errors.join(' · '):null);
     setLoading(false);
-  },[userId]);
+  },[effectiveUserId]);
 
   useEffect(()=>{void refresh()},[refresh]);
 
