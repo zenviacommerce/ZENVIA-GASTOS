@@ -22,7 +22,7 @@ import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
 import { showError, showSuccess } from '../services/toast';
-import type { ClientsSettings, ExpensesSettings, SalesSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
+import type { ClientsSettings, ExpensesSettings, ProductsSettings, SalesSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 import { loadManagedSalesSeries, loadTaxRegistrations, type ManagedSalesSeries, type TaxRegistration } from '../services/salesConfig';
@@ -579,6 +579,100 @@ function ClientsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
 }
 
 
+
+function ProductsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {settings,updateSection,resetSection}=useSettings();
+  const [draft,setDraft]=useState<ProductsSettings>(settings.products);
+  const [suppliers,setSuppliers]=useState<SupplierOption[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{setDraft(settings.products);onDirtyChange(false)},[settings.products,onDirtyChange]);
+  useEffect(()=>{
+    let active=true;
+    setLoading(true);
+    loadSupplierOptions()
+      .then(rows=>{if(active)setSuppliers(rows)})
+      .catch(e=>showError(e instanceof Error?e.message:'No se pudieron cargar los proveedores para Productos.'))
+      .finally(()=>{if(active)setLoading(false)});
+    return()=>{active=false};
+  },[]);
+
+  const update=<K extends keyof ProductsSettings>(key:K,value:ProductsSettings[K])=>{
+    setDraft(current=>({...current,[key]:value}));
+    onDirtyChange(true);
+  };
+
+  const save=async()=>{
+    setSaving(true);
+    try{await updateSection('products',draft);onDirtyChange(false);showSuccess('Configuración de productos guardada.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración de productos.');}
+    finally{setSaving(false);}
+  };
+
+  const restore=async()=>{
+    if(!window.confirm('Se restaurarán los valores predeterminados de Productos. ¿Continuar?'))return;
+    setSaving(true);
+    try{await resetSection('products');onDirtyChange(false);showSuccess('Valores predeterminados de Productos restaurados.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
+    finally{setSaving(false);}
+  };
+
+  const supplierOptions=suppliers.map(item=>({value:item.id,label:item.name,description:item.taxId||undefined,searchText:[item.name,item.taxId].filter(Boolean).join(' ')}));
+  const costMethodOptions=[
+    {value:'last_purchase',label:'Última compra'},
+    {value:'average',label:'Promedio de compras'},
+    {value:'manual',label:'Manual · no actualizar desde facturas'},
+  ];
+  const roundingOptions=[0.01,0.05,0.1,0.5,1].map(value=>({value:String(value),label:value.toLocaleString('es-ES',{maximumFractionDigits:2})+' €'}));
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero">
+      <div className="settingsSectionIcon"><Box size={22}/></div>
+      <div><h2>Configuración de productos</h2><p>Defaults comerciales, creación desde compras, estrategia de coste, márgenes y alertas.</p></div>
+    </div>
+    {loading?<div className="settingsInlineLoading">Cargando proveedores…</div>:<>
+      <div className="settingsSubsection">
+        <h3>Nuevos productos</h3>
+        <div className="settingsFormGrid">
+          <label className="settingsField"><span>IVA por defecto</span><div className="settingsNumberWithSuffix"><input type="number" min="0" max="100" step="0.01" value={draft.defaultVatRate} onChange={e=>update('defaultVatRate',Number(e.target.value))}/><em>%</em></div></label>
+          <label className="settingsField"><span>Unidad por defecto</span><input value={draft.defaultUnit} onChange={e=>update('defaultUnit',e.target.value)} placeholder="ud"/></label>
+          <label className="settingsField"><span>Proveedor por defecto</span><SearchableSelect value={draft.defaultSupplierId||''} options={supplierOptions} onChange={value=>update('defaultSupplierId',value||null)} allowEmpty emptyLabel="Sin proveedor" placeholder="Sin proveedor" searchPlaceholder="Buscar proveedor…" ariaLabel="Proveedor por defecto del producto"/></label>
+          <label className="settingsField"><span>Categoría por defecto</span><input value={draft.defaultCategoryId||''} onChange={e=>update('defaultCategoryId',e.target.value.trim()?e.target.value:null)} placeholder="Ej. Film, bolsas, vasos…"/></label>
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <h3>Costes e importaciones</h3>
+        <div className="settingsFormGrid">
+          <label className="settingsField"><span>Método de coste</span><SelectField ariaLabel="Método de coste" value={draft.costMethod} options={costMethodOptions} onChange={value=>update('costMethod',value as ProductsSettings['costMethod'])}/></label>
+          <label className="settingsField"><span>Decimales de coste</span><input type="number" min="0" max="6" value={draft.costDecimals} onChange={e=>update('costDecimals',Number(e.target.value))}/></label>
+        </div>
+        <div className="settingsToggleGrid">
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.updateCostFromImports} onChange={e=>update('updateCostFromImports',e.target.checked)}/><span><strong>Actualizar coste desde importaciones</strong><small>Permite que las compras modifiquen el coste según el método elegido.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.autoCreateFromInvoice} onChange={e=>update('autoCreateFromInvoice',e.target.checked)}/><span><strong>Crear productos desde facturas</strong><small>Permite crear productos nuevos a partir de líneas de compras de mercancía.</small></span></label>
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <h3>Precio y margen</h3>
+        <div className="settingsFormGrid">
+          <label className="settingsField"><span>Margen objetivo</span><div className="settingsNumberWithSuffix"><input type="number" min="-100" max="1000" step="0.1" value={draft.targetMarginPct} onChange={e=>update('targetMarginPct',Number(e.target.value))}/><em>%</em></div></label>
+          <label className="settingsField"><span>Margen mínimo</span><div className="settingsNumberWithSuffix"><input type="number" min="-100" max="1000" step="0.1" value={draft.minimumMarginPct} onChange={e=>update('minimumMarginPct',Number(e.target.value))}/><em>%</em></div></label>
+          <label className="settingsField"><span>Alerta de margen</span><div className="settingsNumberWithSuffix"><input type="number" min="-100" max="1000" step="0.1" value={draft.marginAlertPct} onChange={e=>update('marginAlertPct',Number(e.target.value))}/><em>%</em></div></label>
+          <label className="settingsField"><span>Alerta de subida de coste</span><div className="settingsNumberWithSuffix"><input type="number" min="0" max="1000" step="0.1" value={draft.costIncreaseAlertPct} onChange={e=>update('costIncreaseAlertPct',Number(e.target.value))}/><em>%</em></div></label>
+          <label className="settingsField"><span>Redondeo de precio</span><SelectField ariaLabel="Redondeo de precio" value={String(draft.priceRounding)} options={roundingOptions} onChange={value=>update('priceRounding',Number(value))}/></label>
+        </div>
+      </div>
+
+      <div className="settingsSectionActions">
+        <button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
+        <button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
+      </div>
+    </>}
+  </section>;
+}
+
 function SuppliersSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   const {settings,updateSection,resetSection}=useSettings();
   const [draft,setDraft]=useState<SuppliersSettings>(settings.suppliers);
@@ -867,7 +961,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
