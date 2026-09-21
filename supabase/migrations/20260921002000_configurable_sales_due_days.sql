@@ -26,6 +26,7 @@ end;
 $$;
 
 revoke all on function private.sales_default_due_days(uuid) from public,anon,authenticated;
+grant execute on function private.sales_default_due_days(uuid) to authenticated;
 
 create or replace function private.set_default_sales_invoice_due_date()
 returns trigger
