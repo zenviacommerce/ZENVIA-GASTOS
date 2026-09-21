@@ -19,10 +19,13 @@ test('the shared invoice period filters expose Hoy', async () => {
   assert.match(source, /SelectField/);
 });
 
-test('Suppliers exposes the same Hoy quick filter', async () => {
-  const source = await readFile(new URL('../src/pages/Suppliers.tsx', import.meta.url), 'utf8');
-  assert.match(source, /PeriodPreset='today'\|'month'/);
-  assert.match(source, />Hoy<\/button>/);
+test('Suppliers uses the shared period panel, including the Hoy preset', async () => {
+  const suppliers = await readFile(new URL('../src/pages/Suppliers.tsx', import.meta.url), 'utf8');
+  const panel = await readFile(new URL('../src/components/PeriodFilterPanel.tsx', import.meta.url), 'utf8');
+  assert.match(suppliers, /PeriodFilterPanel/);
+  assert.match(suppliers, /defaultDateFilter/);
+  assert.match(panel, /today/);
+  assert.match(panel, /Hoy/);
 });
 
 test('the application configures the ZENVIA logo as favicon', async () => {
