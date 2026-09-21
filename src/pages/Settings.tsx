@@ -22,7 +22,7 @@ import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
 import { showError, showSuccess } from '../services/toast';
-import type { AmazonSettings, ClientsSettings, ExpensesSettings, OrdersSettings, ProductsSettings, SalesSettings, ShippingSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
+import type { AmazonSettings, ClientsSettings, ExpensesSettings, IntegrationsSettings, OrdersSettings, ProductsSettings, SalesSettings, ShippingSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 import { loadManagedSalesSeries, loadTaxRegistrations, type ManagedSalesSeries, type TaxRegistration } from '../services/salesConfig';
@@ -32,6 +32,7 @@ import { addEntityAlias, deleteEntityAlias, loadEntityAliases, updateEntityAlias
 import { loadSupplierOptions, type SupplierOption } from '../services/supplierEditor';
 import { addShippingRule, deleteShippingRule, loadShippingRules, updateShippingRule, type ShippingRule } from '../services/shippingRules';
 import { AMAZON_KPI_KEYS, loadAmazonStatus, type AmazonMarketplaceStatus } from '../services/amazon';
+import { loadIntegrationHealth, syncIntegration, testIntegrationConnection, type IntegrationHealth, type IntegrationId } from '../services/integrations';
 
 type SettingsSectionId =
   | 'general'
@@ -871,6 +872,112 @@ function AmazonSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   </section>;
 }
 
+function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {settings,updateSection,resetSection}=useSettings();
+  const [draft,setDraft]=useState<IntegrationsSettings>(settings.integrations);
+  const [health,setHealth]=useState<IntegrationHealth[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [busy,setBusy]=useState<string|null>(null);
+  const [results,setResults]=useState<Partial<Record<IntegrationId,{checkedAt:string;message:string;ok:boolean}>>>({});
+
+  useEffect(()=>{setDraft(settings.integrations);onDirtyChange(false)},[settings.integrations,onDirtyChange]);
+
+  const refreshHealth=async()=>{
+    setLoading(true);
+    try{setHealth(await loadIntegrationHealth(draft));}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo cargar el estado de las integraciones.');}
+    finally{setLoading(false);}
+  };
+  useEffect(()=>{void refreshHealth()},[]);
+
+  const settingKey:Record<IntegrationId,keyof IntegrationsSettings>={
+    gmail:'gmailEnabled',amazon:'amazonEnabled',sendcloud:'sendcloudEnabled',shopify:'shopifyEnabled',
+  };
+  const names:Record<IntegrationId,string>={gmail:'Gmail',amazon:'Amazon',sendcloud:'Sendcloud',shopify:'Shopify'};
+  const descriptions:Record<IntegrationId,string>={
+    gmail:'Importación de facturas desde la cuenta autorizada en esta sesión.',
+    amazon:'SP-API, pedidos, inventario, finanzas e imágenes.',
+    sendcloud:'Pedidos, etiquetas, transportistas y seguimiento.',
+    shopify:'Canal Shopify conectado a través de una integración real de Sendcloud.',
+  };
+  const enabled=(id:IntegrationId)=>Boolean(draft[settingKey[id]]);
+  const toggle=(id:IntegrationId,value:boolean)=>{
+    setDraft(current=>({...current,[settingKey[id]]:value}));
+    onDirtyChange(true);
+  };
+  const dateTime=(value:string|null)=>value?new Date(value).toLocaleString('es-ES'):'Sin registro';
+
+  const run=async(id:IntegrationId,action:'test'|'sync')=>{
+    const key=`${id}:${action}`;
+    setBusy(key);
+    try{
+      const result=action==='test'?await testIntegrationConnection(id):await syncIntegration(id);
+      setResults(current=>({...current,[id]:result}));
+      showSuccess(result.message);
+      const next=await loadIntegrationHealth(draft);
+      setHealth(next);
+    }catch(e){
+      const message=e instanceof Error?e.message:'La operación no se pudo completar.';
+      const checkedAt=new Date().toISOString();
+      setResults(current=>({...current,[id]:{ok:false,checkedAt,message}}));
+      showError(message);
+    }finally{setBusy(null);}
+  };
+
+  const save=async()=>{
+    setSaving(true);
+    try{
+      await updateSection('integrations',draft);
+      setHealth(current=>current.map(item=>({...item,enabled:Boolean(draft[settingKey[item.id]])})));
+      onDirtyChange(false);
+      showSuccess('Configuración de integraciones guardada.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración de integraciones.');}
+    finally{setSaving(false);}
+  };
+  const restore=async()=>{
+    if(!window.confirm('Se restaurarán los valores predeterminados de Integraciones. ¿Continuar?'))return;
+    setSaving(true);
+    try{await resetSection('integrations');onDirtyChange(false);showSuccess('Valores predeterminados de Integraciones restaurados.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
+    finally{setSaving(false);}
+  };
+
+  const ordered:IntegrationId[]=['gmail','amazon','sendcloud','shopify'];
+  const byId=new Map(health.map(item=>[item.id,item]));
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero"><div className="settingsSectionIcon"><PlugZap size={22}/></div><div><h2>Integraciones</h2><p>Estado, sincronización y activación de servicios externos sin exponer credenciales.</p></div></div>
+    <div className="settingsSubsection">
+      <h3>Servicios conectados</h3>
+      {loading&&!health.length?<div className="settingsInlineLoading">Comprobando integraciones…</div>:<div className="settingsToggleGrid">
+        {ordered.map(id=>{
+          const item=byId.get(id);
+          const result=results[id];
+          const connected=Boolean(item?.connected);
+          return <div className="settingsToggleField" key={id}>
+            <input aria-label={`Activar ${names[id]}`} type="checkbox" checked={enabled(id)} onChange={e=>toggle(id,e.target.checked)}/>
+            <span>
+              <strong>{names[id]} · {connected?'Conectado':'No conectado'}</strong>
+              <small>{descriptions[id]}</small>
+              <small>Último éxito: {dateTime(item?.lastSuccessAt||null)}</small>
+              <small>Último intento: {dateTime(item?.lastAttemptAt||null)}</small>
+              {item?.lastError&&<small>{item.lastError}</small>}
+              {result&&<small>{result.ok?'Correcto':'Error'} · {dateTime(result.checkedAt)} · {result.message}</small>}
+              <span className="settingsInlineActions">
+                <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void run(id,'test')}>{busy===`${id}:test`?'Comprobando…':'Probar conexión'}</button>
+                <button type="button" className="secondaryButton" disabled={busy!==null||!connected} onClick={()=>void run(id,'sync')}>{busy===`${id}:sync`?'Sincronizando…':'Sincronizar ahora'}</button>
+              </span>
+            </span>
+          </div>;
+        })}
+      </div>}
+      <p className="settingsHelpText">Desactivar una integración detiene sus automatismos configurados. Las acciones manuales y el historial siguen disponibles.</p>
+    </div>
+    <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+  </section>;
+}
+
 function ProductsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   const {settings,updateSection,resetSection}=useSettings();
   const [draft,setDraft]=useState<ProductsSettings>(settings.products);
@@ -1252,7 +1359,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='amazon'?<AmazonSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='amazon'?<AmazonSection onDirtyChange={setDirty}/>:active&&active.id==='integrations'?<IntegrationsSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
