@@ -202,6 +202,21 @@ export async function connectGmail(forceConsent = false): Promise<GmailConnectio
   });
 }
 
+export async function testGmailConnection():Promise<{email:string}>{
+  const connection=getCachedGmailConnection();
+  if(!connection)throw new Error('Gmail no está conectado en esta sesión.');
+  const profile=await gmailFetch<{emailAddress?:string}>(connection.accessToken,'profile');
+  return {email:profile.emailAddress||connection.email||'Cuenta de Gmail'};
+}
+
+export async function syncGmailInvoiceCandidates(months=12):Promise<{found:number;stored:number}>{
+  const connection=getCachedGmailConnection();
+  if(!connection)throw new Error('Gmail no está conectado en esta sesión.');
+  const candidates=await searchGmailInvoiceCandidates(connection.accessToken,months);
+  const stored=await saveGmailCandidates(candidates);
+  return {found:candidates.length,stored:stored.length};
+}
+
 export async function disconnectGmail() {
   const connection = getCachedGmailConnection();
   sessionStorage.removeItem(TOKEN_STORAGE_KEY);
