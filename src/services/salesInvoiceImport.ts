@@ -151,7 +151,7 @@ function mergedImportedClient(existing:Client,input:ClientInput,clientSettings:C
   };
 }
 
-async function enrichImportedClientasync function enrichImportedClient(clientId:string,input:ClientInput,clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients){
+async function enrichImportedClient(clientId:string,input:ClientInput,clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients){
   const [clients,business]=await Promise.all([loadClients(),loadBusinessSettings()]);
   const existing=clients.find(client=>client.id===clientId);
   if(!existing)return;
@@ -165,16 +165,20 @@ async function enrichImportedClientasync function enrichImportedClient(clientId:
   if(ownTax&&normalize(existing.taxId)===ownTax&&!input.taxId)merged.taxId='';
   if(ownPhone&&normalize(existing.phone)===ownPhone&&!input.phone)merged.phone='';
   if(ownEmail&&String(existing.email||'').trim().toLowerCase()===ownEmail&&!input.email)merged.email='';
-  if(input.countryCode&&input.countryCode!=='XX')merged.countryCode=input.countryCode;
+  if(clientSettings.fillCountry&&input.countryCode&&input.countryCode!=='XX'&&(clientSettings.overwriteReviewed||!existing.countryCode||existing.countryCode==='XX'))merged.countryCode=input.countryCode;
 
   const changed=
     (merged.taxId||'')!==(existing.taxId||'')
     ||(merged.email||'')!==(existing.email||'')
     ||(merged.phone||'')!==(existing.phone||'')
     ||(merged.addressLine1||'')!==(existing.addressLine1||'')
+    ||(merged.addressLine2||'')!==(existing.addressLine2||'')
     ||(merged.postalCode||'')!==(existing.postalCode||'')
     ||(merged.city||'')!==(existing.city||'')
-    ||merged.countryCode!==existing.countryCode;
+    ||(merged.province||'')!==(existing.province||'')
+    ||merged.countryCode!==existing.countryCode
+    ||(merged.defaultVatRate??null)!==(existing.defaultVatRate??null)
+    ||(merged.defaultPaymentMethod||'')!==(existing.defaultPaymentMethod||'');
   if(changed)await updateClient(clientId,merged);
 }
 
