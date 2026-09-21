@@ -58,6 +58,22 @@ async function authenticate(req:Request,admin:any):Promise<Caller>{
   return caller as Caller;
 }
 
+async function workspaceConfig(admin:any,ownerId:string){
+  const {data,error}=await admin.from('app_settings').select('config').eq('owner_id',ownerId).maybeSingle();
+  if(error)throw error;
+  const config=(data?.config&&typeof data.config==='object')?data.config:{};
+  return {
+    orders:(config as any).orders||{},
+    shipping:(config as any).shipping||{},
+  };
+}
+function enabledCarrier(option:any,enabled:unknown){
+  const values=Array.isArray(enabled)?enabled.map(value=>clean(value).toLowerCase()).filter(Boolean):[];
+  if(!values.length)return true;
+  const haystack=`${option?.carrierCode||option?.carrierName||''} ${option?.code||''} ${option?.name||''}`.toLowerCase();
+  return values.some(value=>haystack.includes(value));
+}
+
 function channelFor(i:any){const value=`${i?.type||''} ${i?.shop_name||''} ${i?.shop_url||''}`.toLowerCase();if(value.includes('amazon'))return 'amazon';if(value.includes('shopify'))return 'shopify';return 'other';}
 function apiIntegration(i:any){const value=`${i?.type||''} ${i?.shop_name||''}`.toLowerCase();return value.includes('api')||value.includes('zenvia');}
 function orderEmail(o:any){return o?.customer_details?.email||o?.shipping_address?.email||o?.billing_address?.email||null;}
@@ -69,7 +85,6 @@ function friendlyCarrier(code:unknown){const v=String(code||'').trim(),l=v.toLow
 function carrierCode(option:unknown,tracking?:unknown){const o=String(option||'').trim();if(o)return o.split(':')[0].toLowerCase();try{return new URL(String(tracking||'')).searchParams.get('carrier')?.toLowerCase()||null}catch{return null}}
 function clean(v:unknown){return String(v??'').trim();}
 function positive(v:unknown,fallback=0){const n=Number(v);return Number.isFinite(n)&&n>=0?n:fallback;}
-function isBalearicAddress(address:any){const country=clean(address?.country_code).toUpperCase(),postal=clean(address?.postal_code).replace(/\s+/g,'');return country==='ES'&&/^07\d{3}$/.test(postal);}
 
 function normalizeShippingOption(option:any){
   const code=String(option?.code||option?.shipping_option_code||option?.shipping_option?.code||'');
@@ -103,7 +118,7 @@ Deno.serve(async(req:Request)=>{
   const url=Deno.env.get('SUPABASE_URL')||'',adminKey=getAdminKey();if(!url||!adminKey)return fail('Configuración del backend no disponible.',500);
   const admin=createClient(url,adminKey,{auth:{persistSession:false,autoRefreshToken:false}});
   try{
-    const caller=await authenticate(req,admin),body=await req.json().catch(()=>({})),action=String(body?.action||'status'),credentials=sendcloudCredentials();
+    const caller=await authenticate(req,admin),body=await req.json().catch(()=>({})),action=String(body?.action||'status'),credentials=sendcloudCredentials(),config=await workspaceConfig(admin,caller.data_owner_id),ordersConfig=config.orders,shippingConfig=config.shipping;
     if(action==='status'){
       if(!credentials.configured)return response({configured:false,integrations:[],message:'Faltan SENDCLOUD_PUBLIC_KEY y SENDCLOUD_SECRET_KEY.'});
       try{return response({configured:true,integrations:await integrations()})}catch(error){return response({configured:true,integrations:[],message:error instanceof Error?error.message:String(error)})}
@@ -124,14 +139,14 @@ Deno.serve(async(req:Request)=>{
     if(action==='create_manual_order'){
       const linked=await integrations(),manual=body?.order||{},integrationId=Number(manual.integrationId||0),integration=linked.find(i=>i.id===integrationId);
       if(!integration)return fail('Selecciona una integración API de Sendcloud válida.');if(integration.channel!=='other')return fail('Los pedidos manuales deben crearse en una integración API de Sendcloud, no en Amazon o Shopify.');
-      const orderNumber=clean(manual.orderNumber)||`MAN-${Date.now()}`,customerName=clean(manual.customerName),address=clean(manual.address),postalCode=clean(manual.postalCode),city=clean(manual.city),countryCode=clean(manual.countryCode||'ES').toUpperCase();
+      const orderNumber=clean(manual.orderNumber)||`MAN-${Date.now()}`,customerName=clean(manual.customerName),address=clean(manual.address),postalCode=clean(manual.postalCode),city=clean(manual.city),countryCode=clean(manual.countryCode||ordersConfig.originCountryCode||'ES').toUpperCase();
       if(!customerName||!address||!postalCode||!city||countryCode.length!==2)return fail('Completa nombre, dirección, código postal, ciudad y país.');
       const items=(Array.isArray(manual.items)?manual.items:[]).map((item:any,index:number)=>{const name=clean(item?.name)||`Producto ${index+1}`,quantity=Math.max(1,Math.floor(positive(item?.quantity,1))),unitPrice=positive(item?.unitPrice,0),line:any={name,quantity,total_price:{value:Number((unitPrice*quantity).toFixed(2)),currency:'EUR'}};const sku=clean(item?.sku);if(sku)line.sku=sku;return line;});
       if(!items.length)return fail('Añade al menos un producto al pedido.');
-      const total=Number(items.reduce((sum:number,item:any)=>sum+Number(item.total_price.value||0),0).toFixed(2)),weight=Math.max(0.01,positive(manual.weightKg,1)),now=new Date().toISOString(),externalId=`manual-${crypto.randomUUID()}`;
+      const total=Number(items.reduce((sum:number,item:any)=>sum+Number(item.total_price.value||0),0).toFixed(2)),weight=Math.max(0.01,positive(manual.weightKg,positive(shippingConfig.fallbackWeightKg,1)||1)),now=new Date().toISOString(),externalId=`manual-${crypto.randomUUID()}`,configuredStatus=clean(ordersConfig.defaultManualStatus||'pending')||'pending';
       const sendcloudOrder:any={order_id:externalId,order_number:orderNumber,order_details:{integration:{id:integrationId},status:{code:'unshipped',message:'Unshipped'},order_created_at:now,order_items:items},payment_details:{total_price:{value:total,currency:'EUR'},status:{code:'paid',message:'Paid'}},shipping_address:{name:customerName,address_line_1:address,house_number:clean(manual.houseNumber)||null,address_line_2:clean(manual.address2)||null,postal_code:postalCode,city,country_code:countryCode,email:clean(manual.email)||null,phone_number:clean(manual.phone)||null},shipping_details:{is_local_pickup:false,delivery_indicator:'Pedido manual ZENVIA Gestión',measurement:{weight:{value:weight,unit:'kg'}}}};
       const {data}=await sendcloudJson('/orders',{method:'POST',body:JSON.stringify([sendcloudOrder])}),created=Array.isArray(data?.data)?data.data[0]:null;if(created?.id==null)throw new Error('Sendcloud no devolvió el identificador del pedido.');
-      const row={owner_id:caller.data_owner_id,sendcloud_id:String(created.id),order_id:externalId,order_number:orderNumber,integration_id:integrationId,integration_name:integration.shopName,integration_type:integration.type||'api',source_channel:'other',source_status:'unshipped',order_created_at:now,order_updated_at:now,customer_name:customerName,customer_email:clean(manual.email)||null,customer_phone:clean(manual.phone)||null,shipping_address:sendcloudOrder.shipping_address,billing_address:{},items,total_amount:total,currency:'EUR',raw_payload:sendcloudOrder,last_synced_at:now};
+      const row={owner_id:caller.data_owner_id,sendcloud_id:String(created.id),order_id:externalId,order_number:orderNumber,integration_id:integrationId,integration_name:integration.shopName,integration_type:integration.type||'api',source_channel:'other',source_status:configuredStatus,order_created_at:now,order_updated_at:now,customer_name:customerName,customer_email:clean(manual.email)||null,customer_phone:clean(manual.phone)||null,shipping_address:sendcloudOrder.shipping_address,billing_address:{},items,total_amount:total,currency:'EUR',raw_payload:sendcloudOrder,last_synced_at:now};
       const {data:saved,error}=await admin.from('fulfillment_orders').upsert(row,{onConflict:'owner_id,sendcloud_id'}).select('id').single();if(error)throw error;
       return response({ok:true,id:saved.id,sendcloudId:String(created.id),orderNumber});
     }
@@ -148,17 +163,23 @@ Deno.serve(async(req:Request)=>{
 
     if(action==='create_label'){
       if(order.sendcloud_parcel_id)return fail('Este pedido ya tiene una etiqueta creada.',409);if(nonActionable(order.source_status))return fail('No se puede crear una etiqueta para un pedido cancelado o ya procesado.',409);
-      const selected=body?.shippingOption||null,balearic=isBalearicAddress(order.shipping_address||{});
-      if(balearic&&!selected)return fail('Destino Baleares: selecciona un servicio de Correos. Las reglas automáticas están desactivadas para evitar MRW.',409);
-      if(balearic&&`${selected?.code||''} ${selected?.carrierName||''} ${selected?.name||''}`.toLowerCase().includes('mrw'))return fail('Destino Baleares: MRW está bloqueado por tarifa alta. Utiliza Correos.',409);
+      const selected=body?.shippingOption||null;
+      if(selected&&!enabledCarrier(selected,shippingConfig.enabledCarriers))return fail('El transportista seleccionado está deshabilitado en Configuración.',409);
+      if(!selected&&Array.isArray(shippingConfig.enabledCarriers)&&shippingConfig.enabledCarriers.length)return fail('Selecciona un servicio de uno de los transportistas habilitados.',409);
       const payload:any={integration_id:Number(order.integration_id),label_details:{mime_type:'application/pdf',dpi:72},order:{apply_shipping_rules:!selected}};
       if(order.order_id)payload.order.order_id=order.order_id;else if(order.order_number)payload.order.order_number=order.order_number;else return fail('El pedido no tiene identificador de origen.');
       if(selected?.code){payload.ship_with={type:'shipping_option_code',properties:{shipping_option_code:String(selected.code)}};if(selected.contractId!=null)payload.ship_with.properties.contract_id=Number(selected.contractId)}
       const {data}=await sendcloudJson('/orders/create-label-sync',{method:'POST',body:JSON.stringify(payload)}),created=Array.isArray(data?.data)?data.data[0]:null;if(!created?.parcel_id||!created?.label?.file)throw new Error('Sendcloud no devolvió la etiqueta creada.');
       const ship=created.ship_with?.properties||{},optionCode=ship.shipping_option_code||selected?.code||null,code=carrierCode(optionCode,created.tracking_url),now=new Date().toISOString();
       const selectedPrice=selected?.price==null?null:Number(selected.price),selectedCurrency=clean(selected?.currency).toUpperCase()||null;
-      const costPatch=Number.isFinite(selectedPrice)?{shipping_cost_amount:selectedPrice,shipping_cost_currency:selectedCurrency||'EUR',shipping_cost_source:'sendcloud_quote',shipping_cost_net_amount:selectedPrice,shipping_cost_tax_amount:0,shipping_cost_recorded_at:now}:{};
-      const {error:updateError}=await admin.from('fulfillment_orders').update({sendcloud_parcel_id:Number(created.parcel_id),sendcloud_shipment_id:created.shipment_id==null?null:String(created.shipment_id),tracking_number:created.tracking_number||null,tracking_url:created.tracking_url||null,shipping_option_code:optionCode,contract_id:ship.contract_id??selected?.contractId??null,carrier_code:code,carrier_name:selected?.carrierName||friendlyCarrier(code),shipping_service_name:selected?.name||optionCode,label_created_at:now,fulfilled_at:now,source_status:'shipped',tracking_status_code:'READY_TO_SEND',tracking_status_message:'Ready to send',tracking_updated_at:now,...costPatch}).eq('id',order.id).eq('owner_id',caller.data_owner_id);if(updateError)throw updateError;
+      const persistShippingCost=shippingConfig.persistShippingCost!==false;
+      const markSentAfterLabel=ordersConfig.markSentAfterLabel!==false;
+      const confirmShipmentAfterLabel=shippingConfig.confirmShipmentAfterLabel!==false;
+      const shouldMarkSent=markSentAfterLabel&&confirmShipmentAfterLabel;
+      const costPatch=persistShippingCost&&Number.isFinite(selectedPrice)?{shipping_cost_amount:selectedPrice,shipping_cost_currency:selectedCurrency||'EUR',shipping_cost_source:'sendcloud_quote',shipping_cost_net_amount:selectedPrice,shipping_cost_tax_amount:0,shipping_cost_recorded_at:now}:{};
+      const shipmentPatch:any={sendcloud_parcel_id:Number(created.parcel_id),sendcloud_shipment_id:created.shipment_id==null?null:String(created.shipment_id),tracking_number:created.tracking_number||null,tracking_url:created.tracking_url||null,shipping_option_code:optionCode,contract_id:ship.contract_id??selected?.contractId??null,carrier_code:code,carrier_name:selected?.carrierName||friendlyCarrier(code),shipping_service_name:selected?.name||optionCode,label_created_at:now,tracking_status_code:'READY_TO_SEND',tracking_status_message:'Ready to send',tracking_updated_at:now,...costPatch};
+      if(shouldMarkSent){shipmentPatch.fulfilled_at=now;shipmentPatch.source_status='shipped';}
+      const {error:updateError}=await admin.from('fulfillment_orders').update(shipmentPatch).eq('id',order.id).eq('owner_id',caller.data_owner_id);if(updateError)throw updateError;
       return response({parcelId:Number(created.parcel_id),shipmentId:created.shipment_id==null?null:String(created.shipment_id),trackingNumber:created.tracking_number||null,trackingUrl:created.tracking_url||null,shippingOptionCode:optionCode,contractId:ship.contract_id??selected?.contractId??null,carrierCode:code,carrierName:selected?.carrierName||friendlyCarrier(code),shippingServiceName:selected?.name||optionCode,mimeType:created.label.mime_type||'application/pdf',base64:String(created.label.file)});
     }
 
@@ -167,5 +188,5 @@ Deno.serve(async(req:Request)=>{
       return response({parcelId:Number(order.sendcloud_parcel_id),shipmentId:order.sendcloud_shipment_id||null,trackingNumber:order.tracking_number||null,trackingUrl:order.tracking_url||null,shippingOptionCode:order.shipping_option_code||null,contractId:order.contract_id==null?null:Number(order.contract_id),carrierCode:order.carrier_code||null,carrierName:order.carrier_name||null,shippingServiceName:order.shipping_service_name||null,mimeType:file.mimeType,base64:file.base64});
     }
     return fail('Acción no válida.');
-  }catch(error){const message=error instanceof Error?error.message:String(error||'Error interno.');const status=/Sesión no válida/.test(message)?401:/permiso/.test(message)?403:/no admite|No se puede|Baleares/.test(message)?409:500;return fail(message,status);}
+  }catch(error){const message=error instanceof Error?error.message:String(error||'Error interno.');const status=/Sesión no válida/.test(message)?401:/permiso/.test(message)?403:/no admite|No se puede|deshabilitado|transportistas habilitados/.test(message)?409:500;return fail(message,status);}
 });
