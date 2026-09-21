@@ -254,3 +254,35 @@ table[data-preference-table='products'][data-hidden-columns~='costChange'] :is(t
   html[data-density='spacious'] .page,
   html[data-density='compact'] .page{padding-top:calc(80px + env(safe-area-inset-top))!important}
 }
+
+
+/* Legacy invoice-detail and Gmail preview surfaces that predate theme variables. */
+html[data-theme='dark'] :where(
+  .detectedLines,.detailFile,.detailGrid>div,.detailSection,.detailSectionHead,
+  .gmailPreviewHead,.gmailPreviewActions
+){
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+}
+html[data-theme='dark'] .detailSectionHead,
+html[data-theme='dark'] .detectedLines{
+  background:var(--surface-soft)!important;
+}
+html[data-theme='dark'] .detailGrid .detailTotal{
+  background:#0b2f2b!important;
+  border-color:#115e59!important;
+}
+html[data-theme='dark'] .detailGrid .detailTotal strong{color:#5eead4!important}
+html[data-theme='dark'] :where(.detectedLines span,.detailFile span,.detailGrid span,.detailSectionHead span){
+  color:var(--text-secondary)!important;
+}
+html[data-theme='dark'] .detailGrid strong{color:var(--text)!important}
+html[data-theme='dark'] .gmailPreviewBody{background:#080f1c!important}
+html[data-theme='dark'] .gmailPreviewHead small{color:var(--text-secondary)!important}
+html[data-theme='dark'] .gmailPreviewError{color:#fca5a5!important}
+html[data-theme='dark'] .gmailPreviewActions .link{
+  background:var(--surface-raised)!important;
+  border-color:var(--border)!important;
+  color:#5eead4!important;
+}
