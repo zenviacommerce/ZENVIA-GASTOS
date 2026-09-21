@@ -1524,7 +1524,6 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
     setBusy(key);
     try{
       const rows=key==='suppliersTax'?await listSuppliersMissingTaxId():key==='clientsTax'?await listClientsMissingTaxId():await listProductsWithoutCost();
-      setDiagnostics(current=>({...current,[key],count:rows.length}));
       setDiagnostics(current=>({...current,[key]:{count:rows.length,names:rows.slice(0,20).map((row:any)=>String(row.name||row.sku||row.id))}}));
     }catch(e){showError(e instanceof Error?e.message:'No se pudo ejecutar el diagnóstico.');}
     finally{setBusy(null);}
