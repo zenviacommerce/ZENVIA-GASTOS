@@ -22,7 +22,7 @@ import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
 import { showError, showSuccess } from '../services/toast';
-import type { AmazonSettings, ClientsSettings, ExpensesSettings, IntegrationsSettings, NotificationsSettings, NotificationSetting, OrdersSettings, ProductsSettings, SalesSettings, ShippingSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
+import type { AmazonSettings, ClientsSettings, ExpensesSettings, IntegrationsSettings, MaintenanceSettings, NotificationsSettings, NotificationSetting, OrdersSettings, ProductsSettings, SalesSettings, ShippingSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 import { loadManagedSalesSeries, loadTaxRegistrations, type ManagedSalesSeries, type TaxRegistration } from '../services/salesConfig';
@@ -34,6 +34,7 @@ import { addShippingRule, deleteShippingRule, loadShippingRules, updateShippingR
 import { AMAZON_KPI_KEYS, loadAmazonStatus, type AmazonMarketplaceStatus } from '../services/amazon';
 import { loadIntegrationHealth, syncIntegration, testIntegrationConnection, type IntegrationHealth, type IntegrationId } from '../services/integrations';
 import { DEFAULT_AUTOMATION_RULES, loadAutomationRules, saveAutomationRule, type AutomationRule } from '../services/automationRules';
+import { findClientDuplicates, findInvoiceDuplicates, findProductDuplicates, findSupplierDuplicates, listClientsMissingTaxId, listProductsWithoutCost, listSuppliersMissingTaxId, mergeClient, mergeSupplier, previewClientMerge, previewSupplierMerge, runAmazonSync, runSendcloudSync, type DuplicateCandidate, type MergePreview } from '../services/maintenance';
 
 type SettingsSectionId =
   | 'general'
@@ -1443,6 +1444,173 @@ function PreferencesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
   </section>;
 }
 
+function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {settings,updateSection,resetSection}=useSettings();
+  const [draft,setDraft]=useState<MaintenanceSettings>(settings.maintenance);
+  const [saving,setSaving]=useState(false);
+  const [analyzing,setAnalyzing]=useState(false);
+  const [busy,setBusy]=useState<string|null>(null);
+  const [duplicates,setDuplicates]=useState<{
+    suppliers:DuplicateCandidate[];
+    clients:DuplicateCandidate[];
+    products:DuplicateCandidate[];
+    invoices:DuplicateCandidate[];
+  }>({suppliers:[],clients:[],products:[],invoices:[]});
+  const [analyzed,setAnalyzed]=useState(false);
+  const [preview,setPreview]=useState<{kind:'supplier'|'client';data:MergePreview}|null>(null);
+  const [diagnostics,setDiagnostics]=useState<Record<string,{count:number;names:string[]}>>({});
+
+  useEffect(()=>{setDraft(settings.maintenance);onDirtyChange(false)},[settings.maintenance,onDirtyChange]);
+
+  const save=async()=>{
+    setSaving(true);
+    try{await updateSection('maintenance',draft);onDirtyChange(false);showSuccess('Configuración de mantenimiento guardada.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración de mantenimiento.');}
+    finally{setSaving(false);}
+  };
+  const restore=async()=>{
+    if(!window.confirm('Se restaurarán los valores predeterminados de Mantenimiento. ¿Continuar?'))return;
+    setSaving(true);
+    try{await resetSection('maintenance');onDirtyChange(false);showSuccess('Valores predeterminados de Mantenimiento restaurados.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
+    finally{setSaving(false);}
+  };
+
+  const analyze=async()=>{
+    setAnalyzing(true);setPreview(null);
+    try{
+      const [suppliers,clients,products,invoices]=await Promise.all([
+        findSupplierDuplicates(draft.duplicateCandidateThreshold),
+        findClientDuplicates(draft.duplicateCandidateThreshold),
+        findProductDuplicates(draft.duplicateCandidateThreshold),
+        findInvoiceDuplicates(draft.duplicateCandidateThreshold),
+      ]);
+      setDuplicates({suppliers,clients,products,invoices});setAnalyzed(true);
+      showSuccess('Análisis de duplicados completado.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo analizar duplicados.');}
+    finally{setAnalyzing(false);}
+  };
+
+  const loadPreview=async(kind:'supplier'|'client',candidate:DuplicateCandidate,reverse=false)=>{
+    const sourceId=reverse?candidate.rightId:candidate.leftId;
+    const destinationId=reverse?candidate.leftId:candidate.rightId;
+    setBusy('preview:'+candidate.id+(reverse?':reverse':''));
+    try{
+      const data=kind==='supplier'
+        ?await previewSupplierMerge(sourceId,destinationId)
+        :await previewClientMerge(sourceId,destinationId);
+      setPreview({kind,data});
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo preparar la vista previa.');}
+    finally{setBusy(null);}
+  };
+
+  const confirmMerge=async()=>{
+    if(!preview)return;
+    const {kind,data}=preview;
+    const label=kind==='supplier'?'proveedor':'cliente';
+    if(!window.confirm('Vas a fusionar el '+label+' “'+data.sourceLabel+'” dentro de “'+data.destinationLabel+'”. La operación es transaccional pero no tiene deshacer automático. ¿Continuar?'))return;
+    setBusy('merge');
+    try{
+      if(kind==='supplier')await mergeSupplier(data.sourceId,data.destinationId);
+      else await mergeClient(data.sourceId,data.destinationId);
+      setPreview(null);
+      await analyze();
+      showSuccess((kind==='supplier'?'Proveedor':'Cliente')+' fusionado correctamente.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo completar la fusión.');}
+    finally{setBusy(null);}
+  };
+
+  const runDiagnostic=async(key:'suppliersTax'|'clientsTax'|'productsCost')=>{
+    setBusy(key);
+    try{
+      const rows=key==='suppliersTax'?await listSuppliersMissingTaxId():key==='clientsTax'?await listClientsMissingTaxId():await listProductsWithoutCost();
+      setDiagnostics(current=>({...current,[key],count:rows.length}));
+      setDiagnostics(current=>({...current,[key]:{count:rows.length,names:rows.slice(0,20).map((row:any)=>String(row.name||row.sku||row.id))}}));
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo ejecutar el diagnóstico.');}
+    finally{setBusy(null);}
+  };
+
+  const runSync=async(kind:'sendcloud'|'amazon')=>{
+    setBusy('sync:'+kind);
+    try{
+      if(kind==='sendcloud')await runSendcloudSync();else await runAmazonSync();
+      showSuccess((kind==='sendcloud'?'Sendcloud':'Amazon')+' sincronizado.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo iniciar la sincronización.');}
+    finally{setBusy(null);}
+  };
+
+  const evidenceLabel=(evidence:string)=>({
+    same_tax_id:'Mismo NIF/VAT',same_normalized_name:'Mismo nombre normalizado',same_sku:'Mismo SKU',
+    same_file_hash:'Mismo archivo',same_supplier_invoice_number:'Mismo proveedor + número',
+    compatible_date:'Fecha compatible',compatible_amount:'Importe compatible',
+  } as Record<string,string>)[evidence]||evidence;
+
+  const candidateList=(kind:'supplier'|'client'|'product'|'invoice',rows:DuplicateCandidate[])=><div className="settingsMaintenanceList">
+    {!rows.length?<div className="settingsEmptyMini">Sin candidatos por encima del umbral.</div>:rows.map(candidate=><div className="settingsMaintenanceCandidate" key={candidate.id}>
+      <div><strong>{candidate.leftLabel} ↔ {candidate.rightLabel}</strong><small>{candidate.confidence}% · {candidate.evidence.map(evidenceLabel).join(' · ')}</small></div>
+      {(kind==='supplier'||kind==='client')&&<div className="settingsInlineActions">
+        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void loadPreview(kind,candidate,false)}>Vista previa →</button>
+        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void loadPreview(kind,candidate,true)}>← Vista previa</button>
+      </div>}
+    </div>)}
+  </div>;
+
+  const affectedLabel=(key:string)=>({
+    invoices:'Facturas de gasto',priceHistory:'Histórico de precios',products:'Productos',supplierProducts:'Relaciones producto-proveedor',
+    salesInvoices:'Facturas de venta',aliases:'Alias',
+  } as Record<string,string>)[key]||key;
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero"><div className="settingsSectionIcon"><ShieldCheck size={22}/></div><div><h2>Mantenimiento</h2><p>Diagnóstico y correcciones explícitas. Ninguna acción histórica se ejecuta automáticamente al cambiar una configuración.</p></div></div>
+
+    <div className="settingsSubsection">
+      <h3>Análisis de duplicados</h3>
+      <div className="settingsFormGrid">
+        <label className="settingsField"><span>Umbral de candidato</span><div className="settingsNumberWithSuffix"><input type="number" min="0" max="100" value={draft.duplicateCandidateThreshold} onChange={e=>{setDraft(current=>({...current,duplicateCandidateThreshold:Number(e.target.value)}));onDirtyChange(true)}}/><em>%</em></div></label>
+      </div>
+      <div className="settingsInlineActions"><button type="button" className="primaryButton" disabled={analyzing} onClick={()=>void analyze()}>{analyzing?'Analizando…':'Analizar duplicados'}</button></div>
+      {analyzed&&<div className="settingsMaintenanceGroups">
+        <div><h4>Proveedores · {duplicates.suppliers.length}</h4>{candidateList('supplier',duplicates.suppliers)}</div>
+        <div><h4>Clientes · {duplicates.clients.length}</h4>{candidateList('client',duplicates.clients)}</div>
+        <div><h4>Productos · {duplicates.products.length}</h4>{candidateList('product',duplicates.products)}<p className="settingsHelpText">Solo diagnóstico: no se permite fusión automática de productos.</p></div>
+        <div><h4>Facturas · {duplicates.invoices.length}</h4>{candidateList('invoice',duplicates.invoices)}<p className="settingsHelpText">Solo diagnóstico: una factura candidata debe revisarse individualmente.</p></div>
+      </div>}
+    </div>
+
+    {preview&&<div className="settingsSubsection settingsMergePreview">
+      <h3>Vista previa</h3>
+      <p><strong>{preview.data.sourceLabel}</strong> → <strong>{preview.data.destinationLabel}</strong></p>
+      <div className="settingsPreviewCounts">{Object.entries(preview.data.affected).map(([key,value])=><span key={key}><strong>{value}</strong><small>{affectedLabel(key)}</small></span>)}</div>
+      {preview.data.warnings.map(warning=><p className="settingsHelpText" key={warning}>{warning}</p>)}
+      <div className="settingsInlineActions">
+        <button type="button" className="secondaryButton" onClick={()=>setPreview(null)}>Cancelar</button>
+        <button type="button" className="primaryButton" disabled={busy==='merge'} onClick={()=>void confirmMerge()}>{busy==='merge'?'Fusionando…':preview.kind==='supplier'?'Fusionar proveedor':'Fusionar cliente'}</button>
+      </div>
+    </div>}
+
+    <div className="settingsSubsection">
+      <h3>Diagnósticos de calidad</h3>
+      <div className="settingsMaintenanceActions">
+        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void runDiagnostic('suppliersTax')}>Proveedores sin CIF/VAT</button>
+        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void runDiagnostic('clientsTax')}>Clientes sin NIF/VAT</button>
+        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void runDiagnostic('productsCost')}>Productos sin coste</button>
+      </div>
+      {Object.entries(diagnostics).map(([key,value])=><div className="settingsDiagnosticResult" key={key}><strong>{value.count}</strong><span>{value.names.length?value.names.join(' · '):'Sin incidencias'}</span></div>)}
+    </div>
+
+    <div className="settingsSubsection">
+      <h3>Sincronización manual</h3>
+      <p className="settingsHelpText">Estas acciones son explícitas y no cambian los interruptores de sincronización automática.</p>
+      <div className="settingsMaintenanceActions">
+        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void runSync('sendcloud')}>{busy==='sync:sendcloud'?'Sincronizando…':'Sincronizar Sendcloud ahora'}</button>
+        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void runSync('amazon')}>{busy==='sync:amazon'?'Sincronizando…':'Sincronizar Amazon ahora'}</button>
+      </div>
+    </div>
+
+    <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+  </section>;
+}
+
 export function SettingsPage({isAdmin}:{isAdmin:boolean}){
   const {warnings,error,loading}=useSettings();
   const visibleSections=useMemo(()=>sections.filter(section=>!section.adminOnly||isAdmin),[isAdmin]);
@@ -1498,7 +1666,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='amazon'?<AmazonSection onDirtyChange={setDirty}/>:active&&active.id==='integrations'?<IntegrationsSection onDirtyChange={setDirty}/>:active&&active.id==='automations'?<AlertsSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='amazon'?<AmazonSection onDirtyChange={setDirty}/>:active&&active.id==='integrations'?<IntegrationsSection onDirtyChange={setDirty}/>:active&&active.id==='automations'?<AlertsSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&active.id==='maintenance'?<MaintenanceSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
