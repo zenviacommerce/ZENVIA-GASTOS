@@ -54,9 +54,9 @@ export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{inv
     // Primero pintamos el estado persistido de Supabase; la sincronización externa ocurre después.
     void loadPersisted();
     void refreshOrders();
-    const timer=window.setInterval(()=>void refreshOrders(),60000);
+    const timer=window.setInterval(()=>void refreshOrders(),Math.max(30,settings.orders.refreshSeconds)*1000);
     return()=>{alive=false;window.clearInterval(timer);};
-  },[settings.integrations.sendcloudEnabled]);
+  },[settings.integrations.sendcloudEnabled,settings.orders.refreshSeconds]);
 
   const periodExpenses=useMemo(()=>invoices.filter(invoice=>(!filter.from||invoice.invoiceDate>=filter.from)&&(!filter.to||invoice.invoiceDate<=filter.to)),[invoices,filter]);
   const selectedSales=useMemo(()=>sales.filter(invoice=>{
