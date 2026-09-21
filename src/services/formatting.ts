@@ -48,10 +48,13 @@ export function localeForLanguage(language:DocumentLanguage){
 function dateParts(value:string|Date,timezone:string){
   const date=value instanceof Date?value:new Date(value);
   if(Number.isNaN(date.getTime()))return null;
-  const parts=new Intl.DateTimeFormat('en-GB',{
-    timeZone:timezone||'Europe/Madrid',
+  const build=(timeZone:string)=>new Intl.DateTimeFormat('en-GB',{
+    timeZone,
     day:'2-digit',month:'2-digit',year:'numeric',
   }).formatToParts(date);
+  let parts:Intl.DateTimeFormatPart[];
+  try{parts=build(timezone||'Europe/Madrid');}
+  catch{parts=build('Europe/Madrid');}
   const get=(type:string)=>parts.find(item=>item.type===type)?.value||'';
   const day=get('day'),month=get('month'),year=get('year');
   return day&&month&&year?{day,month,year}:null;
@@ -80,20 +83,25 @@ export function formatAppDateTime(value:string|Date|null|undefined,settings:Form
   const date=value instanceof Date?value:new Date(value);
   if(Number.isNaN(date.getTime()))return fallback;
   const dateText=formatAppDate(date,settings,fallback);
-  const time=new Intl.DateTimeFormat(localeForLanguage(settings.documentLanguage),{
-    timeZone:settings.timezone||'Europe/Madrid',
+  const makeTime=(timeZone:string)=>new Intl.DateTimeFormat(localeForLanguage(settings.documentLanguage),{
+    timeZone,
     hour:'2-digit',minute:'2-digit',hour12:false,
   }).format(date);
+  let time:string;
+  try{time=makeTime(settings.timezone||'Europe/Madrid');}
+  catch{time=makeTime('Europe/Madrid');}
   return `${dateText} ${time}`;
 }
 
 export function formatAppMoney(value:number,currency:string|null|undefined,settings:FormattingSettings,options:{minimumFractionDigits?:number;maximumFractionDigits?:number}={}){
   const code=(currency||settings.currencyCode||'EUR').trim().toUpperCase();
-  return new Intl.NumberFormat(localeForLanguage(settings.documentLanguage),{
-    style:'currency',currency:code,
+  const format=(safeCode:string)=>new Intl.NumberFormat(localeForLanguage(settings.documentLanguage),{
+    style:'currency',currency:safeCode,
     minimumFractionDigits:options.minimumFractionDigits,
     maximumFractionDigits:options.maximumFractionDigits,
   }).format(value);
+  try{return format(code);}
+  catch{return format('EUR');}
 }
 
 export function invoiceDocumentLabels(language:DocumentLanguage){
