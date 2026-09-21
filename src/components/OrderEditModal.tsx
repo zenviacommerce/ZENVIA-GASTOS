@@ -5,8 +5,8 @@ import type { OrderValidationIssue } from '../services/orderShipping';
 
 const text=(value:unknown)=>typeof value==='string'?value:'';
 
-export function OrderEditModal({order,saving,validationIssues=[],onClose,onSave}:{
-  order:FulfillmentOrder; saving:boolean; validationIssues?:OrderValidationIssue[]; onClose:()=>void; onSave:(value:OrderUpdateInput)=>void;
+export function OrderEditModal({order,fallbackWeightKg,saving,validationIssues=[],onClose,onSave}:{
+  order:FulfillmentOrder; fallbackWeightKg:number; saving:boolean; validationIssues?:OrderValidationIssue[]; onClose:()=>void; onSave:(value:OrderUpdateInput)=>void;
 }){
   const address=order.shippingAddress||{};
   const [customerName,setCustomerName]=useState(order.customerName||text(address.name));
@@ -19,7 +19,7 @@ export function OrderEditModal({order,saving,validationIssues=[],onClose,onSave}
   const [city,setCity]=useState(text(address.city));
   const [stateProvince,setStateProvince]=useState(text(address.state_province_code));
   const [countryCode,setCountryCode]=useState(text(address.country_code)||'ES');
-  const [weightKg,setWeightKg]=useState(order.weightKg||1);
+  const [weightKg,setWeightKg]=useState(order.weightKg||fallbackWeightKg||1);
 
   const submit=()=>onSave({
     customerName:customerName.trim(),email:email.trim(),phone:phone.trim(),address:street.trim(),
