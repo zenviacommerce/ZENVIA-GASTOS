@@ -22,7 +22,7 @@ import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
 import { showError, showSuccess } from '../services/toast';
-import type { ClientsSettings, ExpensesSettings, ProductsSettings, SalesSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
+import type { ClientsSettings, ExpensesSettings, OrdersSettings, ProductsSettings, SalesSettings, ShippingSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 import { loadManagedSalesSeries, loadTaxRegistrations, type ManagedSalesSeries, type TaxRegistration } from '../services/salesConfig';
@@ -30,6 +30,7 @@ import { loadExpenseCategories } from '../services/expenseCategories';
 import type { ExpenseCategory } from '../types';
 import { addEntityAlias, deleteEntityAlias, loadEntityAliases, updateEntityAlias, type EntityAliasRule } from '../services/entityAliases';
 import { loadSupplierOptions, type SupplierOption } from '../services/supplierEditor';
+import { addShippingRule, deleteShippingRule, loadShippingRules, updateShippingRule, type ShippingRule } from '../services/shippingRules';
 
 type SettingsSectionId =
   | 'general'
@@ -580,6 +581,170 @@ function ClientsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
 
 
 
+
+function OrdersSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {settings,updateSection,resetSection}=useSettings();
+  const [draft,setDraft]=useState<OrdersSettings>(settings.orders);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{setDraft(settings.orders);onDirtyChange(false)},[settings.orders,onDirtyChange]);
+  const update=<K extends keyof OrdersSettings>(key:K,value:OrdersSettings[K])=>{setDraft(current=>({...current,[key]:value}));onDirtyChange(true)};
+
+  const save=async()=>{
+    setSaving(true);
+    try{await updateSection('orders',draft);onDirtyChange(false);showSuccess('Configuración de pedidos guardada.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración de pedidos.');}
+    finally{setSaving(false);}
+  };
+  const restore=async()=>{
+    if(!window.confirm('Se restaurarán los valores predeterminados de Pedidos. ¿Continuar?'))return;
+    setSaving(true);
+    try{await resetSection('orders');onDirtyChange(false);showSuccess('Valores predeterminados de Pedidos restaurados.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
+    finally{setSaving(false);}
+  };
+
+  const filenameOptions=[
+    {value:'order_number',label:'Número de pedido'},
+    {value:'sku',label:'SKU del primer producto'},
+    {value:'product',label:'Nombre del primer producto'},
+    {value:'customer_order',label:'Cliente + pedido'},
+    {value:'custom',label:'Plantilla personalizada'},
+  ];
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero"><div className="settingsSectionIcon"><ShoppingBag size={22}/></div><div><h2>Configuración de pedidos</h2><p>Defaults, refresco, etiquetas y confirmación de tracking de los pedidos.</p></div></div>
+    <div className="settingsSubsection">
+      <h3>Pedidos manuales y refresco</h3>
+      <div className="settingsFormGrid">
+        <label className="settingsField"><span>Estado inicial</span><input value={draft.defaultManualStatus} onChange={e=>update('defaultManualStatus',e.target.value)} placeholder="pending"/></label>
+        <label className="settingsField"><span>Canal por defecto</span><SelectField ariaLabel="Canal por defecto" value={draft.defaultChannel} options={[{value:'manual',label:'Manual / API'},{value:'amazon',label:'Amazon'},{value:'shopify',label:'Shopify'}]} onChange={value=>update('defaultChannel',value)}/></label>
+        <label className="settingsField"><span>País de origen</span><input maxLength={2} value={draft.originCountryCode} onChange={e=>update('originCountryCode',e.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,2))}/></label>
+        <label className="settingsField"><span>Transportista por defecto</span><SelectField ariaLabel="Transportista por defecto" allowEmpty emptyLabel="Usar reglas automáticas" value={draft.defaultCarrier||''} options={[{value:'mrw',label:'MRW'},{value:'correos',label:'Correos'}]} onChange={value=>update('defaultCarrier',value||null)}/></label>
+        <label className="settingsField"><span>Refresco de pedidos</span><div className="settingsNumberWithSuffix"><input type="number" min="30" max="3600" value={draft.refreshSeconds} onChange={e=>update('refreshSeconds',Number(e.target.value))}/><em>s</em></div></label>
+        <label className="settingsField"><span>Pedido pendiente más de</span><div className="settingsNumberWithSuffix"><input type="number" min="1" max="720" value={draft.overdueHours} onChange={e=>update('overdueHours',Number(e.target.value))}/><em>h</em></div></label>
+      </div>
+    </div>
+    <div className="settingsSubsection">
+      <h3>Etiquetas</h3>
+      <div className="settingsFormGrid">
+        <label className="settingsField"><span>Nombre de etiqueta</span><SelectField ariaLabel="Nombre de etiqueta" value={draft.labelFilenameStrategy} options={filenameOptions} onChange={value=>update('labelFilenameStrategy',value as OrdersSettings['labelFilenameStrategy'])}/></label>
+        {draft.labelFilenameStrategy==='custom'&&<label className="settingsField settingsFieldWide"><span>Plantilla de nombre</span><input value={draft.customLabelFilenameTemplate} onChange={e=>update('customLabelFilenameTemplate',e.target.value)} placeholder="{customer}_{order}_{date}"/><small>Variables: {'{order}'}, {'{sku}'}, {'{product}'}, {'{customer}'}, {'{date}'}</small></label>}
+        <label className="settingsField"><span>Nombre del ZIP</span><input value={draft.bulkZipFilenameTemplate} onChange={e=>update('bulkZipFilenameTemplate',e.target.value)} placeholder="etiquetas_{scope}_{date}"/></label>
+        <label className="settingsField"><span>Ámbito de generación masiva</span><SelectField ariaLabel="Ámbito de generación masiva" value={draft.bulkScope} options={[{value:'pending',label:'Pendientes visibles'},{value:'selected',label:'Solo seleccionados'}]} onChange={value=>update('bulkScope',value as OrdersSettings['bulkScope'])}/></label>
+      </div>
+      <div className="settingsToggleGrid">
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.generateLabelAutomatically} onChange={e=>update('generateLabelAutomatically',e.target.checked)}/><span><strong>Generar etiqueta automáticamente</strong><small>Al preparar un pedido usa la primera regla válida sin abrir el selector de servicio.</small></span></label>
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.downloadLabelAfterCreation} onChange={e=>update('downloadLabelAfterCreation',e.target.checked)}/><span><strong>Descargar etiqueta tras crearla</strong><small>Descarga el PDF automáticamente después de generar una etiqueta individual.</small></span></label>
+      </div>
+    </div>
+    <div className="settingsSubsection">
+      <h3>Tracking y estado</h3>
+      <div className="settingsToggleGrid">
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.pushTrackingToMarketplace} onChange={e=>update('pushTrackingToMarketplace',e.target.checked)}/><span><strong>Enviar tracking al marketplace</strong><small>Confirma el seguimiento en Amazon cuando se crea la etiqueta.</small></span></label>
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.markSentAfterLabel} onChange={e=>update('markSentAfterLabel',e.target.checked)}/><span><strong>Marcar enviado tras etiqueta</strong><small>Cambia el pedido a enviado cuando se crea correctamente la etiqueta.</small></span></label>
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.retryTrackingConfirmation} onChange={e=>update('retryTrackingConfirmation',e.target.checked)}/><span><strong>Reintentar confirmación de tracking</strong><small>Reintenta confirmaciones pendientes durante la sincronización periódica.</small></span></label>
+      </div>
+    </div>
+    <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+  </section>;
+}
+
+function ShippingSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {settings,updateSection,resetSection}=useSettings();
+  const [draft,setDraft]=useState<ShippingSettings>(settings.shipping);
+  const [rules,setRules]=useState<ShippingRule[]>([]);
+  const [newRule,setNewRule]=useState<Omit<ShippingRule,'id'>>({name:'Nueva regla',priority:300,active:true,conditions:{},action:{carrierContains:'',serviceIncludes:[]}});
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [ruleBusy,setRuleBusy]=useState<string|null>(null);
+
+  useEffect(()=>{setDraft(settings.shipping);onDirtyChange(false)},[settings.shipping,onDirtyChange]);
+  const reloadRules=async()=>setRules(await loadShippingRules());
+  useEffect(()=>{let active=true;setLoading(true);loadShippingRules().then(rows=>{if(active)setRules(rows)}).catch(e=>showError(e instanceof Error?e.message:'No se pudieron cargar las reglas de envío.')).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[]);
+
+  const update=<K extends keyof ShippingSettings>(key:K,value:ShippingSettings[K])=>{setDraft(current=>({...current,[key]:value}));onDirtyChange(true)};
+  const patchRule=(id:string,patch:Partial<ShippingRule>)=>setRules(current=>current.map(rule=>rule.id===id?{...rule,...patch}:rule));
+
+  const save=async()=>{
+    setSaving(true);
+    try{await updateSection('shipping',draft);onDirtyChange(false);showSuccess('Configuración de envíos guardada.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración de envíos.');}
+    finally{setSaving(false);}
+  };
+  const restore=async()=>{
+    if(!window.confirm('Se restaurarán los valores predeterminados de Envíos. Las reglas personalizadas se conservarán. ¿Continuar?'))return;
+    setSaving(true);
+    try{await resetSection('shipping');onDirtyChange(false);showSuccess('Valores predeterminados de Envíos restaurados.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
+    finally{setSaving(false);}
+  };
+  const addRule=async()=>{
+    if(!newRule.name.trim()||!newRule.action.carrierContains.trim()){showError('La regla necesita nombre y transportista.');return;}
+    setRuleBusy('new');
+    try{await addShippingRule(newRule);await reloadRules();setNewRule({name:'Nueva regla',priority:Math.max(300,...rules.map(rule=>rule.priority+100)),active:true,conditions:{},action:{carrierContains:'',serviceIncludes:[]}});showSuccess('Regla de envío añadida.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo añadir la regla.');}
+    finally{setRuleBusy(null);}
+  };
+  const saveRule=async(rule:ShippingRule)=>{
+    setRuleBusy(rule.id);
+    try{await updateShippingRule(rule.id,{name:rule.name,priority:rule.priority,active:rule.active,conditions:rule.conditions,action:rule.action});await reloadRules();showSuccess('Regla de envío actualizada.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo actualizar la regla.');}
+    finally{setRuleBusy(null);}
+  };
+  const removeRule=async(rule:ShippingRule)=>{
+    if(!window.confirm(`¿Eliminar la regla “${rule.name}”?`))return;
+    setRuleBusy(rule.id);
+    try{await deleteShippingRule(rule.id);await reloadRules();showSuccess('Regla de envío eliminada.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo eliminar la regla.');}
+    finally{setRuleBusy(null);}
+  };
+
+  const enabledCarriersText=draft.enabledCarriers.join(', ');
+  const ruleEditor=(rule:ShippingRule,isNew=false)=><div className="settingsAliasRow" key={isNew?'new':rule.id}>
+    <input value={rule.name} onChange={e=>isNew?setNewRule(current=>({...current,name:e.target.value})):patchRule(rule.id,{name:e.target.value})} placeholder="Nombre de regla" aria-label="Nombre de regla"/>
+    <input value={rule.conditions.countryCode||''} maxLength={2} onChange={e=>{const value=e.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,2);isNew?setNewRule(current=>({...current,conditions:{...current.conditions,countryCode:value||null}})):patchRule(rule.id,{conditions:{...rule.conditions,countryCode:value||null}})}} placeholder="País" aria-label="País de la regla"/>
+    <input value={rule.conditions.postalPrefix||''} onChange={e=>{const value=e.target.value.replace(/\s+/g,'');isNew?setNewRule(current=>({...current,conditions:{...current.conditions,postalPrefix:value||null}})):patchRule(rule.id,{conditions:{...rule.conditions,postalPrefix:value||null}})}} placeholder="CP prefijo" aria-label="Prefijo postal"/>
+    <input value={rule.action.carrierContains} onChange={e=>{const value=e.target.value;isNew?setNewRule(current=>({...current,action:{...current.action,carrierContains:value}})):patchRule(rule.id,{action:{...rule.action,carrierContains:value}})}} placeholder="Transportista" aria-label="Transportista de la regla"/>
+    <input value={rule.action.serviceIncludes.join(', ')} onChange={e=>{const values=e.target.value.split(',').map(value=>value.trim()).filter(Boolean);isNew?setNewRule(current=>({...current,action:{...current.action,serviceIncludes:values}})):patchRule(rule.id,{action:{...rule.action,serviceIncludes:values}})}} placeholder="Servicio contiene…" aria-label="Palabras del servicio"/>
+    <input type="number" min="0" max="10000" value={rule.priority} onChange={e=>{const value=Number(e.target.value);isNew?setNewRule(current=>({...current,priority:value})):patchRule(rule.id,{priority:value})}} aria-label="Prioridad de regla"/>
+    <label className="settingsInlineCheck"><input type="checkbox" checked={rule.active} onChange={e=>isNew?setNewRule(current=>({...current,active:e.target.checked})):patchRule(rule.id,{active:e.target.checked})}/> Activa</label>
+    {isNew?<button type="button" className="secondaryButton" disabled={ruleBusy==='new'} onClick={()=>void addRule()}><Plus size={15}/> Añadir</button>:<><button type="button" className="secondaryButton" disabled={ruleBusy===rule.id} onClick={()=>void saveRule(rule)}>Guardar</button><button type="button" className="iconBtn dangerIcon" disabled={ruleBusy===rule.id} onClick={()=>void removeRule(rule)} aria-label="Eliminar regla"><Trash2 size={15}/></button></>}
+  </div>;
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero"><div className="settingsSectionIcon"><Truck size={22}/></div><div><h2>Configuración de envíos</h2><p>Remitente, peso, PDF de etiqueta, transportistas y reglas automáticas de servicio.</p></div></div>
+    {loading?<div className="settingsInlineLoading">Cargando reglas de envío…</div>:<>
+      <div className="settingsSubsection"><h3>Remitente</h3><div className="settingsFormGrid">
+        <label className="settingsField"><span>Nombre del remitente</span><input value={draft.senderName} onChange={e=>update('senderName',e.target.value)}/></label>
+        <label className="settingsField settingsFieldWide"><span>Dirección del remitente</span><input value={draft.senderAddress} onChange={e=>update('senderAddress',e.target.value)}/></label>
+        <label className="settingsField"><span>Código postal</span><input value={draft.senderPostalCode} onChange={e=>update('senderPostalCode',e.target.value)}/></label>
+        <label className="settingsField"><span>Ciudad</span><input value={draft.senderCity} onChange={e=>update('senderCity',e.target.value)}/></label>
+        <label className="settingsField"><span>País</span><input maxLength={2} value={draft.senderCountryCode} onChange={e=>update('senderCountryCode',e.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,2))}/></label>
+      </div></div>
+      <div className="settingsSubsection"><h3>Paquete y etiqueta</h3><div className="settingsFormGrid">
+        <label className="settingsField"><span>Peso de respaldo</span><div className="settingsNumberWithSuffix"><input type="number" min="0.001" max="1000" step="0.001" value={draft.fallbackWeightKg} onChange={e=>update('fallbackWeightKg',Number(e.target.value))}/><em>kg</em></div></label>
+        <label className="settingsField"><span>Unidad de peso</span><SelectField ariaLabel="Unidad de peso" value={draft.weightUnit} options={[{value:'kg',label:'kg'},{value:'g',label:'g'}]} onChange={value=>update('weightUnit',value as ShippingSettings['weightUnit'])}/></label>
+        <label className="settingsField"><span>Tamaño de etiqueta</span><SelectField ariaLabel="Tamaño de etiqueta" value={draft.labelSize} options={[{value:'A6',label:'A6'},{value:'10x15',label:'10 × 15 cm'},{value:'A4',label:'A4'}]} onChange={value=>update('labelSize',value as ShippingSettings['labelSize'])}/></label>
+        <label className="settingsField"><span>Orientación</span><SelectField ariaLabel="Orientación de etiqueta" value={draft.labelOrientation} options={[{value:'portrait',label:'Vertical'},{value:'landscape',label:'Horizontal'}]} onChange={value=>update('labelOrientation',value as ShippingSettings['labelOrientation'])}/></label>
+        <label className="settingsField"><span>Copias</span><input type="number" min="1" max="20" value={draft.copies} onChange={e=>update('copies',Number(e.target.value))}/></label>
+      </div><div className="settingsToggleGrid">
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.autoDownload} onChange={e=>update('autoDownload',e.target.checked)}/><span><strong>Descarga automática</strong><small>Permite descargar automáticamente los PDF de etiqueta cuando la acción lo solicita.</small></span></label>
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.confirmShipmentAfterLabel} onChange={e=>update('confirmShipmentAfterLabel',e.target.checked)}/><span><strong>Confirmar expedición tras etiqueta</strong><small>Permite al backend cerrar la expedición después de crear la etiqueta.</small></span></label>
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.persistShippingCost} onChange={e=>update('persistShippingCost',e.target.checked)}/><span><strong>Guardar coste de envío</strong><small>Persiste el coste cotizado para KPIs y análisis.</small></span></label>
+      </div></div>
+      <div className="settingsSubsection"><h3>Transportistas</h3><div className="settingsFormGrid">
+        <label className="settingsField settingsFieldWide"><span>Transportistas habilitados</span><input value={enabledCarriersText} onChange={e=>update('enabledCarriers',e.target.value.split(',').map(value=>value.trim().toLowerCase()).filter(Boolean))} placeholder="mrw, correos"/><small>Vacío = todos. Se comparan por código o nombre.</small></label>
+        <label className="settingsField"><span>Sin método válido</span><SelectField ariaLabel="Comportamiento sin método válido" value={draft.noValidMethodBehavior} options={[{value:'manual_selection',label:'Pedir selección manual'},{value:'error',label:'Bloquear con error'}]} onChange={value=>update('noValidMethodBehavior',value as ShippingSettings['noValidMethodBehavior'])}/></label>
+      </div></div>
+      <div className="settingsSubsection"><div className="settingsSubsectionHead"><div><h3>Reglas automáticas de envío</h3><p>Se evalúan por prioridad. Las primeras reglas creadas reproducen Baleares → Correos y resto → MRW Urgent 19:00.</p></div></div>
+        <div className="settingsAliasList">{rules.map(rule=>ruleEditor(rule))}{ruleEditor({...newRule,id:'new'},true)}</div>
+      </div>
+      <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+    </>}
+  </section>;
+}
+
 function ProductsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   const {settings,updateSection,resetSection}=useSettings();
   const [draft,setDraft]=useState<ProductsSettings>(settings.products);
@@ -961,7 +1126,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
