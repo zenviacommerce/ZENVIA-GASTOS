@@ -13,7 +13,7 @@ import { listFulfillmentOrders, syncSendcloudOrders, type FulfillmentOrder } fro
 import { isCancelledOrder, isPendingOrder, orderStatusCode } from '../services/orderStatus';
 import { readViewCache, writeViewCache } from '../services/viewCache';
 import { useSettings } from '../context/SettingsContext';
-import { persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
+import { DASHBOARD_KPI_DEFAULTS, persistRememberedFilter, rememberedFilter, selectedPreferenceKeys } from '../services/uiPreferences';
 
 const colors = ['#0f766e','#2563eb','#7c3aed','#d97706','#64748b','#dc2626','#0891b2'];
 const money=(value:number)=>`${value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €`;
@@ -79,6 +79,8 @@ export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{inv
     return true;
   }),[orders,filter.from,filter.to]);
 
+  const visibleKpis=new Set(selectedPreferenceKeys(preferences.dashboardKpis,DASHBOARD_KPI_DEFAULTS));
+  const showKpi=(key:string)=>visibleKpis.has(key);
   const selectedPeriod=periodLabel(filter);
   const expenseTotal=periodExpenses.reduce((s,i)=>s+i.total,0);
   const inputVat=periodExpenses.reduce((s,i)=>s+i.vat,0);
@@ -106,17 +108,22 @@ export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{inv
     <div className="pageHead"><div><div className="eyebrow">{selectedPeriod}</div><h1>Resumen</h1><p>Visión global de ventas, gastos, pedidos, logística, IVA, cobros y costes de ZENVIA COMMERCE.</p></div>{onUpload&&<button className="primary" onClick={onUpload}>+ Factura de gasto</button>}</div>
     <PeriodFilterPanel filter={filter} onChange={setFilter} title="Periodo global" note="Este periodo se aplica de forma consistente a ventas, gastos y pedidos del resumen."/>
 
-    <div className="dashboardSectionHead"><div><div className="eyebrow">FINANZAS</div><h2>Facturación y gastos</h2><p>{selectedPeriod}</p></div></div>
-    <div className="stats filteredStats"><StatCard label="Facturación" value={money(salesTotal)} sub={selectedPeriod} icon={<Banknote/>}/><StatCard label="Gastos" value={money(expenseTotal)} sub={selectedPeriod} icon={<Euro/>}/><StatCard label="Resultado" value={money(result)} sub="Ventas − gastos" icon={<Scale/>}/><StatCard label="IVA neto" value={money(vatBalance)} sub={`${money(outputVat)} repercutido · ${money(inputVat)} soportado`} icon={<BadgeEuro/>}/><StatCard label="Pendiente de cobro" value={money(receivable)} sub="Facturas de venta emitidas" icon={<ReceiptText/>}/><StatCard label="Gastos por revisar" value={String(pending)} sub={selectedPeriod} icon={<AlertCircle/>}/></div>
+    {[...['sales','expenses','result','vatBalance','receivable','pendingExpenses']].some(showKpi)&&<><div className="dashboardSectionHead"><div><div className="eyebrow">FINANZAS</div><h2>Facturación y gastos</h2><p>{selectedPeriod}</p></div></div>
+    <div className="stats filteredStats">{showKpi('sales')&&<StatCard label="Facturación" value={money(salesTotal)} sub={selectedPeriod} icon={<Banknote/>}/>}
+      {showKpi('expenses')&&<StatCard label="Gastos" value={money(expenseTotal)} sub={selectedPeriod} icon={<Euro/>}/>}
+      {showKpi('result')&&<StatCard label="Resultado" value={money(result)} sub="Ventas − gastos" icon={<Scale/>}/>}
+      {showKpi('vatBalance')&&<StatCard label="IVA neto" value={money(vatBalance)} sub={`${money(outputVat)} repercutido · ${money(inputVat)} soportado`} icon={<BadgeEuro/>}/>}
+      {showKpi('receivable')&&<StatCard label="Pendiente de cobro" value={money(receivable)} sub="Facturas de venta emitidas" icon={<ReceiptText/>}/>}
+      {showKpi('pendingExpenses')&&<StatCard label="Gastos por revisar" value={String(pending)} sub={selectedPeriod} icon={<AlertCircle/>}/>}</div></>}
 
-    <div className="dashboardSectionHead orders"><div><div className="eyebrow">OPERATIVA</div><h2>Pedidos y logística</h2><p>Amazon, Shopify y pedidos manuales · {selectedPeriod}</p></div></div>
+    {[...['orders','orderValue','pendingOrders','shippedOrders','cancelledOrders']].some(showKpi)&&<><div className="dashboardSectionHead orders"><div><div className="eyebrow">OPERATIVA</div><h2>Pedidos y logística</h2><p>Amazon, Shopify y pedidos manuales · {selectedPeriod}</p></div></div>
     <div className="stats dashboardOrderStats">
-      <StatCard label="Pedidos" value={String(orderCount)} sub={`Amazon ${amazonOrders} · Shopify ${shopifyOrders}`} icon={<ShoppingBag/>}/>
-      <StatCard label="Valor de pedidos" value={money(orderValue)} sub="Pedidos no cancelados · no fiscal" icon={<BadgeEuro/>}/>
-      <StatCard className={pendingOrders>0?'dashboardPendingOrders':''} label="Pendientes" value={String(pendingOrders)} sub={pendingOrders>0?'Hay pedidos por preparar / etiquetar':'Sin pedidos pendientes'} icon={<PackageCheck/>}/>
-      <StatCard label="Enviados" value={String(shippedOrders)} sub={selectedPeriod} icon={<Truck/>}/>
-      <StatCard label="Cancelados" value={String(cancelledOrders)} sub={selectedPeriod} icon={<XCircle/>}/>
-    </div>
+      {showKpi('orders')&&<StatCard label="Pedidos" value={String(orderCount)} sub={`Amazon ${amazonOrders} · Shopify ${shopifyOrders}`} icon={<ShoppingBag/>}/>}
+      {showKpi('orderValue')&&<StatCard label="Valor de pedidos" value={money(orderValue)} sub="Pedidos no cancelados · no fiscal" icon={<BadgeEuro/>}/>}
+      {showKpi('pendingOrders')&&<StatCard className={pendingOrders>0?'dashboardPendingOrders':''} label="Pendientes" value={String(pendingOrders)} sub={pendingOrders>0?'Hay pedidos por preparar / etiquetar':'Sin pedidos pendientes'} icon={<PackageCheck/>}/>}
+      {showKpi('shippedOrders')&&<StatCard label="Enviados" value={String(shippedOrders)} sub={selectedPeriod} icon={<Truck/>}/>}
+      {showKpi('cancelledOrders')&&<StatCard label="Cancelados" value={String(cancelledOrders)} sub={selectedPeriod} icon={<XCircle/>}/>}
+    </div></>}
 
     <div className="grid2">
       <section className="card"><div className="cardHead"><div><h3>Gasto por categoría</h3><p>Distribución · {selectedPeriod}</p></div></div>{byCategory.length?<div className="chartWrap"><ResponsiveContainer width="100%" height={250}><PieChart><Pie data={byCategory} dataKey="value" nameKey="name" innerRadius={65} outerRadius={95} paddingAngle={3}>{byCategory.map((_,i)=><Cell key={i} fill={colors[i%colors.length]}/>)}</Pie><Tooltip formatter={(v)=>`${Number(v).toFixed(2)} €`}/></PieChart></ResponsiveContainer><div className="legend">{byCategory.map((x,i)=><div key={x.name}><i style={{background:colors[i%colors.length]}}/><span>{x.name}</span><strong>{x.value.toLocaleString('es-ES',{maximumFractionDigits:0})} €</strong></div>)}</div></div>:<Empty text="No hay facturas de gastos para los filtros seleccionados."/>}</section>
