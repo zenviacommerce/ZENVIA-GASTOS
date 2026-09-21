@@ -5,7 +5,8 @@ import test from 'node:test';
 test('Orders exposes bulk label generation and configurable post-create downloads', async () => {
   const source = await readFile(new URL('../src/pages/Orders.tsx', import.meta.url), 'utf8');
   assert.match(source, /Generar etiquetas pendientes/);
-  assert.match(source, /generatePendingLabels/);
+  assert.match(source, /generateConfiguredLabels/);
+  assert.match(source, /generateLabels\(configuredBulkTargets/);
   assert.match(source, /settings\.orders\.downloadLabelAfterCreation/);
   assert.match(source, /settings\.shipping\.autoDownload/);
   assert.match(source, /prepareLabelPdf/);
