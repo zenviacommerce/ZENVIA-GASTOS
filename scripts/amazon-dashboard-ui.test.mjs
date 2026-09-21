@@ -24,7 +24,7 @@ test('Quick ranges include current month as the dashboard default preset',async(
 test('Amazon page is a tabbed analytics dashboard with all approved tabs',async()=>{
   const page=await source('src/pages/Amazon.tsx');
   for(const tab of ['Resumen','Productos','Marketplaces','Pedidos','Inventario','Sin vincular'])assert.match(page,new RegExp(tab));
-  assert.match(page,/amazonQuickRange\('current_month'/);
+  assert.match(page,/amazonInitialRange\(amazonSettings/);
 });
 
 test('Amazon Summary renders VAT-aware net-profit KPI hierarchy and Recharts trend',async()=>{
