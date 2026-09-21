@@ -1,5 +1,6 @@
 import { readInvoiceDocumentEnhanced } from './invoiceReaderEnhanced';
 import { addClient, createSalesInvoiceDraft, deleteClientIfUnused, loadBusinessSettings, loadClients, updateClient, updateSalesInvoiceDraft, type Client, type ClientInput, type SalesInvoiceDraftInput, type SalesInvoiceLine } from './sales';
+import { defaultSalesDueDate, resolveSalesDueDays } from './salesDefaults';
 import { updateSalesInvoiceNumber } from './salesInvoiceNumber';
 import { deleteSalesInvoiceDraftSafe } from './salesDraftDelete';
 import { extractInvoiceParty } from './invoicePartyExtractor';
@@ -68,7 +69,7 @@ function normalizeImportedDate(raw:string|undefined|null){
   return year+'-'+String(Number(european[2])).padStart(2,'0')+'-'+String(Number(european[1])).padStart(2,'0');
 }
 
-function extractSalesDueDate(text:string,issueDate:string){
+function extractSalesDueDate(text:string,issueDate:string,defaultDueDays=30){
   const rows=text.split(/\r?\n/).map(compact).filter(Boolean);
   const dueLabel=/\b(?:fecha\s+de\s+vencimiento|vencimiento|due\s+date|payment\s+due|échéance|echeance|scadenza|fällig(?:keit|keitsdatum)?)\b/i;
   const labelled=rows.find(row=>dueLabel.test(row));
@@ -78,7 +79,7 @@ function extractSalesDueDate(text:string,issueDate:string){
     const parsed=normalizeImportedDate(afterLabel)||normalizeImportedDate(labelled);
     if(parsed)return parsed;
   }
-  return addDays(issueDate,30);
+  return defaultSalesDueDate(issueDate,resolveSalesDueDays(undefined,defaultDueDays));
 }
 
 function extractSalesRecipient(text:string,filename:string,invoiceNumber:string,invoiceDate=''):ClientInput|null{
@@ -256,14 +257,14 @@ function salesLineFromRead(line:any,index:number,fallbackTaxRate:number):SalesIn
   return {position:index+1,description:String(line?.description||`Concepto importado ${index+1}`).trim()||`Concepto importado ${index+1}`,quantity,unit:String(line?.unit||'ud'),unitPrice:Number.isFinite(Number(unitPrice))?Number(unitPrice):0,discountPercent:0,taxRate:Number.isFinite(taxRate)?taxRate:0,productId:null};
 }
 
-export async function prepareSalesInvoiceImportCandidate(file:File,clients:Client[]):Promise<SalesInvoiceImportCandidate>{
+export async function prepareSalesInvoiceImportCandidate(file:File,clients:Client[],defaultDueDays=30):Promise<SalesInvoiceImportCandidate>{
   const read=await readInvoiceDocumentEnhanced(file,[]);
   const fiscal=extractSalesFiscalTotals(read.text);
   const subtotal=fiscal?.subtotal||read.subtotal;
   const vat=fiscal?.vat??read.vat;
   const total=fiscal?.total||read.total;
   const proposedClient=extractSalesRecipient(read.text,file.name,read.invoiceNumber||'',read.invoiceDate||'');
-  const dueDate=extractSalesDueDate(read.text,read.invoiceDate||'');
+  const dueDate=extractSalesDueDate(read.text,read.invoiceDate||'',defaultDueDays);
   const matched=(proposedClient&&matchClientIdentity(proposedClient,clients))||matchSalesInvoiceClient(read.text,clients);
   const fallbackTaxRate=nearestTaxRate(subtotal,vat);
   const exactLines=extractSalesConceptLines(read.text,fallbackTaxRate);
@@ -328,7 +329,7 @@ export function friendlySalesImportError(error:unknown){
   return raw||'No se pudo guardar el borrador.';
 }
 
-export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoiceImportCandidate){
+export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoiceImportCandidate,defaultDueDays=30){
   const reviewed=recalculateSalesImportCandidate(candidate);
   let clientId=reviewed.clientId;
   let createdClientId='';
@@ -345,20 +346,20 @@ export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoic
     if(!reviewed.issueDate)throw new Error('Indica la fecha de factura.');
     const lines=cleanImportLines(reviewed);
     if(!lines.length)throw new Error('No hay líneas válidas para guardar esta factura.');
-    const payload:SalesInvoiceDraftInput={clientId,seriesId:reviewed.seriesId,taxRegistrationId:reviewed.taxRegistrationId||null,issueDate:reviewed.issueDate,dueDate:reviewed.dueDate||addDays(reviewed.issueDate,30)||undefined,paymentMethod:reviewed.paymentMethod||undefined,notes:reviewed.notes||undefined,lines};
+    const payload:SalesInvoiceDraftInput={clientId,seriesId:reviewed.seriesId,taxRegistrationId:reviewed.taxRegistrationId||null,issueDate:reviewed.issueDate,dueDate:reviewed.dueDate||defaultSalesDueDate(reviewed.issueDate,resolveSalesDueDays(undefined,defaultDueDays))||undefined,paymentMethod:reviewed.paymentMethod||undefined,notes:reviewed.notes||undefined,lines};
 
     if(reviewed.existingInvoiceId){
       if(reviewed.existingInvoiceNumber&&reviewed.invoiceNumber.trim()!==reviewed.existingInvoiceNumber){
         throw new Error('Para reparar un borrador importado conserva su número de factura.');
       }
-      await updateSalesInvoiceDraft(reviewed.existingInvoiceId,payload);
+      await updateSalesInvoiceDraft(reviewed.existingInvoiceId,payload,defaultDueDays);
       if(reviewed.existingClientId&&reviewed.existingClientId!==clientId){
         await deleteClientIfUnused(reviewed.existingClientId).catch(()=>{});
       }
       return reviewed.existingInvoiceId;
     }
 
-    const id=await createSalesInvoiceDraft(payload);
+    const id=await createSalesInvoiceDraft(payload,defaultDueDays);
     try{await updateSalesInvoiceNumber(id,reviewed.invoiceNumber.trim());}
     catch(error){await deleteSalesInvoiceDraftSafe(id).catch(()=>{});throw error;}
     return id;
