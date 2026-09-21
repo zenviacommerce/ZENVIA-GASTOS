@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import type { AmazonSettings } from './settingsSchema';
 
 export type AmazonMarketplaceStatus={id:string;countryCode:string;name:string;currencyCode:string;active:boolean};
 export type AmazonStatus={
@@ -43,6 +44,47 @@ export type AmazonInventoryAnalytics={sellerSku:string;asin:string|null;marketpl
 export type AmazonUnmappedSku={sellerSku:string;asin:string|null;marketplaceIds:string[];orders:number;units:number;recentNetSales:number};
 export type AmazonProductOption={id:string;name:string;sku:string|null};
 export type AmazonPageResult<T>={items:T[];page:number;pageSize:number;total:number};
+
+export const AMAZON_KPI_KEYS=[
+  'grossSales','salesVat','netSales','orders','businessOrders','units','amazonFees',
+  'adsCost','refunds','productCost','fbmShippingCost','netProfit','marginPct'
+] as const;
+export type AmazonKpiKey=(typeof AMAZON_KPI_KEYS)[number];
+
+export function resolveAmazonHistoryDays(value:unknown,fallback=90){
+  const days=Number(value);
+  return Number.isInteger(days)&&days>=1&&days<=3650?days:fallback;
+}
+
+export function amazonInitialRange(settings:Pick<AmazonSettings,'defaultPeriod'|'historyDays'>,now=new Date()){
+  if(settings.defaultPeriod==='all'){
+    const today=startOfDay(now);
+    const from=new Date(today);
+    from.setDate(from.getDate()-resolveAmazonHistoryDays(settings.historyDays)+1);
+    return range(from,today);
+  }
+  return amazonQuickRange(settings.defaultPeriod,now);
+}
+
+export function resolveAmazonMarketplaceSelection(
+  marketplaces:AmazonMarketplaceStatus[],
+  settings:Pick<AmazonSettings,'activeMarketplaceIds'|'primaryMarketplaceId'>,
+){
+  const available=marketplaces.filter(item=>item.active);
+  const configured=new Set(settings.activeMarketplaceIds);
+  const filtered=configured.size?available.filter(item=>configured.has(item.id)):available;
+  const selected=filtered.length||!configured.size?filtered:available;
+  const primaryMarketplaceId=settings.primaryMarketplaceId&&selected.some(item=>item.id===settings.primaryMarketplaceId)
+    ?settings.primaryMarketplaceId
+    :(selected[0]?.id||null);
+  return {marketplaces:selected,primaryMarketplaceId};
+}
+
+export function resolveAmazonVisibleKpis(settings:Pick<AmazonSettings,'visibleKpis'>):AmazonKpiKey[]{
+  const allowed=new Set<string>(AMAZON_KPI_KEYS);
+  const configured=settings.visibleKpis.filter((key):key is AmazonKpiKey=>allowed.has(key));
+  return configured.length?Array.from(new Set(configured)):[...AMAZON_KPI_KEYS];
+}
 
 function message(data:any,error:any,fallback:string){const detail=String(data?.error||error?.message||'').trim();return detail||fallback;}
 export const AMAZON_CONNECTIVITY_EVENT='zenvia:amazon-connectivity-error';
