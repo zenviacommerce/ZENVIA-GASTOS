@@ -5,7 +5,7 @@ import {
   Trash2, UserRound, WalletCards, X,
 } from 'lucide-react';
 import {
-  addSalesPayment, createSalesInvoiceDraft, defaultSalesDueDate, ensureSalesSeries,
+  addSalesPayment, createSalesInvoiceDraft, defaultSalesDueDate, ensureSalesSeries, resolveSalesDueDays,
   issueSalesInvoice, loadBusinessSettings, loadClients, loadSalesInvoices,
   saveBusinessSettings, updateSalesInvoiceDraft,
   type BusinessSettings, type Client, type SalesInvoice, type SalesInvoiceDraftInput,
@@ -31,6 +31,7 @@ import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSele
 import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
 import { StatCard } from '../components/StatCard';
 import { defaultDateFilter, periodLabel } from '../services/filters';
+import { useSettings } from '../context/SettingsContext';
 import '../sales.css';
 
 const today=()=>new Date().toISOString().slice(0,10);
@@ -46,6 +47,7 @@ const emptyLine=(position=1):SalesInvoiceLine=>({position,description:'',quantit
 const calcLine=(line:SalesInvoiceLine)=>{const gross=line.quantity*line.unitPrice;const net=gross*(1-(line.discountPercent||0)/100);const tax=net*(line.taxRate||0)/100;return {gross,net,tax,total:net+tax};};
 
 function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:boolean;invoice:SalesInvoice|null;clients:Client[];products:BillableProduct[];onClose:()=>void;onSaved:()=>Promise<void>}){
+  const {settings}=useSettings();
   const [clientId,setClientId]=useState('');
   const [seriesId,setSeriesId]=useState('');
   const [invoiceNumber,setInvoiceNumber]=useState('');
@@ -77,7 +79,7 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
       const firstClient=clients[0];
       const initialIssueDate=today();
       setClientId(firstClient?.id||'');setSeriesId('');setInvoiceNumber('');setTaxRegistrationId('');setIssueDate(initialIssueDate);setOperationDate('');setPaymentMethod('Transferencia bancaria');setNotes('');setLines([emptyLine()]);
-      setDueDate(defaultSalesDueDate(initialIssueDate,firstClient?.paymentTermsDays||30));
+      setDueDate(defaultSalesDueDate(initialIssueDate,resolveSalesDueDays(firstClient?.paymentTermsDays,settings.sales.defaultDueDays)));
     }
     setError('');
     loadTaxRegistrations().then(rows=>{const active=rows.filter(item=>item.active);setTaxRegistrations(active);setTaxRegistrationId(current=>active.some(item=>item.id===current)?current:(active.find(item=>item.isDefault)?.id||active[0]?.id||''));}).catch(e=>setError(errorMessage(e,'No se pudieron cargar los registros IVA.')));
@@ -122,12 +124,12 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
   const chooseClient=(value:string)=>{
     setClientId(value);
     const client=clients.find(c=>c.id===value);
-    setDueDate(defaultSalesDueDate(issueDate,client?.paymentTermsDays||30));
+    setDueDate(defaultSalesDueDate(issueDate,resolveSalesDueDays(client?.paymentTermsDays,settings.sales.defaultDueDays)));
   };
   const changeIssueDate=(value:string)=>{
     setIssueDate(value);
     const client=clients.find(c=>c.id===clientId);
-    setDueDate(defaultSalesDueDate(value,client?.paymentTermsDays||30));
+    setDueDate(defaultSalesDueDate(value,resolveSalesDueDays(client?.paymentTermsDays,settings.sales.defaultDueDays)));
   };
   const totals=lines.reduce((acc,line)=>{const x=calcLine(line);acc.gross+=x.gross;acc.net+=x.net;acc.tax+=x.tax;acc.total+=x.total;return acc},{gross:0,net:0,tax:0,total:0});
   const save=async()=>{
@@ -144,8 +146,8 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
     const payload:SalesInvoiceDraftInput={clientId,seriesId,taxRegistrationId:taxRegistrationId||null,issueDate,operationDate:operationDate||undefined,dueDate:dueDate||undefined,paymentMethod:paymentMethod||undefined,notes:notes||undefined,lines:cleanLines};
     let createdId='';
     try{
-      const targetId=invoice?.id||(createdId=await createSalesInvoiceDraft(payload));
-      if(invoice)await updateSalesInvoiceDraft(invoice.id,payload);
+      const targetId=invoice?.id||(createdId=await createSalesInvoiceDraft(payload,settings.sales.defaultDueDays));
+      if(invoice)await updateSalesInvoiceDraft(invoice.id,payload,settings.sales.defaultDueDays);
       try{await updateSalesInvoiceNumber(targetId,invoiceNumber.trim());}
       catch(numberError){if(createdId)await deleteSalesInvoiceDraftSafe(createdId).catch(()=>{});throw numberError;}
       await onSaved();showSuccess(invoice?'Borrador actualizado correctamente.':`Borrador ${invoiceNumber.trim()} creado correctamente.`);onClose();
