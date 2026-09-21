@@ -11,7 +11,7 @@ import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
 import { defaultDateFilter, periodLabel } from '../services/filters';
 import '../supplier-actions.css';
 import { useSettings } from '../context/SettingsContext';
-import { persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
+import { hiddenTableColumns, persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
 
 const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
@@ -52,6 +52,7 @@ function SupplierDrawer({supplier,metric,period,onClose,onEdit,onDelete,busy}:{s
 export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[];onAdd:()=>void;onEdit:(supplier:Supplier)=>void;onDelete:(supplier:Supplier)=>Promise<void>}){
  const {preferences,updatePreferences}=useSettings();
  const pageSize=preferences.pageSize;
+ const hiddenColumns=hiddenTableColumns(preferences,'suppliers');
  const remembered=rememberedFilter<{query:string;typeFilter:SupplierTypeFilter;activityFilter:SupplierActivityFilter;categoryFilter:string;dateFilter:ReturnType<typeof defaultDateFilter>}>(preferences,'suppliers.filters',{query:'',typeFilter:'all',activityFilter:'all',categoryFilter:'all',dateFilter:defaultDateFilter(preferences.defaultPeriod)});
  const [busyId,setBusyId]=useState<string|null>(null);
  const [error,setError]=useState('');
@@ -172,7 +173,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
 
     <section className="card tableCard masterTableCard">
       {filtered.length?(
-        <table className="masterTable">
+        <table className="masterTable" data-preference-table="suppliers" data-hidden-columns={hiddenColumns}>
           <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllSuppliers} label={allFilteredSelected?'Deseleccionar proveedores visibles':'Seleccionar proveedores visibles'}/></th><th>Proveedor</th><th>CIF/VAT</th><th>Tipo</th><th>Categoría habitual</th><th>Contacto</th><th className="right">Facturas</th><th className="right">Gasto periodo</th><th>Última factura</th><th></th></tr></thead>
           <tbody>{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <tr className={`clickableRow ${checkedIds.has(s.id)?'bulkSelectedRow':''}`} key={s.id} onClick={()=>setSelected(s)}>
               <td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(s.id)} onChange={checked=>toggleSupplier(s.id,checked)} label={`Seleccionar ${s.name}`}/></td>
