@@ -37,6 +37,13 @@ const emptyData: AppData = { invoices: [], products: [], suppliers: [], categori
 const THEME_KEY = 'zenvia-gestion-theme';
 const regularPages: MenuPermission[] = ['dashboard','sales','orders','invoices','clients','products','suppliers','amazon'];
 
+function withTimeout<T>(promise:Promise<T>,ms:number,message:string):Promise<T>{
+  return new Promise<T>((resolve,reject)=>{
+    const timer=window.setTimeout(()=>reject(new Error(message)),ms);
+    promise.then(value=>{window.clearTimeout(timer);resolve(value)},error=>{window.clearTimeout(timer);reject(error)});
+  });
+}
+
 function initialTheme(): ThemeMode {
   const stored=safeStorageGet('local',THEME_KEY) || safeStorageGet('local','zenvia-gastos-theme');
   if(stored==='dark'||stored==='light') return stored;
@@ -117,7 +124,7 @@ export default function App(){
  },[refresh]);
 
  useEffect(()=>{
-   supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)});
+   supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)}).catch(()=>{setSession(null);setAuthReady(true)});
    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{setSession(next);setAuthReady(true)});
    return ()=>subscription.unsubscribe();
  },[]);
@@ -126,7 +133,7 @@ export default function App(){
    let cancelled=false;
    if(!userId){setAccess(null);setAccessReady(false);setData(emptyData);return;}
    setAccessReady(false);setError('');
-   loadAccessProfile(userId)
+   withTimeout(loadAccessProfile(userId),12000,'La comprobación de acceso está tardando demasiado. Revisa la conexión y vuelve a intentarlo.')
      .then(profile=>{if(!cancelled){setAccess(profile);setAccessReady(true)}})
      .catch(e=>{if(!cancelled){setAccess(null);setAccessReady(true);setError(e instanceof Error?e.message:'No se pudo comprobar tu acceso.')}});
    return()=>{cancelled=true};
@@ -151,7 +158,7 @@ export default function App(){
  if(!authReady) return <div className="fullLoader"><LoaderCircle className="spin"/> Cargando…</div>;
  if(!session) return <><ToastHost/><AuthScreen/></>;
  if(!accessReady) return <><ToastHost/><div className="fullLoader"><LoaderCircle className="spin"/> Comprobando acceso…</div></>;
- if(!access||!access.active||!allowedPages.length) return <><ToastHost/><div className="authPage"><div className="authPanel accessDeniedPanel"><div className="authHeroIcon"><LockKeyhole/></div><h1>Acceso no autorizado</h1><p>{access&&!access.active?'Tu acceso a ZENVIA Gestión está desactivado.':'Esta cuenta no está autorizada para utilizar ZENVIA Gestión.'} Contacta con el administrador.</p><button className="secondary" onClick={()=>supabase.auth.signOut()}>Cerrar sesión</button></div></div></>;
+ if(!access||!access.active||!allowedPages.length) return <><ToastHost/><div className="authPage"><div className="authPanel accessDeniedPanel"><div className="authHeroIcon"><LockKeyhole/></div><h1>{error?'No se pudo cargar el acceso':'Acceso no autorizado'}</h1><p>{error?error:access&&!access.active?'Tu acceso a ZENVIA Gestión está desactivado.':'Esta cuenta no está autorizada para utilizar ZENVIA Gestión. Contacta con el administrador.'}</p><div className="actions">{error&&<button className="primary" onClick={()=>{setAccessReady(false);setError('');withTimeout(loadAccessProfile(session.user.id),12000,'La comprobación de acceso está tardando demasiado.').then(profile=>{setAccess(profile);setAccessReady(true)}).catch(e=>{setAccess(null);setAccessReady(true);setError(errorMessage(e,'No se pudo comprobar tu acceso.'))})}}>Reintentar</button>}<button className="secondary" onClick={()=>supabase.auth.signOut()}>Cerrar sesión</button></div></div></div></>;
 
  const navigate=(next:Page)=>{
    if(!allowedPages.includes(next))return;
