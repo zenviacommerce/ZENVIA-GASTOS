@@ -7,15 +7,17 @@ async function source(path){
   catch{return '';}
 }
 
-test('Dashboard refreshes Sendcloud before reading order KPIs',async()=>{
+test('Dashboard refreshes Sendcloud before reading order KPIs when the integration is enabled',async()=>{
   const dashboard=await source('src/pages/Dashboard.tsx');
-  assert.match(dashboard,/syncSendcloudOrders/);
-  assert.match(dashboard,/await\s+syncSendcloudOrders\(false\)/);
+  assert.match(dashboard,/settings\.integrations\.sendcloudEnabled/);
+  assert.match(dashboard,/await\s+syncSendcloudOrders\(false,true,true\)/);
   assert.match(dashboard,/await\s+listFulfillmentOrders\(\)/);
 });
 
-test('Dashboard keeps order KPIs fresh every 60 seconds',async()=>{
+test('Dashboard uses the configured order refresh interval',async()=>{
   const dashboard=await source('src/pages/Dashboard.tsx');
-  assert.match(dashboard,/setInterval\([^]*60000\)/);
+  assert.match(dashboard,/settings\.orders\.refreshSeconds/);
+  assert.match(dashboard,/Math\.max\(30,settings\.orders\.refreshSeconds\)\*1000/);
   assert.match(dashboard,/clearInterval/);
+  assert.doesNotMatch(dashboard,/setInterval\([^\n]*60000/);
 });
