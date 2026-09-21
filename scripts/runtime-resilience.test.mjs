@@ -14,6 +14,8 @@ test('formatters fall back instead of crashing on legacy currency or timezone va
   const settings={currencyCode:'BAD!',timezone:'Madrid',dateFormat:'DD/MM/YYYY',documentLanguage:'es'};
   assert.doesNotThrow(()=>formatAppMoney(12.5,undefined,settings));
   assert.match(formatAppMoney(12.5,undefined,settings),/12/);
+  assert.doesNotThrow(()=>formatAppMoney(1234.56,'EUR',settings,{minimumFractionDigits:2,maximumFractionDigits:0}));
+  assert.match(formatAppMoney(1234.56,'EUR',settings,{minimumFractionDigits:2,maximumFractionDigits:0}),/1/);
   assert.doesNotThrow(()=>formatAppDateTime('2026-09-21T09:00:00Z',settings));
   assert.match(formatAppDateTime('2026-09-21T09:00:00Z',settings),/21\/09\/2026/);
 });
