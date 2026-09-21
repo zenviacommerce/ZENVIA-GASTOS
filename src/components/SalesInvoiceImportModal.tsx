@@ -7,12 +7,13 @@ import { SelectField } from './forms/SelectField';
 import { BulkSelectCheckbox, BulkSelectionToolbar } from './BulkSelectionToolbar';
 import { showError, showOperationResult, showSuccess } from '../services/toast';
 import { normalizeTaxId, taxIdError } from '../services/validation';
+import { useSettings } from '../context/SettingsContext';
+import { defaultSalesDueDate } from '../services/salesDefaults';
 
 const ANALYSIS_CONCURRENCY=2;
 type Item={id:string;file:File;candidate?:SalesInvoiceImportCandidate;series:SalesInvoiceSeries[];status:'analyzing'|'needs_review'|'ready'|'duplicate'|'importing'|'imported'|'error';error?:string;excluded?:boolean};
 type Props={open:boolean;onClose:()=>void;clients:Client[];existingInvoices:SalesInvoice[];onFinished:()=>Promise<void>|void};
 const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
-const addDays=(date:string,days:number)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return '';const value=new Date(`${date}T12:00:00`);value.setDate(value.getDate()+days);return value.toISOString().slice(0,10);};
 
 function bestSeries(series:SalesInvoiceSeries[],invoiceNumber:string){
   const standards=series.filter(item=>item.kind==='standard'&&item.active);
@@ -21,6 +22,7 @@ function bestSeries(series:SalesInvoiceSeries[],invoiceNumber:string){
 function proposedNumber(series:SalesInvoiceSeries){return `${series.prefix}${String(series.nextNumber).padStart(series.padding,'0')}`;}
 
 export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,onFinished}:Props){
+  const {settings}=useSettings();
   const inputRef=useRef<HTMLInputElement>(null);
   const [items,setItems]=useState<Item[]>([]);
   const [selectedId,setSelectedId]=useState<string|null>(null);
@@ -34,7 +36,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
 
   const prepareFile=async(item:Item)=>{
     try{
-      let candidate=await prepareSalesInvoiceImportCandidate(item.file,clients);
+      let candidate=await prepareSalesInvoiceImportCandidate(item.file,clients,settings.sales.defaultDueDays);
       const year=/^\d{4}-/.test(candidate.issueDate)?Number(candidate.issueDate.slice(0,4)):new Date().getFullYear();
       const allSeries=await ensureSalesSeries(year);
       const series=allSeries.filter(row=>row.kind==='standard'&&row.active);
@@ -67,7 +69,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
 
   const changeDate=async(value:string)=>{
     if(!selected||!candidate)return;
-    patchCandidate(selected.id,{issueDate:value,dueDate:addDays(value,30)});
+    patchCandidate(selected.id,{issueDate:value,dueDate:defaultSalesDueDate(value,settings.sales.defaultDueDays)});
     if(!/^\d{4}-/.test(value))return;
     try{
       const rows=(await ensureSalesSeries(Number(value.slice(0,4)))).filter(row=>row.kind==='standard'&&row.active);
@@ -146,7 +148,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
     try{
       for(const item of ready){
         patch(item.id,{status:'importing'});
-        try{await createSalesInvoiceDraftFromCandidate(item.candidate!);patch(item.id,{status:'imported',candidate:{...item.candidate!,status:'imported'}});}
+        try{await createSalesInvoiceDraftFromCandidate(item.candidate!,settings.sales.defaultDueDays);patch(item.id,{status:'imported',candidate:{...item.candidate!,status:'imported'}});}
         catch(error){patch(item.id,{status:'error',error:friendlySalesImportError(error)});}
       }
       await onFinished();
