@@ -286,3 +286,40 @@ html[data-theme='dark'] .gmailPreviewActions .link{
   border-color:var(--border)!important;
   color:#5eead4!important;
 }
+
+
+/* Gmail legacy module. */
+html[data-theme='dark'] .gmailSetup{
+  background:#2b2110!important;
+  border-color:#854d0e!important;
+  color:#fde68a!important;
+}
+html[data-theme='dark'] .gmailSetup p{color:#fbbf24!important}
+html[data-theme='dark'] .gmailSetup code{
+  background:#1f1a10!important;
+  border-color:#854d0e!important;
+  color:#fde68a!important;
+}
+html[data-theme='dark'] :where(.gmailControls label,.gmailFilterSummary,.gmailSubject,.gmailImportMain small){
+  color:var(--text-secondary)!important;
+}
+html[data-theme='dark'] .gmailImportTop strong{color:var(--text)!important}
+html[data-theme='dark'] .gmailFileIcon{
+  background:var(--surface-raised)!important;
+  color:#cbd5e1!important;
+}
+html[data-theme='dark'] .gmailStatus.found{background:#422006!important;color:#fdba74!important}
+html[data-theme='dark'] .gmailStatus.imported{background:#063c32!important;color:#99f6e4!important}
+html[data-theme='dark'] .gmailStatus.ignored{background:#1e293b!important;color:#cbd5e1!important}
+html[data-theme='dark'] .gmailStatus.error{background:#451a1a!important;color:#fecaca!important}
+html[data-theme='dark'] .gmailPagination{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+  color:var(--text-secondary)!important;
+}
+html[data-theme='dark'] .gmailPagination strong{color:var(--text)!important}
+html[data-theme='dark'] .gmailImportActions .link{
+  background:var(--surface-raised)!important;
+  border-color:var(--border)!important;
+  color:#5eead4!important;
+}
