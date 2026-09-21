@@ -323,3 +323,29 @@ html[data-theme='dark'] .gmailImportActions .link{
   border-color:var(--border)!important;
   color:#5eead4!important;
 }
+
+
+/* Sales and AI semantic states. */
+html[data-theme='dark'] .expenseHubNav button.active{
+  background:#0b2f2b!important;
+  color:#5eead4!important;
+  box-shadow:inset 0 0 0 1px #115e59!important;
+}
+html[data-theme='dark'] .expenseHubNav button.active .expenseHubTabIcon{background:#123b35!important}
+html[data-theme='dark'] .salesStatus.draft{background:#1e293b!important;color:#cbd5e1!important}
+html[data-theme='dark'] .salesStatus.issued{background:#172554!important;color:#93c5fd!important}
+html[data-theme='dark'] .salesStatus.sent{background:#27205a!important;color:#c4b5fd!important}
+html[data-theme='dark'] .salesStatus.partially_paid{background:#422006!important;color:#fde68a!important}
+html[data-theme='dark'] .salesStatus.paid{background:#073c32!important;color:#99f6e4!important}
+html[data-theme='dark'] .salesStatus.rectified{background:#451a1a!important;color:#fecaca!important}
+html[data-theme='dark'] .salesRectifyingNotice{background:#431407!important;color:#fdba74!important}
+html[data-theme='dark'] .aiNote.reading{
+  background:#172554!important;
+  border-color:#1d4ed8!important;
+  color:#bfdbfe!important;
+}
+html[data-theme='dark'] .aiNote.done{
+  background:#073c32!important;
+  border-color:#0f766e!important;
+  color:#99f6e4!important;
+}
