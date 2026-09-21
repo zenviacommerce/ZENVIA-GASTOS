@@ -228,14 +228,14 @@ function GeneralSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
         <div className="settingsLogoRow">
           <div className="settingsLogoPreview">{branding?.logoDataUrl?<img src={branding.logoDataUrl} alt="Logotipo de empresa"/>:<span>Sin logotipo</span>}</div>
           <div className="settingsLogoActions">
-            <label className="secondaryButton settingsFileButton">Cambiar logotipo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>void changeLogo(e.target.files?.[0]||null)}/></label>
-            {branding?.logoPath&&<button type="button" className="secondaryButton" disabled={saving} onClick={()=>void removeLogo()}>Eliminar logotipo</button>}
+            <label className="secondary settingsFileButton">Cambiar logotipo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>void changeLogo(e.target.files?.[0]||null)}/></label>
+            {branding?.logoPath&&<button type="button" className="secondary" disabled={saving} onClick={()=>void removeLogo()}>Eliminar logotipo</button>}
           </div>
         </div>
       </div>
 
       <div className="settingsSectionActions">
-        <button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
+        <button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
       </div>
     </>}
   </section>;
@@ -346,7 +346,7 @@ function SalesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
       </div>
 
       <div className="settingsSubsection">
-        <div className="settingsSubsectionHead"><div><h3>Métodos de pago disponibles</h3><p>Se reutilizan en facturas y cobros.</p></div><button type="button" className="secondaryButton" onClick={addMethod}><Plus size={15}/> Añadir método</button></div>
+        <div className="settingsSubsectionHead"><div><h3>Métodos de pago disponibles</h3><p>Se reutilizan en facturas y cobros.</p></div><button type="button" className="secondary" onClick={addMethod}><Plus size={15}/> Añadir método</button></div>
         <div className="settingsRepeater">
           {draft.paymentMethods.map((method,index)=><div className="settingsRepeaterRow" key={`${method.id}-${index}`}>
             <input aria-label="Identificador del método" value={method.id} onChange={e=>updateMethod(index,{id:e.target.value.replace(/\s+/g,'_').toLowerCase()})} placeholder="bank_transfer"/>
@@ -377,8 +377,8 @@ function SalesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
       </div>
 
       <div className="settingsSectionActions">
-        <button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
-        <button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
+        <button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
+        <button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
       </div>
     </>}
   </section>;
@@ -494,8 +494,8 @@ function ExpensesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
       </div>
 
       <div className="settingsSectionActions">
-        <button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
-        <button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
+        <button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
+        <button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
       </div>
     </>}
   </section>;
@@ -579,8 +579,8 @@ function ClientsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
     </div>
 
     <div className="settingsSectionActions">
-      <button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
-      <button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
+      <button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
+      <button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
     </div>
   </section>;
 }
@@ -652,7 +652,7 @@ function OrdersSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
         <label className="settingsToggleField"><input type="checkbox" checked={draft.retryTrackingConfirmation} onChange={e=>update('retryTrackingConfirmation',e.target.checked)}/><span><strong>Reintentar confirmación de tracking</strong><small>Reintenta confirmaciones pendientes durante la sincronización periódica.</small></span></label>
       </div>
     </div>
-    <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+    <div className="settingsSectionActions"><button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
   </section>;
 }
 
@@ -715,7 +715,7 @@ function ShippingSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
     <input value={rule.action.serviceIncludes.join(', ')} onChange={e=>{const values=e.target.value.split(',').map(value=>value.trim()).filter(Boolean);isNew?setNewRule(current=>({...current,action:{...current.action,serviceIncludes:values}})):patchRule(rule.id,{action:{...rule.action,serviceIncludes:values}})}} placeholder="Servicio contiene…" aria-label="Palabras del servicio"/>
     <input type="number" min="0" max="10000" value={rule.priority} onChange={e=>{const value=Number(e.target.value);isNew?setNewRule(current=>({...current,priority:value})):patchRule(rule.id,{priority:value})}} aria-label="Prioridad de regla"/>
     <label className="settingsInlineCheck"><input type="checkbox" checked={rule.active} onChange={e=>isNew?setNewRule(current=>({...current,active:e.target.checked})):patchRule(rule.id,{active:e.target.checked})}/> Activa</label>
-    {isNew?<button type="button" className="secondaryButton" disabled={ruleBusy==='new'} onClick={()=>void addRule()}><Plus size={15}/> Añadir</button>:<><button type="button" className="secondaryButton" disabled={ruleBusy===rule.id} onClick={()=>void saveRule(rule)}>Guardar</button><button type="button" className="iconBtn dangerIcon" disabled={ruleBusy===rule.id} onClick={()=>void removeRule(rule)} aria-label="Eliminar regla"><Trash2 size={15}/></button></>}
+    {isNew?<button type="button" className="secondary" disabled={ruleBusy==='new'} onClick={()=>void addRule()}><Plus size={15}/> Añadir</button>:<><button type="button" className="secondary" disabled={ruleBusy===rule.id} onClick={()=>void saveRule(rule)}>Guardar</button><button type="button" className="iconBtn dangerIcon" disabled={ruleBusy===rule.id} onClick={()=>void removeRule(rule)} aria-label="Eliminar regla"><Trash2 size={15}/></button></>}
   </div>;
 
   return <section className="settingsSectionCard">
@@ -746,7 +746,7 @@ function ShippingSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
       <div className="settingsSubsection"><div className="settingsSubsectionHead"><div><h3>Reglas automáticas de envío</h3><p>Se evalúan por prioridad. Las primeras reglas creadas reproducen Baleares → Correos y resto → MRW Urgent 19:00.</p></div></div>
         <div className="settingsAliasList">{rules.map(rule=>ruleEditor(rule))}{ruleEditor({...newRule,id:'new'},true)}</div>
       </div>
-      <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+      <div className="settingsSectionActions"><button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
     </>}
   </section>;
 }
@@ -871,7 +871,7 @@ function AmazonSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
         </div>
       </div>
 
-      <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+      <div className="settingsSectionActions"><button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
     </>}
   </section>;
 }
@@ -969,8 +969,8 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
               {item?.lastError&&<small>{item.lastError}</small>}
               {result&&<small>{result.ok?'Correcto':'Error'} · {dateTime(result.checkedAt)} · {result.message}</small>}
               <span className="settingsInlineActions">
-                <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void run(id,'test')}>{busy===`${id}:test`?'Comprobando…':'Probar conexión'}</button>
-                <button type="button" className="secondaryButton" disabled={busy!==null||!connected} onClick={()=>void run(id,'sync')}>{busy===`${id}:sync`?'Sincronizando…':'Sincronizar ahora'}</button>
+                <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void run(id,'test')}>{busy===`${id}:test`?'Comprobando…':'Probar conexión'}</button>
+                <button type="button" className="secondary" disabled={busy!==null||!connected} onClick={()=>void run(id,'sync')}>{busy===`${id}:sync`?'Sincronizando…':'Sincronizar ahora'}</button>
               </span>
             </span>
           </div>;
@@ -978,7 +978,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
       </div>}
       <p className="settingsHelpText">Desactivar una integración detiene sus automatismos configurados. Las acciones manuales y el historial siguen disponibles.</p>
     </div>
-    <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+    <div className="settingsSectionActions"><button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
   </section>;
 }
 
@@ -1116,7 +1116,7 @@ function AlertsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
       </>}
     </div>
 
-    <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+    <div className="settingsSectionActions"><button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
   </section>;
 }
 
@@ -1206,8 +1206,8 @@ function ProductsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
       </div>
 
       <div className="settingsSectionActions">
-        <button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
-        <button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
+        <button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
+        <button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
       </div>
     </>}
   </section>;
@@ -1343,7 +1343,7 @@ function SuppliersSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void})
           <SearchableSelect value={newAlias.targetEntityId} options={supplierOptions} onChange={value=>setNewAlias(current=>({...current,targetEntityId:value}))} placeholder="Proveedor de destino" searchPlaceholder="Buscar proveedor…" ariaLabel="Proveedor de destino del alias"/>
           <input type="number" min="0" max="10000" value={newAlias.priority} onChange={e=>setNewAlias(current=>({...current,priority:Number(e.target.value)}))} aria-label="Prioridad del alias"/>
           <label className="settingsInlineCheck"><input type="checkbox" checked={newAlias.active} onChange={e=>setNewAlias(current=>({...current,active:e.target.checked}))}/> Activo</label>
-          <button type="button" className="secondaryButton" disabled={aliasBusy==='new'} onClick={()=>void addAlias()}><Plus size={15}/> Añadir alias</button>
+          <button type="button" className="secondary" disabled={aliasBusy==='new'} onClick={()=>void addAlias()}><Plus size={15}/> Añadir alias</button>
         </div>
         <div className="settingsAliasList">
           {aliases.length===0?<div className="settingsEmptyMini">Todavía no hay alias explícitos.</div>:aliases.map(alias=><div className="settingsAliasRow" key={alias.id}>
@@ -1351,15 +1351,15 @@ function SuppliersSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void})
             <SearchableSelect value={alias.targetEntityId} options={supplierOptions} onChange={value=>patchAlias(alias.id,{targetEntityId:value})} searchPlaceholder="Buscar proveedor…" ariaLabel="Proveedor asociado al alias"/>
             <input type="number" min="0" max="10000" value={alias.priority} onChange={e=>patchAlias(alias.id,{priority:Number(e.target.value)})} aria-label="Prioridad"/>
             <label className="settingsInlineCheck"><input type="checkbox" checked={alias.active} onChange={e=>patchAlias(alias.id,{active:e.target.checked})}/> Activo</label>
-            <button type="button" className="secondaryButton" disabled={aliasBusy===alias.id} onClick={()=>void saveAlias(alias)}>Guardar</button>
+            <button type="button" className="secondary" disabled={aliasBusy===alias.id} onClick={()=>void saveAlias(alias)}>Guardar</button>
             <button type="button" className="iconBtn dangerIcon" disabled={aliasBusy===alias.id} aria-label="Eliminar alias" onClick={()=>void removeAlias(alias)}><Trash2 size={15}/></button>
           </div>)}
         </div>
       </div>
 
       <div className="settingsSectionActions">
-        <button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
-        <button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
+        <button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
+        <button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
       </div>
     </>}
   </section>;
@@ -1486,8 +1486,8 @@ function PreferencesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
     </div>
 
     <div className="settingsSectionActions">
-      <button type="button" className="secondaryButton" disabled={saving} onClick={()=>{setDraft(preferences);onDirtyChange(false)}}>Descartar cambios</button>
-      <button type="button" className="primaryButton" disabled={saving} onClick={save}>{saving?'Guardando…':'Guardar preferencias'}</button>
+      <button type="button" className="secondary" disabled={saving} onClick={()=>{setDraft(preferences);onDirtyChange(false)}}>Descartar cambios</button>
+      <button type="button" className="primary" disabled={saving} onClick={save}>{saving?'Guardando…':'Guardar preferencias'}</button>
     </div>
   </section>;
 }
@@ -1626,8 +1626,8 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
     {!rows.length?<div className="settingsEmptyMini">Sin candidatos por encima del umbral.</div>:rows.map(candidate=><div className="settingsMaintenanceCandidate" key={candidate.id}>
       <div><strong>{candidate.leftLabel} ↔ {candidate.rightLabel}</strong><small>{candidate.confidence}% · {candidate.evidence.map(evidenceLabel).join(' · ')}</small></div>
       {(kind==='supplier'||kind==='client')&&<div className="settingsInlineActions">
-        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void loadPreview(kind,candidate,false)}>Vista previa →</button>
-        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void loadPreview(kind,candidate,true)}>← Vista previa</button>
+        <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void loadPreview(kind,candidate,false)}>Vista previa →</button>
+        <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void loadPreview(kind,candidate,true)}>← Vista previa</button>
       </div>}
     </div>)}
   </div>;
@@ -1645,7 +1645,7 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
       <div className="settingsFormGrid">
         <label className="settingsField"><span>Umbral de candidato</span><div className="settingsNumberWithSuffix"><input type="number" min="0" max="100" value={draft.duplicateCandidateThreshold} onChange={e=>{setDraft(current=>({...current,duplicateCandidateThreshold:Number(e.target.value)}));onDirtyChange(true)}}/><em>%</em></div></label>
       </div>
-      <div className="settingsInlineActions"><button type="button" className="primaryButton" disabled={analyzing} onClick={()=>void analyze()}>{analyzing?'Analizando…':'Analizar duplicados'}</button></div>
+      <div className="settingsInlineActions"><button type="button" className="primary" disabled={analyzing} onClick={()=>void analyze()}>{analyzing?'Analizando…':'Analizar duplicados'}</button></div>
       {analyzed&&<div className="settingsMaintenanceGroups">
         <div><h4>Proveedores · {duplicates.suppliers.length}</h4>{candidateList('supplier',duplicates.suppliers)}</div>
         <div><h4>Clientes · {duplicates.clients.length}</h4>{candidateList('client',duplicates.clients)}</div>
@@ -1660,17 +1660,17 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
       <div className="settingsPreviewCounts">{Object.entries(preview.data.affected).map(([key,value])=><span key={key}><strong>{value}</strong><small>{affectedLabel(key)}</small></span>)}</div>
       {preview.data.warnings.map(warning=><p className="settingsHelpText" key={warning}>{warning}</p>)}
       <div className="settingsInlineActions">
-        <button type="button" className="secondaryButton" onClick={()=>setPreview(null)}>Cancelar</button>
-        <button type="button" className="primaryButton" disabled={busy==='merge'} onClick={()=>void confirmMerge()}>{busy==='merge'?'Fusionando…':preview.kind==='supplier'?'Fusionar proveedor':'Fusionar cliente'}</button>
+        <button type="button" className="secondary" onClick={()=>setPreview(null)}>Cancelar</button>
+        <button type="button" className="primary" disabled={busy==='merge'} onClick={()=>void confirmMerge()}>{busy==='merge'?'Fusionando…':preview.kind==='supplier'?'Fusionar proveedor':'Fusionar cliente'}</button>
       </div>
     </div>}
 
     <div className="settingsSubsection">
       <h3>Diagnósticos de calidad</h3>
       <div className="settingsMaintenanceActions">
-        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void runDiagnostic('suppliersTax')}>Proveedores sin CIF/VAT</button>
-        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void runDiagnostic('clientsTax')}>Clientes sin NIF/VAT</button>
-        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void runDiagnostic('productsCost')}>Productos sin coste</button>
+        <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void runDiagnostic('suppliersTax')}>Proveedores sin CIF/VAT</button>
+        <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void runDiagnostic('clientsTax')}>Clientes sin NIF/VAT</button>
+        <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void runDiagnostic('productsCost')}>Productos sin coste</button>
       </div>
       {Object.entries(diagnostics).map(([key,value])=><div className="settingsDiagnosticResult" key={key}><strong>{value.count}</strong><span>{value.names.length?value.names.join(' · '):'Sin incidencias'}</span></div>)}
     </div>
@@ -1679,8 +1679,8 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
       <h3>Sincronización manual</h3>
       <p className="settingsHelpText">Estas acciones son explícitas y no cambian los interruptores de sincronización automática.</p>
       <div className="settingsMaintenanceActions">
-        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void runSync('sendcloud')}>{busy==='sync:sendcloud'?'Sincronizando…':'Sincronizar Sendcloud ahora'}</button>
-        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void runSync('amazon')}>{busy==='sync:amazon'?'Sincronizando…':'Sincronizar Amazon ahora'}</button>
+        <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void runSync('sendcloud')}>{busy==='sync:sendcloud'?'Sincronizando…':'Sincronizar Sendcloud ahora'}</button>
+        <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void runSync('amazon')}>{busy==='sync:amazon'?'Sincronizando…':'Sincronizar Amazon ahora'}</button>
       </div>
     </div>
 
@@ -1688,18 +1688,18 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
       <h3>Configuración global</h3>
       <p className="settingsHelpText">La exportación contiene únicamente configuración no secreta. La restauración global no modifica “Mis preferencias”.</p>
       <div className="settingsMaintenanceActions">
-        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void exportConfiguration()}>{busy==='export'?'Exportando…':'Exportar configuración'}</button>
-        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void prepareGlobalReset()}>{busy==='reset-preview'?'Calculando…':'Restaurar configuración global'}</button>
+        <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void exportConfiguration()}>{busy==='export'?'Exportando…':'Exportar configuración'}</button>
+        <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void prepareGlobalReset()}>{busy==='reset-preview'?'Calculando…':'Restaurar configuración global'}</button>
       </div>
       {resetPreview&&<div className="settingsResetPreview">
         <strong>Vista previa del reset</strong>
         <span>{resetPreview.changedCount} secciones cambiarán.</span>
         <small>{resetPreview.changedSections.length?'Cambios: '+resetPreview.changedSections.join(', '):'La configuración global ya coincide con los valores predeterminados.'}</small>
-        {resetPreview.changedCount>0&&<div className="settingsInlineActions"><button type="button" className="secondaryButton" onClick={()=>setResetPreview(null)}>Cancelar</button><button type="button" className="primaryButton" disabled={busy==='reset-all'} onClick={()=>void confirmGlobalReset()}>{busy==='reset-all'?'Restaurando…':'Confirmar restauración global'}</button></div>}
+        {resetPreview.changedCount>0&&<div className="settingsInlineActions"><button type="button" className="secondary" onClick={()=>setResetPreview(null)}>Cancelar</button><button type="button" className="primary" disabled={busy==='reset-all'} onClick={()=>void confirmGlobalReset()}>{busy==='reset-all'?'Restaurando…':'Confirmar restauración global'}</button></div>}
       </div>}
     </div>
 
-    <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+    <div className="settingsSectionActions"><button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
   </section>;
 }
 
