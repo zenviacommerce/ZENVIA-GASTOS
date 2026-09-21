@@ -6,6 +6,7 @@ import { extractSupplierInvoiceDetails } from './supplierInvoiceDetails';
 import { repairInvoiceAmounts, repairInvoiceProductLines } from './invoiceProductLine';
 import { emailError, normalizeEmail, normalizePhone, normalizeTaxId, phoneError, taxIdError } from './validation';
 import { sanitizeDatabaseSingleLine, sanitizeDatabaseText, sanitizeDatabaseValue } from './textSanitizer';
+import { resolveEntityAlias } from './entityAliases';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
 const normalizeProductKey = (value: string) => value
@@ -138,12 +139,19 @@ async function ensureSupplier(name: string, contactInput: SupplierProfileData = 
     .select('id,name,tax_id,email,phone,address,website,supplier_type');
   if (findError) throw findError;
 
+  const alias=await resolveEntityAlias('supplier',clean);
+  const aliasMatch=alias?(existing??[]).find((supplier:any)=>supplier.id===alias.targetEntityId):null;
+  if(alias&&!aliasMatch){
+    throw new Error(`El alias “${alias.alias}” apunta a un proveedor que ya no existe. Revísalo en Configuración.`);
+  }
+
   const ranked = (existing ?? [])
     .map((supplier: any) => {
       const existingKey = supplierIdentityKey(supplier.name || '');
       const existingTaxId = supplier.tax_id ? normalizeTaxId(supplier.tax_id) : '';
       let score = 0;
-      if (contact.taxId && existingTaxId && contact.taxId === existingTaxId) score = 140;
+      if (aliasMatch?.id===supplier.id) score = 200;
+      else if (contact.taxId && existingTaxId && contact.taxId === existingTaxId) score = 140;
       else if (cleanKey && existingKey === cleanKey) score = 100;
       else if (isLikelySameSupplier(clean, supplier.name || '')) score = 80;
       if (score && supplier.tax_id) score += 3;
