@@ -7,6 +7,8 @@ import { repairInvoiceAmounts, repairInvoiceProductLines } from './invoiceProduc
 import { emailError, normalizeEmail, normalizePhone, normalizeTaxId, phoneError, taxIdError } from './validation';
 import { sanitizeDatabaseSingleLine, sanitizeDatabaseText, sanitizeDatabaseValue } from './textSanitizer';
 import { resolveEntityAlias } from './entityAliases';
+import { loadAppSettings } from './settings';
+import { expenseImportPolicyFromSettings, type ExpenseImportPolicy } from './expenseImportPolicy';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
 const normalizeProductKey = (value: string) => value
@@ -129,7 +131,7 @@ function cleanSupplierContact(contact: SupplierProfileData): SupplierProfileData
   };
 }
 
-async function ensureSupplier(name: string, contactInput: SupplierProfileData = {}, supplierTypeHint?: 'goods'): Promise<{ id: string; created: boolean }> {
+async function ensureSupplier(name: string, contactInput: SupplierProfileData = {}, supplierTypeHint?: 'goods', policy:ExpenseImportPolicy=expenseImportPolicyFromSettings(undefined)): Promise<{ id: string; created: boolean }> {
   const clean = sanitizeDatabaseSingleLine(canonicalizeSupplierName(name) || name).slice(0, 120);
   const cleanKey = supplierIdentityKey(clean);
   const contact = cleanSupplierContact(contactInput);
@@ -169,7 +171,7 @@ async function ensureSupplier(name: string, contactInput: SupplierProfileData = 
     // o coincide el propio identificador fiscal. Una coincidencia por nombre
     // abreviado sirve para reutilizar el proveedor, pero no para copiar datos
     // potencialmente pertenecientes al bloque del cliente de la factura.
-    const safeToEnrich = (bestMatch?.score ?? 0) >= 100;
+    const safeToEnrich = policy.fillMissingSupplierData && (bestMatch?.score ?? 0) >= 100;
     if (safeToEnrich && !match.tax_id && contact.taxId) patch.tax_id = contact.taxId;
     if (safeToEnrich && !match.email && contact.email) patch.email = contact.email;
     if (safeToEnrich && !match.phone && contact.phone) patch.phone = contact.phone;
@@ -186,6 +188,10 @@ async function ensureSupplier(name: string, contactInput: SupplierProfileData = 
     return { id: match.id as string, created: false };
   }
 
+  if(!policy.autoCreateSuppliers){
+    throw new Error('La creación automática de proveedores está desactivada. Selecciona o crea el proveedor antes de guardar la factura.');
+  }
+  const createdSupplierType=supplierTypeHint==='goods'?'goods':(policy.defaultSupplierType||'unclassified');
   const { data, error } = await supabase.from('suppliers').insert({
     name: clean,
     tax_id: contact.taxId || null,
@@ -193,7 +199,8 @@ async function ensureSupplier(name: string, contactInput: SupplierProfileData = 
     phone: contact.phone || null,
     address: contact.address || null,
     website: contact.website || null,
-    supplier_type: supplierTypeHint === 'goods' ? 'goods' : 'unclassified',
+    supplier_type: createdSupplierType,
+    default_category_id: policy.defaultCategoryId || null,
   }).select('id').single();
   if (error) throw error;
   return { id: data.id, created: true };
@@ -220,14 +227,15 @@ async function isMerchandiseCategory(categoryId?: string) {
   return Boolean(data?.name && normalizeProductKey(data.name).includes('mercancia'));
 }
 
-async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: string, input: NewInvoiceInput) {
+async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: string, input: NewInvoiceInput, policy:ExpenseImportPolicy) {
   if (!input.lines?.length) return;
 
-  const autoCreateProducts = await isMerchandiseCategory(input.categoryId);
+  const merchandise = await isMerchandiseCategory(input.categoryId);
+  const manageProducts = merchandise && (policy.autoCreateProducts || policy.createSupplierProductRelation);
   const createdProductIds: string[] = [];
   const createdSupplierProductIds: string[] = [];
 
-  const [productsResult, supplierProductsResult] = autoCreateProducts
+  const [productsResult, supplierProductsResult] = manageProducts
     ? await Promise.all([
         supabase.from('products').select('id,name,base_unit').eq('active', true),
         supabase.from('supplier_products').select('id,product_id,supplier_description').eq('supplier_id', supplierId),
@@ -263,14 +271,14 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
       let productId: string | null = null;
       let supplierProductId: string | null = null;
 
-      if (autoCreateProducts && key) {
+      if (manageProducts && key) {
         const supplierMatch = supplierProductByDescription.get(key);
         if (supplierMatch) {
           supplierProductId = supplierMatch.id;
           productId = supplierMatch.productId;
         } else {
           let product = productByName.get(key);
-          if (!product) {
+          if (!product && policy.autoCreateProducts) {
             const { data: created, error: productError } = await supabase.from('products').insert({
               name: description,
               sku: null,
@@ -282,20 +290,23 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
             createdProductIds.push(created.id);
             productByName.set(key, product);
           }
-          productId = product.id;
-
-          const { data: supplierProduct, error: supplierProductError } = await supabase.from('supplier_products').insert({
-            supplier_id: supplierId,
-            product_id: productId,
-            supplier_sku: sanitizeDatabaseSingleLine(line.supplierSku) || null,
-            supplier_description: description,
-            purchase_unit: unit,
-            units_per_purchase: 1,
-          }).select('id').single();
-          if (supplierProductError) throw supplierProductError;
-          supplierProductId = supplierProduct.id;
-          createdSupplierProductIds.push(supplierProduct.id);
-          supplierProductByDescription.set(key, { id: supplierProduct.id, productId });
+          if(product){
+            productId = product.id;
+            if(policy.createSupplierProductRelation){
+              const { data: supplierProduct, error: supplierProductError } = await supabase.from('supplier_products').insert({
+                supplier_id: supplierId,
+                product_id: productId,
+                supplier_sku: sanitizeDatabaseSingleLine(line.supplierSku) || null,
+                supplier_description: description,
+                purchase_unit: unit,
+                units_per_purchase: 1,
+              }).select('id').single();
+              if (supplierProductError) throw supplierProductError;
+              supplierProductId = supplierProduct.id;
+              createdSupplierProductIds.push(supplierProduct.id);
+              supplierProductByDescription.set(key, { id: supplierProduct.id, productId });
+            }
+          }
         }
       }
 
@@ -314,13 +325,48 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
         tax_rate: line.taxRate ?? null,
         tax_amount: line.taxAmount ?? null,
         line_total: line.lineTotal ?? null,
-        price_update_status: normalizedPrice != null ? 'confirmed' : 'pending',
+        price_update_status: normalizedPrice != null && policy.updateProductCosts && policy.updatePriceHistory ? 'confirmed' : normalizedPrice != null ? 'ignored' : 'pending',
       });
     }
 
     if (!lineRows.length) return;
-    const { error: lineError } = await supabase.from('invoice_lines').insert(lineRows);
+    const { data:insertedLines,error: lineError } = await supabase.from('invoice_lines').insert(lineRows).select('id,product_id,unit_price,normalized_unit_price,unit');
     if (lineError) throw lineError;
+
+    const priced=(insertedLines??[]).filter((line:any)=>line.product_id&&line.normalized_unit_price!=null);
+    if(policy.updateProductCosts&&!policy.updatePriceHistory){
+      for(const line of priced as any[]){
+        const {data:product,error:readError}=await supabase.from('products').select('last_cost,base_unit').eq('id',line.product_id).single();
+        if(readError)throw readError;
+        const nextCost=Number(line.normalized_unit_price);
+        const oldCost=product?.last_cost==null?null:Number(product.last_cost);
+        const {error:updateError}=await supabase.from('products').update({
+          previous_cost:oldCost!=null&&oldCost!==nextCost?oldCost:null,
+          last_cost:nextCost,
+          cost_unit:product?.base_unit||line.unit||'ud',
+          last_supplier_id:supplierId,
+          last_purchase_date:input.invoiceDate||new Date().toISOString().slice(0,10),
+        }).eq('id',line.product_id);
+        if(updateError)throw updateError;
+      }
+    }else if(policy.updatePriceHistory&&!policy.updateProductCosts){
+      for(const line of priced as any[]){
+        const {data:product,error:readError}=await supabase.from('products').select('base_unit').eq('id',line.product_id).single();
+        if(readError)throw readError;
+        const {error:historyError}=await supabase.from('product_price_history').upsert({
+          product_id:line.product_id,
+          supplier_id:supplierId,
+          invoice_id:invoiceId,
+          invoice_line_id:line.id,
+          price_date:input.invoiceDate||new Date().toISOString().slice(0,10),
+          purchase_unit_price:line.unit_price,
+          normalized_unit_price:line.normalized_unit_price,
+          base_unit:product?.base_unit||line.unit||'ud',
+          currency:'EUR',
+        },{onConflict:'invoice_line_id'});
+        if(historyError)throw historyError;
+      }
+    }
   } catch (error) {
     if (createdSupplierProductIds.length) await supabase.from('supplier_products').delete().in('id', createdSupplierProductIds);
     if (createdProductIds.length) await supabase.from('products').delete().in('id', createdProductIds);
@@ -329,31 +375,36 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
 }
 
 export async function createInvoice(input: NewInvoiceInput) {
+  const loadedSettings=await loadAppSettings();
+  const policy=expenseImportPolicyFromSettings(loadedSettings.settings.expenses);
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
   if (!user) throw new Error('Sesión no válida.');
 
   const fileHash = await sha256(input.file);
-  const { data: duplicates, error: duplicateError } = await supabase.from('invoices').select('id, invoice_number').eq('file_hash', fileHash).limit(1);
-  if (duplicateError) throw duplicateError;
-  if (duplicates?.length) throw new Error(`Esta factura parece estar subida ya (${duplicates[0].invoice_number || 'sin número'}).`);
+  if(policy.detectDuplicates){
+    const { data: duplicates, error: duplicateError } = await supabase.from('invoices').select('id, invoice_number').eq('file_hash', fileHash).limit(1);
+    if (duplicateError) throw duplicateError;
+    if (duplicates?.length&&policy.blockHighConfidenceDuplicates) throw new Error(`Esta factura parece estar subida ya (${duplicates[0].invoice_number || 'sin número'}).`);
+  }
 
   const repairedAmounts = repairInvoiceAmounts(input.ocrText || '', { subtotal: input.subtotal, vat: input.vat, total: input.total });
   const preparedInput: NewInvoiceInput = {
     ...input,
     ...repairedAmounts,
+    categoryId:input.categoryId||policy.defaultCategoryId||undefined,
     lines: repairInvoiceProductLines(input.ocrText || '', input.lines || []),
   };
   const extractedContact = input.ocrText ? extractSupplierContactData(input.ocrText, input.supplierName) : {};
   const extractedDetails = input.ocrText ? extractSupplierInvoiceDetails(input.ocrText, input.supplierName) : {};
-  const merchandiseSupplier = await isMerchandiseCategory(input.categoryId);
+  const merchandiseSupplier = await isMerchandiseCategory(preparedInput.categoryId);
   const supplierResult = await ensureSupplier(input.supplierName, {
     taxId: input.supplierTaxId || extractedContact.taxId || extractedDetails.taxId,
     email: input.supplierEmail || extractedContact.email,
     phone: input.supplierPhone || extractedContact.phone,
     address: input.supplierAddress || extractedDetails.address,
     website: input.supplierWebsite || extractedDetails.website,
-  }, merchandiseSupplier ? 'goods' : undefined);
+  }, merchandiseSupplier ? 'goods' : undefined, policy);
   const supplierId = supplierResult.id;
   const year = input.invoiceDate ? new Date(`${input.invoiceDate}T12:00:00`).getFullYear() : new Date().getFullYear();
   const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-100);
@@ -371,14 +422,14 @@ export async function createInvoice(input: NewInvoiceInput) {
     supplier_id: supplierId,
     invoice_number: sanitizeDatabaseSingleLine(input.invoiceNumber) || null,
     issue_date: input.invoiceDate || null,
-    expense_category_id: input.categoryId || null,
+    expense_category_id: preparedInput.categoryId || null,
     net_amount: preparedInput.subtotal,
     tax_amount: preparedInput.vat,
     equivalence_surcharge_amount: preparedInput.equivalenceSurcharge ?? 0,
     withholding_amount: input.withholding,
     total_amount: preparedInput.total,
     source: input.source,
-    status: 'pending',
+    status: policy.initialStatus,
     file_path: storagePath,
     file_name: sanitizeDatabaseSingleLine(input.file.name),
     mime_type: input.file.type || 'application/pdf',
@@ -404,7 +455,7 @@ export async function createInvoice(input: NewInvoiceInput) {
   }
 
   try {
-    await createInvoiceLinesWithProducts(invoice.id, supplierId, preparedInput);
+    await createInvoiceLinesWithProducts(invoice.id, supplierId, preparedInput, policy);
   } catch (lineError) {
     await supabase.from('invoices').delete().eq('id', invoice.id);
     await supabase.storage.from(INVOICE_BUCKET).remove([storagePath]);
