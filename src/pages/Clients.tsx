@@ -12,11 +12,14 @@ import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSele
 import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
 import { StatCard } from '../components/StatCard';
 import { defaultDateFilter, periodLabel } from '../services/filters';
+import { useSettings } from '../context/SettingsContext';
 import '../sales.css';
 
 const PAGE_SIZE=20;
-const emptyClient = (): ClientInput => ({
-  name: '', taxId: '', email: '', phone: '', addressLine1: '', addressLine2: '', postalCode: '', city: '', province: '', countryCode: 'ES', paymentTermsDays: 0, notes: '',
+const emptyClient = (settings:{defaultCountryCode:string;defaultPaymentTermsDays:number;defaultVatRate:number;defaultPaymentMethod:string}): ClientInput => ({
+  name:'',taxId:'',email:'',phone:'',addressLine1:'',addressLine2:'',postalCode:'',city:'',province:'',
+  countryCode:settings.defaultCountryCode,paymentTermsDays:settings.defaultPaymentTermsDays,
+  defaultVatRate:settings.defaultVatRate,defaultPaymentMethod:settings.defaultPaymentMethod,notes:'',
 });
 const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
@@ -26,7 +29,8 @@ type ClientBalanceFilter='all'|'pending'|'settled'|'active'|'inactive';
 type ClientMetric={invoiced:number;pending:number;count:number;lastDate:string|null;recent:SalesInvoice[]};
 
 function ClientModal({open,client,onClose,onSaved}:{open:boolean;client:Client|null;onClose:()=>void;onSaved:()=>Promise<void>}) {
-  const [form,setForm]=useState<ClientInput>(emptyClient());
+  const {settings}=useSettings();
+  const [form,setForm]=useState<ClientInput>(()=>emptyClient(settings.clients));
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const set=useCallback((key:keyof ClientInput,value:string|number)=>setForm(current=>({...current,[key]:value})),[]);
@@ -40,10 +44,10 @@ function ClientModal({open,client,onClose,onSaved}:{open:boolean;client:Client|n
   useEffect(()=>{
     if(!open)return;
     setForm(client?{
-      name:client.name,taxId:client.taxId||'',email:client.email||'',phone:client.phone||'',addressLine1:client.addressLine1||'',addressLine2:client.addressLine2||'',postalCode:client.postalCode||'',city:client.city||'',province:client.province||'',countryCode:client.countryCode||'ES',paymentTermsDays:client.paymentTermsDays||0,notes:client.notes||'',
-    }:emptyClient());
+      name:client.name,taxId:client.taxId||'',email:client.email||'',phone:client.phone||'',addressLine1:client.addressLine1||'',addressLine2:client.addressLine2||'',postalCode:client.postalCode||'',city:client.city||'',province:client.province||'',countryCode:client.countryCode||settings.clients.defaultCountryCode,paymentTermsDays:client.paymentTermsDays||0,defaultVatRate:client.defaultVatRate??settings.clients.defaultVatRate,defaultPaymentMethod:client.defaultPaymentMethod||settings.clients.defaultPaymentMethod,notes:client.notes||'',
+    }:emptyClient(settings.clients));
     setError('');
-  },[open,client]);
+  },[open,client,settings.clients]);
 
   if(!open)return null;
   const save=async()=>{
@@ -89,9 +93,11 @@ function ClientModal({open,client,onClose,onSaved}:{open:boolean;client:Client|n
         />
       </FormGrid>
     </FormSection>
-    <FormSection icon={<WalletCards size={18}/>} title="Condiciones comerciales" subtitle="Plazo de pago y notas internas">
+    <FormSection icon={<WalletCards size={18}/>} title="Condiciones comerciales" subtitle="Plazo, IVA y método de pago que prevalecerán sobre los defaults globales">
       <FormGrid>
         <label>Pago habitual<SelectField value={String(form.paymentTermsDays||0)} options={[{value:'0',label:'Al contado'},{value:'15',label:'15 días'},{value:'30',label:'30 días'},{value:'60',label:'60 días'},{value:'90',label:'90 días'}]} onChange={value=>set('paymentTermsDays',Number(value))} ariaLabel="Pago habitual"/></label>
+        <label>IVA habitual<input type="number" min="0" max="100" step="0.01" value={form.defaultVatRate??settings.clients.defaultVatRate} onChange={e=>set('defaultVatRate',Number(e.target.value))}/></label>
+        <label>Método de pago habitual<SelectField value={form.defaultPaymentMethod||settings.clients.defaultPaymentMethod} options={settings.sales.paymentMethods.filter(item=>item.active).map(item=>({value:item.id,label:item.label}))} onChange={value=>set('defaultPaymentMethod',value)} ariaLabel="Método de pago habitual"/></label>
         <label className="formSpan2">Notas<textarea rows={3} value={form.notes||''} onChange={e=>set('notes',e.target.value)} placeholder="Información interna sobre el cliente"/></label>
       </FormGrid>
     </FormSection>
