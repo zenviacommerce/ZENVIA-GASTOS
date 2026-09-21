@@ -12,6 +12,7 @@ import { loadSalesInvoices, type SalesInvoice } from '../services/sales';
 import { listFulfillmentOrders, syncSendcloudOrders, type FulfillmentOrder } from '../services/orders';
 import { isCancelledOrder, isPendingOrder, orderStatusCode } from '../services/orderStatus';
 import { readViewCache, writeViewCache } from '../services/viewCache';
+import { useSettings } from '../context/SettingsContext';
 
 const colors = ['#0f766e','#2563eb','#7c3aed','#d97706','#64748b','#dc2626','#0891b2'];
 const money=(value:number)=>`${value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €`;
@@ -25,6 +26,7 @@ function isShippedOrder(order:FulfillmentOrder){
 }
 
 export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{invoices:Invoice[];products:Product[];suppliers:Supplier[];onUpload?:()=>void;onProducts?:()=>void}){
+  const {settings}=useSettings();
   const [filter,setFilter]=useState(defaultDateFilter);
   const [sales,setSales]=useState<SalesInvoice[]>(()=>readViewCache<SalesInvoice[]>(DASHBOARD_SALES_CACHE)||[]);
   const [orders,setOrders]=useState<FulfillmentOrder[]>(()=>readViewCache<FulfillmentOrder[]>(DASHBOARD_ORDERS_CACHE)||[]);
@@ -44,7 +46,7 @@ export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{inv
       if(inFlight)return;
       inFlight=true;
       try{
-        try{await syncSendcloudOrders(false);}catch{/* Sendcloud puede fallar sin vaciar el resumen. */}
+        if(settings.integrations.sendcloudEnabled){try{await syncSendcloudOrders(false,true,true);}catch{/* Sendcloud puede fallar sin vaciar el resumen. */}}
         publish(await listFulfillmentOrders());
       }catch{/* Conserva los KPI existentes ante un fallo puntual de sincronización o lectura. */}
       finally{inFlight=false;}
@@ -54,7 +56,7 @@ export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{inv
     void refreshOrders();
     const timer=window.setInterval(()=>void refreshOrders(),60000);
     return()=>{alive=false;window.clearInterval(timer);};
-  },[]);
+  },[settings.integrations.sendcloudEnabled]);
 
   const periodExpenses=useMemo(()=>invoices.filter(invoice=>(!filter.from||invoice.invoiceDate>=filter.from)&&(!filter.to||invoice.invoiceDate<=filter.to)),[invoices,filter]);
   const selectedSales=useMemo(()=>sales.filter(invoice=>{
