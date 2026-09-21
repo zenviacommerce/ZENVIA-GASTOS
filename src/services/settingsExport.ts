@@ -94,14 +94,11 @@ export async function previewSettingsReset():Promise<SettingsResetPreview>{
 }
 
 export async function resetAllSettingsToDefaults(){
-  const loaded=await loadAppSettings();
   const preview=await previewSettingsReset();
-  const {error}=await supabase.from('app_settings').upsert({
-    owner_id:loaded.ownerId,
-    schema_version:APP_SETTINGS_SCHEMA_VERSION,
-    config:clone(DEFAULT_APP_SETTINGS),
-    updated_at:new Date().toISOString(),
-  },{onConflict:'owner_id'});
+  const {error}=await supabase.rpc('configuration_reset_app_settings',{
+    p_schema_version:APP_SETTINGS_SCHEMA_VERSION,
+    p_config:clone(DEFAULT_APP_SETTINGS),
+  });
   if(error)throw error;
   return {preview,settings:clone(DEFAULT_APP_SETTINGS)};
 }
