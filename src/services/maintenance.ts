@@ -1,6 +1,11 @@
 import { supabase } from './supabase';
 import { syncSendcloudOrders } from './orders';
 import { requestAmazonSync } from './amazon';
+import { loadAppSettings } from './settings';
+import { expenseImportPolicyFromSettings } from './expenseImportPolicy';
+import { loadExpenseCategories } from './expenseCategories';
+import { prepareInvoiceCandidate } from './invoiceImportPipeline';
+import { downloadInvoiceFile } from './repository';
 
 export type DuplicateEvidence=
   |'same_tax_id'
@@ -191,4 +196,168 @@ export async function runSendcloudSync(){
 }
 export async function runAmazonSync(){
   return requestAmazonSync();
+}
+
+
+export type MaintenanceRepairPreview={
+  ok:boolean;
+  preview:boolean;
+  [key:string]:unknown;
+};
+
+export type ReprocessableInvoiceOption={
+  id:string;
+  label:string;
+  fileName:string|null;
+};
+
+export type ExpenseInvoiceReprocessPreview={
+  invoiceId:string;
+  label:string;
+  current:{
+    invoiceNumber:string|null;
+    invoiceDate:string|null;
+    subtotal:number;
+    vat:number;
+    total:number;
+    categoryId:string|null;
+    supplierId:string|null;
+  };
+  parsed:{
+    supplierName:string;
+    supplierTaxId:string|null;
+    invoiceNumber:string;
+    invoiceDate:string;
+    subtotal:number;
+    vat:number;
+    equivalenceSurcharge:number;
+    withholding:number;
+    total:number;
+    categoryId:string|null;
+    confidence:number;
+    usedOcr:boolean;
+    recipientTaxId:string|null;
+    recipientName:string|null;
+    text:string;
+    lines:Array<Record<string,unknown>>;
+  };
+  changes:string[];
+  warnings:string[];
+};
+
+async function runMaintenanceRepairRpc(name:string,apply:boolean):Promise<MaintenanceRepairPreview>{
+  const {data,error}=await supabase.rpc(name,{p_apply:apply});
+  if(error)throw error;
+  return (data||{ok:true,preview:!apply}) as MaintenanceRepairPreview;
+}
+
+export function previewProductCostRecalculation(){return runMaintenanceRepairRpc('configuration_recalculate_product_costs',false);}
+export function recalculateProductCosts(){return runMaintenanceRepairRpc('configuration_recalculate_product_costs',true);}
+export function previewSupplierProductRebuild(){return runMaintenanceRepairRpc('configuration_rebuild_supplier_product_links',false);}
+export function rebuildSupplierProductLinks(){return runMaintenanceRepairRpc('configuration_rebuild_supplier_product_links',true);}
+export function previewPriceHistoryRebuild(){return runMaintenanceRepairRpc('configuration_rebuild_price_history_links',false);}
+export function rebuildPriceHistoryLinks(){return runMaintenanceRepairRpc('configuration_rebuild_price_history_links',true);}
+
+export async function listReprocessableInvoices():Promise<ReprocessableInvoiceOption[]>{
+  const {data,error}=await supabase
+    .from('invoices')
+    .select('id,invoice_number,issue_date,file_name,file_path,supplier:suppliers(name)')
+    .not('file_path','is',null)
+    .order('issue_date',{ascending:false,nullsFirst:false})
+    .limit(250);
+  if(error)throw error;
+  return (data||[]).map((row:any)=>({
+    id:String(row.id),
+    label:[
+      String(row.invoice_number||row.file_name||row.id),
+      row.supplier?.name?String(row.supplier.name):'Proveedor sin asignar',
+      row.issue_date?String(row.issue_date):'Sin fecha',
+    ].join(' · '),
+    fileName:row.file_name?String(row.file_name):null,
+  }));
+}
+
+function differenceLabel(current:unknown,next:unknown,label:string,changes:string[]){
+  const left=current==null?'':String(current);
+  const right=next==null?'':String(next);
+  if(left!==right)changes.push(label);
+}
+
+export async function previewExpenseInvoiceReprocess(invoiceId:string):Promise<ExpenseInvoiceReprocessPreview>{
+  const {data:invoice,error}=await supabase
+    .from('invoices')
+    .select('id,invoice_number,issue_date,net_amount,tax_amount,total_amount,expense_category_id,supplier_id,file_path,file_name,mime_type')
+    .eq('id',invoiceId)
+    .single();
+  if(error)throw error;
+  if(!invoice?.file_path)throw new Error('La factura no conserva un archivo que pueda reprocesarse.');
+
+  const [blob,categories,loaded]=await Promise.all([
+    downloadInvoiceFile(String(invoice.file_path)),
+    loadExpenseCategories(),
+    loadAppSettings(),
+  ]);
+  const file=new File(
+    [blob],
+    String(invoice.file_name||invoice.invoice_number||'factura.pdf'),
+    {type:String(invoice.mime_type||blob.type||'application/pdf')},
+  );
+  const policy=expenseImportPolicyFromSettings(loaded.settings.expenses);
+  const candidate=await prepareInvoiceCandidate(file,categories,undefined,file,policy);
+  const current={
+    invoiceNumber:invoice.invoice_number==null?null:String(invoice.invoice_number),
+    invoiceDate:invoice.issue_date==null?null:String(invoice.issue_date),
+    subtotal:Number(invoice.net_amount||0),
+    vat:Number(invoice.tax_amount||0),
+    total:Number(invoice.total_amount||0),
+    categoryId:invoice.expense_category_id==null?null:String(invoice.expense_category_id),
+    supplierId:invoice.supplier_id==null?null:String(invoice.supplier_id),
+  };
+  const parsed={
+    supplierName:candidate.supplierName,
+    supplierTaxId:candidate.supplierTaxId||null,
+    invoiceNumber:candidate.invoiceNumber,
+    invoiceDate:candidate.invoiceDate,
+    subtotal:candidate.subtotal,
+    vat:candidate.vat,
+    equivalenceSurcharge:candidate.equivalenceSurcharge,
+    withholding:candidate.withholding,
+    total:candidate.total,
+    categoryId:candidate.categoryId||null,
+    confidence:candidate.confidence,
+    usedOcr:candidate.usedOcr,
+    recipientTaxId:candidate.recipientTaxId||null,
+    recipientName:candidate.recipientName||null,
+    text:candidate.text,
+    lines:candidate.lines as Array<Record<string,unknown>>,
+  };
+  const changes:string[]=[];
+  differenceLabel(current.invoiceNumber,parsed.invoiceNumber,'Número');
+  differenceLabel(current.invoiceDate,parsed.invoiceDate,'Fecha');
+  differenceLabel(current.subtotal,parsed.subtotal,'Base');
+  differenceLabel(current.vat,parsed.vat,'IVA');
+  differenceLabel(current.total,parsed.total,'Total');
+  differenceLabel(current.categoryId,parsed.categoryId,'Categoría');
+
+  return {
+    invoiceId:String(invoice.id),
+    label:String(invoice.invoice_number||invoice.file_name||invoice.id),
+    current,
+    parsed,
+    changes,
+    warnings:[
+      'El reprocesado actualiza cabecera y extracción con el parser actual.',
+      'Las líneas de producto y el histórico existente se conservan; usa las reconstrucciones específicas para esas relaciones.',
+      'El proveedor solo se religa automáticamente cuando el NIF/VAT extraído coincide exactamente con un proveedor existente.',
+    ],
+  };
+}
+
+export async function applyExpenseInvoiceReprocess(preview:ExpenseInvoiceReprocessPreview){
+  const {data,error}=await supabase.rpc('configuration_apply_invoice_reprocess',{
+    p_invoice_id:preview.invoiceId,
+    p_payload:preview.parsed,
+  });
+  if(error)throw error;
+  return data;
 }
