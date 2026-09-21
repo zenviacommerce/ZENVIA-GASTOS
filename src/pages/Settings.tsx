@@ -35,6 +35,7 @@ import { AMAZON_KPI_KEYS, loadAmazonStatus, type AmazonMarketplaceStatus } from 
 import { loadIntegrationHealth, syncIntegration, testIntegrationConnection, type IntegrationHealth, type IntegrationId } from '../services/integrations';
 import { DEFAULT_AUTOMATION_RULES, loadAutomationRules, saveAutomationRule, type AutomationRule } from '../services/automationRules';
 import { findClientDuplicates, findInvoiceDuplicates, findProductDuplicates, findSupplierDuplicates, listClientsMissingTaxId, listProductsWithoutCost, listSuppliersMissingTaxId, mergeClient, mergeSupplier, previewClientMerge, previewSupplierMerge, runAmazonSync, runSendcloudSync, type DuplicateCandidate, type MergePreview } from '../services/maintenance';
+import { downloadSettingsExport, previewSettingsReset, resetAllSettingsToDefaults, type SettingsResetPreview } from '../services/settingsExport';
 
 type SettingsSectionId =
   | 'general'
@@ -1445,7 +1446,7 @@ function PreferencesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
 }
 
 function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
-  const {settings,updateSection,resetSection}=useSettings();
+  const {settings,updateSection,resetSection,refresh:refreshSettings}=useSettings();
   const [draft,setDraft]=useState<MaintenanceSettings>(settings.maintenance);
   const [saving,setSaving]=useState(false);
   const [analyzing,setAnalyzing]=useState(false);
@@ -1459,6 +1460,7 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
   const [analyzed,setAnalyzed]=useState(false);
   const [preview,setPreview]=useState<{kind:'supplier'|'client';data:MergePreview}|null>(null);
   const [diagnostics,setDiagnostics]=useState<Record<string,{count:number;names:string[]}>>({});
+  const [resetPreview,setResetPreview]=useState<SettingsResetPreview|null>(null);
 
   useEffect(()=>{setDraft(settings.maintenance);onDirtyChange(false)},[settings.maintenance,onDirtyChange]);
 
@@ -1538,6 +1540,35 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
     finally{setBusy(null);}
   };
 
+  const exportConfiguration=async()=>{
+    setBusy('export');
+    try{await downloadSettingsExport();showSuccess('Configuración exportada.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo exportar la configuración.');}
+    finally{setBusy(null);}
+  };
+
+  const prepareGlobalReset=async()=>{
+    setBusy('reset-preview');
+    try{setResetPreview(await previewSettingsReset());}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo preparar la restauración.');}
+    finally{setBusy(null);}
+  };
+
+  const confirmGlobalReset=async()=>{
+    if(!resetPreview)return;
+    if(!window.confirm('Se restaurarán a valores predeterminados '+resetPreview.changedCount+' secciones globales. Tus preferencias personales no se modificarán. ¿Continuar?'))return;
+    setBusy('reset-all');
+    try{
+      await resetAllSettingsToDefaults();
+      await refreshSettings();
+      setDraft(DEFAULT_APP_SETTINGS.maintenance);
+      setResetPreview(null);
+      onDirtyChange(false);
+      showSuccess('Configuración global restaurada a valores predeterminados.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo restaurar la configuración global.');}
+    finally{setBusy(null);}
+  };
+
   const evidenceLabel=(evidence:string)=>({
     same_tax_id:'Mismo NIF/VAT',same_normalized_name:'Mismo nombre normalizado',same_sku:'Mismo SKU',
     same_file_hash:'Mismo archivo',same_supplier_invoice_number:'Mismo proveedor + número',
@@ -1604,6 +1635,21 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
         <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void runSync('sendcloud')}>{busy==='sync:sendcloud'?'Sincronizando…':'Sincronizar Sendcloud ahora'}</button>
         <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void runSync('amazon')}>{busy==='sync:amazon'?'Sincronizando…':'Sincronizar Amazon ahora'}</button>
       </div>
+    </div>
+
+    <div className="settingsSubsection">
+      <h3>Configuración global</h3>
+      <p className="settingsHelpText">La exportación contiene únicamente configuración no secreta. La restauración global no modifica “Mis preferencias”.</p>
+      <div className="settingsMaintenanceActions">
+        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void exportConfiguration()}>{busy==='export'?'Exportando…':'Exportar configuración'}</button>
+        <button type="button" className="secondaryButton" disabled={busy!==null} onClick={()=>void prepareGlobalReset()}>{busy==='reset-preview'?'Calculando…':'Restaurar configuración global'}</button>
+      </div>
+      {resetPreview&&<div className="settingsResetPreview">
+        <strong>Vista previa del reset</strong>
+        <span>{resetPreview.changedCount} secciones cambiarán.</span>
+        <small>{resetPreview.changedSections.length?'Cambios: '+resetPreview.changedSections.join(', '):'La configuración global ya coincide con los valores predeterminados.'}</small>
+        {resetPreview.changedCount>0&&<div className="settingsInlineActions"><button type="button" className="secondaryButton" onClick={()=>setResetPreview(null)}>Cancelar</button><button type="button" className="primaryButton" disabled={busy==='reset-all'} onClick={()=>void confirmGlobalReset()}>{busy==='reset-all'?'Restaurando…':'Confirmar restauración global'}</button></div>}
+      </div>}
     </div>
 
     <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
