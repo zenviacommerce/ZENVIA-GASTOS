@@ -1,0 +1,192 @@
+/* Final theme authority.
+   Imported last so legacy component files cannot create light islands in dark mode. */
+:root{
+  --app-bg:#f6f8fb;
+  --surface:#ffffff;
+  --surface-soft:#f8fafc;
+  --surface-raised:#ffffff;
+  --text:#172033;
+  --text-secondary:#64748b;
+  --muted:#64748b;
+  --border:#e2e8f0;
+  --border-soft:#edf1f5;
+  --input-bg:#ffffff;
+}
+
+html[data-theme='dark']{
+  --app-bg:#090f1c;
+  --surface:#111827;
+  --surface-soft:#0f172a;
+  --surface-raised:#172033;
+  --text:#e5e7eb;
+  --text-secondary:#94a3b8;
+  --muted:#94a3b8;
+  --border:#334155;
+  --border-soft:#263244;
+  --input-bg:#0f172a;
+  background:var(--app-bg);
+  color-scheme:dark;
+}
+
+html[data-theme='dark'] body,
+html[data-theme='dark'] .app,
+html[data-theme='dark'] main,
+html[data-theme='dark'] .page,
+html[data-theme='dark'] .expenseInvoicesHub{
+  background:var(--app-bg)!important;
+  color:var(--text)!important;
+}
+
+html[data-theme='dark'] :where(
+  .card,.stat,.modal,.authPanel,.tableCard,.masterTableCard,
+  .masterDrawer,.ordersDrawer,.salesInvoiceMobileCard,.masterMobileRow,.ordersMobileRow,
+  .gmailImportRow,.zenviaUnifiedMobileRow,.settingsSectionCard,.settingsNav,
+  .settingsAlertCard,.settingsMaintenanceGroups>div,.settingsMaintenanceCandidate,
+  .settingsResetPreview,.settingsToggleField,.settingsLogoPreview,.settingsPreviewCounts span,
+  .businessFilterBar,.salesImportedClientEditor,.invoiceSupplierEditor,.invoiceCategoryEditor
+){
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+  box-shadow:none;
+}
+
+html[data-theme='dark'] :where(
+  .settingsSectionActions,.settingsSubsection,.salesInvoiceMobileActions,
+  .salesInvoiceMobileAmounts>div,.masterDrawerSection,.ordersDrawerSection,
+  .settingsDiagnosticResult,.settingsEmptySection,.aiNote,.uploadChoice,
+  .salesPaymentQuick,.filterResetCompact
+){
+  background:var(--surface-soft)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+}
+
+html[data-theme='dark'] :where(
+  h1,h2,h3,h4,
+  .page h1,.card h3,.stat strong,.settingsSectionHero h2,.settingsSubsection h3,
+  .settingsAlertCard strong,.settingsMaintenanceCandidate strong,.settingsResetPreview strong,
+  .masterEntityCell strong,.salesInvoiceMobileHead strong
+){
+  color:#f8fafc!important;
+}
+
+html[data-theme='dark'] :where(
+  p,small,.muted,.pageHead p,.cardHead p,.settingsSectionHero p,.settingsHelpText,
+  .settingsAlertCard small,.settingsMaintenanceCandidate small,.settingsResetPreview small,
+  .masterEntityCell small,.salesInvoiceMobileMeta,.salesInvoiceMobileHead>div>span
+){
+  color:var(--text-secondary)!important;
+}
+
+html[data-theme='dark'] :where(
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,textarea,
+  .search,.searchableSelectTrigger,.settingsNumberWithSuffix,
+  .filterChip,.filterReset,.filterResetCompact
+){
+  background:var(--input-bg)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+}
+
+html[data-theme='dark'] :where(input,textarea)::placeholder{color:#64748b!important}
+
+html[data-theme='dark'] :where(
+  .secondary,.iconBtn,.statusBtn,.settingsNav button,
+  .mobileMenuButton,.mobileMenuClose,.alertCenterTrigger,
+  .alertCenterHeaderActions button,.alertCenterFooter button
+){
+  background:var(--surface-raised)!important;
+  border-color:var(--border)!important;
+  color:#d7deea!important;
+}
+
+html[data-theme='dark'] :where(.secondary,.iconBtn,.settingsNav button):hover{
+  background:#1e293b!important;
+  color:#5eead4!important;
+}
+
+html[data-theme='dark'] :where(
+  table,.masterTable,.ordersTable,
+  .tableCard table,.masterTableCard table
+){
+  background:var(--surface)!important;
+  color:var(--text)!important;
+}
+
+html[data-theme='dark'] :where(th,.tableCard th,.masterTable th,.ordersTable th){
+  background:var(--surface-soft)!important;
+  color:#94a3b8!important;
+  border-color:var(--border-soft)!important;
+}
+
+html[data-theme='dark'] :where(td,.tableCard td,.masterTable td,.ordersTable td){
+  background:var(--surface)!important;
+  color:#cbd5e1!important;
+  border-color:var(--border-soft)!important;
+}
+
+html[data-theme='dark'] :where(.clickableRow:hover>td,.masterTable tr:hover>td,.ordersTable tr:hover>td){
+  background:#162032!important;
+}
+
+html[data-theme='dark'] :where(
+  .modalHead>button,.supplierBadge,.supplierBig,.masterAvatar,.gmailFileIcon,
+  .tag,.pill,.settingsSectionIcon
+){
+  border-color:var(--border)!important;
+}
+
+html[data-theme='dark'] .modalActions{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+}
+
+html[data-theme='dark'] .settingsNav button.active{
+  background:#123b35!important;
+  color:#5eead4!important;
+}
+
+html[data-theme='dark'] .settingsSectionIcon{
+  background:#123b35!important;
+  color:#5eead4!important;
+}
+
+html[data-theme='dark'] .settingsWarning{
+  background:#422006!important;
+  border-color:#854d0e!important;
+  color:#fde68a!important;
+}
+
+html[data-theme='dark'] .authPage{
+  background:radial-gradient(circle at 20% 0%,#123c38 0,transparent 35%),var(--app-bg)!important;
+}
+
+html[data-theme='dark'] .globalError{
+  background:#3f171b!important;
+  border-color:#7f1d1d!important;
+  color:#fecaca!important;
+}
+html[data-theme='dark'] .globalError button{
+  background:#211318!important;
+  color:#fca5a5!important;
+}
+
+/* Configuration and Administration are account-level controls. */
+.settingsSidebarButton,.adminSidebarButton{margin-top:2px}
+.settingsSidebarButton.active,.adminSidebarButton.active{
+  background:#1e293b!important;
+  color:white!important;
+}
+.settingsSidebarButton.active svg,.adminSidebarButton.active svg{color:#2dd4bf}
+
+@media(max-width:900px), (max-height:600px) and (max-width:1100px){
+  html[data-theme='dark'] .mobileNavHeader{
+    background:color-mix(in srgb,var(--surface) 94%,transparent)!important;
+    border-color:var(--border)!important;
+  }
+  html[data-theme='dark'] .sidebarBottom{
+    border-color:#243244!important;
+  }
+}
