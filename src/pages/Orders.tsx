@@ -321,7 +321,7 @@ export function Orders(){
   const createLabel=async(option:ShippingOption|null,explicitOrder:FulfillmentOrder|null=labelOrder)=>{if(!explicitOrder)return;const order=explicitOrder;setBusyOrder(order.id);setLabelOrder(null);try{
     const result=await createOrderLabel(order.id,option,settings.orders.pushTrackingToMarketplace),blob=labelBlob(result);
     const freshOrders=await listFulfillmentOrders();const fresh=freshOrders.find(item=>item.id===order.id)||order;setOrders(freshOrders);setSelected(fresh);
-    if(settings.orders.downloadLabelAfterCreation&&settings.shipping.autoDownload){
+    if(result.automation?.downloadPdf!==false&&settings.orders.downloadLabelAfterCreation&&settings.shipping.autoDownload){
       const prepared=await prepareLabelPdf(blob,settings.shipping);
       downloadLabel(prepared,labelPdfFilename(fresh,labelFilenameOptions));
     }
