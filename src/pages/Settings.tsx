@@ -844,7 +844,6 @@ function AmazonSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
           <label className="settingsField"><span>IVA de respaldo</span><div className="settingsNumberWithSuffix"><input type="number" min="0" max="100" step="0.1" value={draft.defaultVatRate} onChange={e=>update('defaultVatRate',Number(e.target.value))}/><em>%</em></div><small>Solo se usa si Amazon no aporta un IVA utilizable.</small></label>
           <label className="settingsField"><span>Factor de consumo por defecto</span><input type="number" min="0.0001" max="100000" step="0.01" value={draft.defaultConsumptionFactor} onChange={e=>update('defaultConsumptionFactor',Number(e.target.value))}/><small>Solo para vínculos SKU nuevos; no modifica factores existentes.</small></label>
           <label className="settingsField"><span>Política FX</span><SelectField ariaLabel="Política FX" value={draft.fxMissingRatePolicy} options={[{value:'last_known',label:'Usar último cambio conocido'},{value:'exclude',label:'Excluir si falta cambio exacto'}]} onChange={value=>update('fxMissingRatePolicy',value as AmazonSettings['fxMissingRatePolicy'])}/></label>
-          <label className="settingsField"><span>SKU sin vincular</span><SelectField ariaLabel="SKU sin vincular" value={draft.unmappedSkuBehavior} options={[{value:'warn',label:'Incluir y avisar'},{value:'exclude',label:'Excluir de rentabilidad'},{value:'include',label:'Incluir sin aviso'}]} onChange={value=>update('unmappedSkuBehavior',value as AmazonSettings['unmappedSkuBehavior'])}/></label>
         </div>
       </div>
 
