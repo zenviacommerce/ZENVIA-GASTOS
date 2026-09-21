@@ -21,7 +21,8 @@ test('Facturación settings exposes every operational sales default',async()=>{
 test('new invoices consume configured sales defaults instead of hidden literals',async()=>{
   const core=await read('../src/pages/SalesInvoicesCore.tsx');
   assert.match(core,/settings\.sales\.defaultVatRate/);
-  assert.match(core,/settings\.sales\.defaultPaymentMethod/);
+  assert.match(core,/clientDefaultPaymentMethod/);
+  assert.match(core,/sales\.defaultPaymentMethod/);
   assert.match(core,/settings\.sales\.defaultNotes/);
   assert.match(core,/settings\.sales\.defaultSeriesId/);
   assert.match(core,/settings\.sales\.defaultTaxRegistrationId/);
