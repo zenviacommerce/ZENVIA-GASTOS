@@ -20,6 +20,10 @@ export const DEFAULT_SHIPPING_RULES:Array<Omit<ShippingRule,'id'>>=[
   },
 ];
 
+export function defaultShippingRules():ShippingRule[]{
+  return DEFAULT_SHIPPING_RULES.map((rule,index)=>({...rule,id:`default-${index+1}`}));
+}
+
 const mapRule=(row:any):ShippingRule=>({
   id:row.id,
   name:String(row.name||'Regla de envío'),
