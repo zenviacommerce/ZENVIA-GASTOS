@@ -11,14 +11,16 @@ import { defaultInvoiceFilter, filterInvoices, periodLabel, safeExportLabel } fr
 import { errorMessage, showError, showSuccess } from '../services/toast';
 import { confirmAction, openActionProcess } from '../services/actionDialog';
 import { useSettings } from '../context/SettingsContext';
+import { persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
 
 const money=(value:number)=>`${value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €`;
 
 export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,onStatusChange,onOpenFile,onDelete,onSupplierChange,onCategoryChange}:{invoices:Invoice[];suppliers:Supplier[];categories:ExpenseCategory[];onUpload:()=>void;onBulkUpload:()=>void;onStatusChange:(id:string,status:'pending'|'reviewed'|'accounted')=>Promise<void>;onOpenFile:(invoice:Invoice)=>Promise<void>;onDelete:(invoice:Invoice)=>Promise<void>;onSupplierChange:(invoiceId:string,supplierId:string)=>Promise<void>;onCategoryChange:(invoiceId:string,categoryId:string)=>Promise<void>}){
- const {preferences}=useSettings();
+ const {preferences,updatePreferences}=useSettings();
  const pageSize=preferences.pageSize;
- const [query,setQuery]=useState(''); const [exporting,setExporting]=useState(false);
- const [filter,setFilter]=useState(()=>defaultInvoiceFilter(preferences.defaultPeriod));
+ const remembered=rememberedFilter<{query:string;filter:ReturnType<typeof defaultInvoiceFilter>}>(preferences,'expenses.filters',{query:'',filter:defaultInvoiceFilter(preferences.defaultPeriod)});
+ const [query,setQuery]=useState(remembered.query); const [exporting,setExporting]=useState(false);
+ const [filter,setFilter]=useState(remembered.filter);
  const [selected,setSelected]=useState<Invoice|null>(null);
  const [checkedIds,setCheckedIds]=useState<Set<string>>(()=>new Set());
  const [busyId,setBusyId]=useState<string|null>(null);
@@ -32,6 +34,7 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
  const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
  const paged=useMemo(()=>filtered.slice((page-1)*pageSize,page*pageSize),[filtered,page]);
  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,filter]);
+ useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'expenses.filters',{query,filter})},350);return()=>window.clearTimeout(timer)},[query,filter,preferences.rememberFilters]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  const selectedSupplier=suppliers.find(s=>s.id===filter.supplierId);
  const selectedCategory=categories.find(category=>category.id===filter.categoryId);
