@@ -4,8 +4,10 @@ import { isAmazonConnectivityError, loadAmazonProductImages, loadAmazonUnmapped,
 import { errorMessage } from '../../services/toast';
 import { AmazonMappingModal } from './AmazonMappingModal';
 import { readViewCache, stableCacheKey, writeViewCache } from '../../services/viewCache';
-const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'});
+import { useSettings } from '../../context/SettingsContext';
 export function AmazonUnmapped({onChanged,refreshToken=0,defaultConsumptionFactor=1}:{onChanged?:()=>void;refreshToken?:number;defaultConsumptionFactor?:number}){
+  const {settings}=useSettings();
+  const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:settings.amazon.consolidatedCurrency});
  const [search,setSearch]=useState('');const [page,setPage]=useState(1);const initialKey=stableCacheKey('amazon:unmapped',{search:'',page:1,pageSize:25});const [data,setData]=useState<AmazonPageResult<AmazonUnmappedSku>>(()=>readViewCache<AmazonPageResult<AmazonUnmappedSku>>(initialKey)||{items:[],page:1,pageSize:25,total:0});const [editing,setEditing]=useState<string|null>(null);const [error,setError]=useState('');const [images,setImages]=useState<Record<string,string>>({});
  const refresh=()=>{const key=stableCacheKey('amazon:unmapped',{search,page,pageSize:25});const cached=readViewCache<AmazonPageResult<AmazonUnmappedSku>>(key);if(cached)setData(cached);setError('');return loadAmazonUnmapped(search,page,25).then(next=>{setData(next);writeViewCache(key,next);}).catch(e=>{if(!isAmazonConnectivityError(e))setError(errorMessage(e,'No se pudieron cargar los SKU sin vincular.'));});};
  useEffect(()=>{void refresh();},[search,page,refreshToken]);
