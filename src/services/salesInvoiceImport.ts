@@ -70,7 +70,7 @@ function normalizeImportedDate(raw:string|undefined|null){
   return year+'-'+String(Number(european[2])).padStart(2,'0')+'-'+String(Number(european[1])).padStart(2,'0');
 }
 
-function extractSalesDueDate(text:string,issueDate:string,defaultDueDays=30){
+function extractSalesDueDate(text:string,issueDate:string,defaultDueDays:number){
   const rows=text.split(/\r?\n/).map(compact).filter(Boolean);
   const dueLabel=/\b(?:fecha\s+de\s+vencimiento|vencimiento|due\s+date|payment\s+due|échéance|echeance|scadenza|fällig(?:keit|keitsdatum)?)\b/i;
   const labelled=rows.find(row=>dueLabel.test(row));
@@ -286,7 +286,7 @@ function salesLineFromRead(line:any,index:number,fallbackTaxRate:number):SalesIn
   return {position:index+1,description:String(line?.description||`Concepto importado ${index+1}`).trim()||`Concepto importado ${index+1}`,quantity,unit:String(line?.unit||'ud'),unitPrice:Number.isFinite(Number(unitPrice))?Number(unitPrice):0,discountPercent:0,taxRate:Number.isFinite(taxRate)?taxRate:0,productId:null};
 }
 
-export async function prepareSalesInvoiceImportCandidate(file:File,clients:Client[],defaultDueDays=30,clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients):Promise<SalesInvoiceImportCandidate>{
+export async function prepareSalesInvoiceImportCandidate(file:File,clients:Client[],defaultDueDays:number,clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients):Promise<SalesInvoiceImportCandidate>{
   const read=await readInvoiceDocumentEnhanced(file,[]);
   const fiscal=extractSalesFiscalTotals(read.text);
   const subtotal=fiscal?.subtotal||read.subtotal;
@@ -358,7 +358,7 @@ export function friendlySalesImportError(error:unknown){
   return raw||'No se pudo guardar el borrador.';
 }
 
-export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoiceImportCandidate,defaultDueDays=30,clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients){
+export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoiceImportCandidate,defaultDueDays:number,clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients){
   const reviewed=recalculateSalesImportCandidate(candidate);
   let clientId=reviewed.clientId;
   let createdClientId='';
