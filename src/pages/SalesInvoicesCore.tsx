@@ -32,6 +32,7 @@ import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
 import { StatCard } from '../components/StatCard';
 import { defaultDateFilter, periodLabel } from '../services/filters';
 import { useSettings } from '../context/SettingsContext';
+import type { SalesSettings } from '../services/settingsSchema';
 import '../sales.css';
 
 const today=()=>new Date().toISOString().slice(0,10);
@@ -43,7 +44,7 @@ const isOverdueInvoice=(invoice:SalesInvoice)=>invoice.invoiceType==='standard'&
 const regionNames=typeof Intl!=='undefined'&&'DisplayNames' in Intl?new Intl.DisplayNames(['es'],{type:'region'}):null;
 const countryName=(code:string)=>regionNames?.of(code)||code;
 type CollectionFilter='all'|'open'|'overdue'|'paid';
-const emptyLine=(position=1):SalesInvoiceLine=>({position,description:'',quantity:1,unit:'ud',unitPrice:0,discountPercent:0,taxRate:21,productId:null});
+const emptyLine=(position=1,taxRate=21):SalesInvoiceLine=>({position,description:'',quantity:1,unit:'ud',unitPrice:0,discountPercent:0,taxRate,productId:null});
 const calcLine=(line:SalesInvoiceLine)=>{const gross=line.quantity*line.unitPrice;const net=gross*(1-(line.discountPercent||0)/100);const tax=net*(line.taxRate||0)/100;return {gross,net,tax,total:net+tax};};
 
 function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:boolean;invoice:SalesInvoice|null;clients:Client[];products:BillableProduct[];onClose:()=>void;onSaved:()=>Promise<void>}){
@@ -57,7 +58,7 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
   const [issueDate,setIssueDate]=useState(today());
   const [operationDate,setOperationDate]=useState('');
   const [dueDate,setDueDate]=useState('');
-  const [paymentMethod,setPaymentMethod]=useState('Transferencia bancaria');
+  const [paymentMethod,setPaymentMethod]=useState('');
   const [notes,setNotes]=useState('');
   const [lines,setLines]=useState<SalesInvoiceLine[]>([emptyLine()]);
   const [busy,setBusy]=useState(false);
@@ -68,22 +69,24 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
     description:client.taxId||client.city||undefined,
     searchText:[client.name,client.taxId,client.email,client.phone,client.city].filter(Boolean).join(' '),
   })),[clients]);
+  const paymentMethodOptions=useMemo(()=>settings.sales.paymentMethods.filter(item=>item.active).map(item=>({value:item.label,label:item.label})),[settings.sales.paymentMethods]);
+  const defaultPaymentMethod=useMemo(()=>settings.sales.paymentMethods.find(item=>item.id===settings.sales.defaultPaymentMethod&&item.active)?.label||settings.sales.paymentMethods.find(item=>item.active)?.label||'',[settings.sales.paymentMethods,settings.sales.defaultPaymentMethod]);
 
   useEffect(()=>{
     if(!open)return;
     if(invoice){
       setClientId(invoice.clientId);setSeriesId(invoice.seriesId);setInvoiceNumber(invoice.invoiceNumber||'');setTaxRegistrationId(invoice.taxRegistrationId||'');setIssueDate(invoice.issueDate);
       setOperationDate(invoice.operationDate||'');setDueDate(invoice.dueDate||'');setPaymentMethod(invoice.paymentMethod||'');
-      setNotes(invoice.notes||'');setLines(invoice.lines.length?invoice.lines.map((line,index)=>({...line,position:index+1})):[emptyLine()]);
+      setNotes(invoice.notes||'');setLines(invoice.lines.length?invoice.lines.map((line,index)=>({...line,position:index+1})):[emptyLine(1,settings.sales.defaultVatRate)]);
     }else{
       const firstClient=clients[0];
       const initialIssueDate=today();
-      setClientId(firstClient?.id||'');setSeriesId('');setInvoiceNumber('');setTaxRegistrationId('');setIssueDate(initialIssueDate);setOperationDate('');setPaymentMethod('Transferencia bancaria');setNotes('');setLines([emptyLine()]);
+      setClientId(firstClient?.id||'');setSeriesId(settings.sales.defaultSeriesId||'');setInvoiceNumber('');setTaxRegistrationId(settings.sales.defaultTaxRegistrationId||'');setIssueDate(initialIssueDate);setOperationDate('');setPaymentMethod(defaultPaymentMethod);setNotes(settings.sales.defaultNotes);setLines([emptyLine(1,settings.sales.defaultVatRate)]);
       setDueDate(defaultSalesDueDate(initialIssueDate,resolveSalesDueDays(firstClient?.paymentTermsDays,settings.sales.defaultDueDays)));
     }
     setError('');
-    loadTaxRegistrations().then(rows=>{const active=rows.filter(item=>item.active);setTaxRegistrations(active);setTaxRegistrationId(current=>active.some(item=>item.id===current)?current:(active.find(item=>item.isDefault)?.id||active[0]?.id||''));}).catch(e=>setError(errorMessage(e,'No se pudieron cargar los registros IVA.')));
-  },[open,invoice,clients,settings.sales.defaultDueDays]);
+    loadTaxRegistrations().then(rows=>{const active=rows.filter(item=>item.active);setTaxRegistrations(active);setTaxRegistrationId(current=>active.some(item=>item.id===current)?current:(active.find(item=>item.id===settings.sales.defaultTaxRegistrationId)?.id||active.find(item=>item.isDefault)?.id||active[0]?.id||''));}).catch(e=>setError(errorMessage(e,'No se pudieron cargar los registros IVA.')));
+  },[open,invoice,clients,settings.sales.defaultDueDays,settings.sales.defaultVatRate,settings.sales.defaultSeriesId,settings.sales.defaultTaxRegistrationId,settings.sales.defaultNotes,defaultPaymentMethod]);
 
   useEffect(()=>{
     if(!open||!issueDate)return;
@@ -93,10 +96,10 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
       if(cancelled)return;
       setSeries(rows);
       const kind=invoice?.invoiceType||'standard';
-      setSeriesId(current=>rows.some(item=>item.id===current)?current:(rows.find(item=>item.kind===kind)?.id||''));
+      setSeriesId(current=>rows.some(item=>item.id===current)?current:(rows.find(item=>item.id===settings.sales.defaultSeriesId&&item.kind===kind)?.id||rows.find(item=>item.kind===kind)?.id||''));
     }).catch(e=>!cancelled&&setError(errorMessage(e,'No se pudieron preparar las series.')));
     return()=>{cancelled=true};
-  },[open,issueDate,invoice?.invoiceType]);
+  },[open,issueDate,invoice?.invoiceType,settings.sales.defaultSeriesId]);
 
   useEffect(()=>{
     if(!open||!seriesId)return;
@@ -114,8 +117,8 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
   const seriesOptions=selectableSeries.map(s=>({value:s.id,label:`${s.name} · próximo ${s.prefix}${String(s.nextNumber).padStart(s.padding,'0')}`,searchText:`${s.name} ${s.code||''} ${s.prefix}`}));
   const taxRegistrationOptions=taxRegistrations.map(item=>({value:item.id,label:`${item.label} · ${item.vatNumber}${item.isDefault?' · predeterminado':''}`,searchText:`${item.label} ${item.vatNumber} ${item.countryCode}`}));
   const updateLine=(index:number,patch:Partial<SalesInvoiceLine>)=>setLines(current=>current.map((line,i)=>i===index?{...line,...patch}:line));
-  const removeLine=(index:number)=>setLines(current=>current.length===1?[emptyLine()]:current.filter((_,i)=>i!==index).map((line,i)=>({...line,position:i+1})));
-  const addFreeLine=()=>setLines(current=>[...current,emptyLine(current.length+1)]);
+  const removeLine=(index:number)=>setLines(current=>current.length===1?[emptyLine(1,settings.sales.defaultVatRate)]:current.filter((_,i)=>i!==index).map((line,i)=>({...line,position:i+1})));
+  const addFreeLine=()=>setLines(current=>[...current,emptyLine(current.length+1,settings.sales.defaultVatRate)]);
   const addProduct=(product:BillableProduct)=>setLines(current=>{
     const productLine:SalesInvoiceLine={position:current.length+1,productId:product.id,description:product.description,quantity:1,unit:product.unit,unitPrice:product.salePrice??0,discountPercent:0,taxRate:product.taxRate};
     if(current.length===1&&!current[0].description.trim()&&!current[0].productId)return [productLine];
@@ -165,7 +168,7 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
         <label>Registro IVA<SearchableSelect value={taxRegistrationId} options={taxRegistrationOptions} onChange={setTaxRegistrationId} allowEmpty emptyLabel={taxRegistrations.length?'Selecciona registro IVA':'Sin registros IVA'} searchPlaceholder="Buscar registro IVA…" ariaLabel="Registro IVA del emisor"/></label>
       </div>
     </section>
-    <section className="salesFormSection"><div className="salesSectionTitle"><CalendarDays size={18}/><div><strong>Fechas y cobro</strong><span>Operación, vencimiento y forma de pago</span></div></div><div className="salesInvoiceMeta salesInvoiceMetaDates"><label>Fecha factura<input type="date" value={issueDate} onChange={e=>changeIssueDate(e.target.value)}/></label><label>Fecha operación<input type="date" value={operationDate} onChange={e=>setOperationDate(e.target.value)}/></label><label>Vencimiento<input type="date" min={issueDate||undefined} value={dueDate} onChange={e=>setDueDate(e.target.value)}/><small>{clients.find(client=>client.id===clientId)?.paymentTermsDays?`Según condiciones del cliente: ${clients.find(client=>client.id===clientId)?.paymentTermsDays} días`:'30 días por defecto'}</small></label><label>Forma de pago<input value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)} placeholder="Transferencia, tarjeta…"/></label></div></section>
+    <section className="salesFormSection"><div className="salesSectionTitle"><CalendarDays size={18}/><div><strong>Fechas y cobro</strong><span>Operación, vencimiento y forma de pago</span></div></div><div className="salesInvoiceMeta salesInvoiceMetaDates"><label>Fecha factura<input type="date" value={issueDate} onChange={e=>changeIssueDate(e.target.value)}/></label><label>Fecha operación<input type="date" value={operationDate} onChange={e=>setOperationDate(e.target.value)}/></label><label>Vencimiento<input type="date" min={issueDate||undefined} value={dueDate} onChange={e=>setDueDate(e.target.value)}/><small>{clients.find(client=>client.id===clientId)?.paymentTermsDays?`Según condiciones del cliente: ${clients.find(client=>client.id===clientId)?.paymentTermsDays} días`:`${settings.sales.defaultDueDays} días por defecto`}</small></label><label>Forma de pago<SelectField value={paymentMethod} onChange={setPaymentMethod} ariaLabel="Forma de pago" options={paymentMethodOptions}/></label></div></section>
     <section className="salesFormSection salesProductsSection"><div className="salesSectionTitle"><PackageSearch size={18}/><div><strong>Productos y conceptos</strong><span>Busca en tu catálogo o añade una línea libre</span></div></div><ProductCatalogPicker products={products} onAdd={addProduct}/><div className="salesLinesEditor"><div className="salesLinesHead"><div><strong>Líneas de factura</strong><span>{lines.length} línea{lines.length===1?'':'s'}</span></div><button className="secondary" type="button" onClick={addFreeLine}><Plus size={15}/> Concepto libre</button></div>{lines.map((line,index)=>{const total=calcLine(line).total;const product=products.find(item=>item.id===line.productId);return <div className="salesLine salesLineCard" key={`${line.id||'new'}-${index}`}><div className="salesLineIdentity"><div className="salesLineIndex">{index+1}</div><div><strong>{product?.name||'Concepto libre'}</strong><small>{product?.sku?`SKU ${product.sku}`:product?'Producto vinculado':'Sin producto vinculado'}</small></div></div><label className="salesLineDescription">Descripción<input value={line.description} onChange={e=>updateLine(index,{description:e.target.value})} placeholder="Producto o servicio facturado"/></label><label>Cantidad<input type="number" min="0.001" step="0.001" value={line.quantity} onChange={e=>updateLine(index,{quantity:Number(e.target.value)})}/></label><label>Unidad<input value={line.unit} onChange={e=>updateLine(index,{unit:e.target.value})}/></label><label>Precio unit.<input type="number" step="0.01" value={line.unitPrice} onChange={e=>updateLine(index,{unitPrice:Number(e.target.value)})}/></label><label>Dto. %<input type="number" min="0" max="100" step="0.01" value={line.discountPercent} onChange={e=>updateLine(index,{discountPercent:Number(e.target.value)})}/></label><label>IVA %<SelectField value={String(line.taxRate)} onChange={value=>updateLine(index,{taxRate:Number(value)})} ariaLabel="IVA de la línea" options={[{value:'21',label:'21 %'},{value:'10',label:'10 %'},{value:'4',label:'4 %'},{value:'0',label:'0 %'}]}/></label><div className="salesLineTotal"><small>Total</small><strong>{money(total)}</strong></div><button className="iconAction danger" title="Eliminar línea" type="button" onClick={()=>removeLine(index)}><Trash2 size={16}/></button></div>})}</div></section>
     <section className="salesInvoiceBottom salesFormSection salesInvoiceSummary"><label>Notas<textarea rows={4} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observaciones visibles en la factura"/></label><div className="salesTotals"><span>Importe bruto <strong>{money(totals.gross)}</strong></span>{Math.abs(totals.gross-totals.net)>0.005&&<span>Descuento <strong>{money(totals.net-totals.gross)}</strong></span>}<span>Base imponible <strong>{money(totals.net)}</strong></span><span>IVA <strong>{money(totals.tax)}</strong></span><span className="salesGrandTotal">Total <strong>{money(totals.total)}</strong></span></div></section>
     {error&&<div className="errorBox">{error}</div>}<div className="modalActions salesStickyActions"><button className="secondary" onClick={onClose} disabled={busy}>Cancelar</button><button className="primary" onClick={save} disabled={busy}>{busy?'Guardando…':'Guardar borrador'}</button></div>
