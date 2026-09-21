@@ -32,6 +32,7 @@ import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
 import { StatCard } from '../components/StatCard';
 import { defaultDateFilter, periodLabel } from '../services/filters';
 import { useSettings } from '../context/SettingsContext';
+import { persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
 import type { SalesSettings } from '../services/settingsSchema';
 import '../sales.css';
 
@@ -267,9 +268,10 @@ export function SalesInvoices({
   onExportSelected?:(ids:string[])=>void;
   onFiltersChange?:(filters:{query:string;status:string;from:string;to:string;clientId:string;country:string;collection:string})=>void;
 }={}){
-  const {settings:appSettings,preferences}=useSettings();
+  const {settings:appSettings,preferences,updatePreferences}=useSettings();
   const [invoices,setInvoices]=useState<SalesInvoice[]>([]);const [clients,setClients]=useState<Client[]>([]);const [products,setProducts]=useState<BillableProduct[]>([]);const [settings,setSettings]=useState<BusinessSettings>({legalName:'ZENVIA COMMERCE SL',countryCode:'ES'});const [branding,setBranding]=useState<CompanyBranding>({ownerId:'',logoPath:null,logoDataUrl:null});
-  const [query,setQuery]=useState('');const [status,setStatus]=useState('all');const [clientId,setClientId]=useState('all');const [countryFilter,setCountryFilter]=useState('all');const [collectionFilter,setCollectionFilter]=useState<CollectionFilter>('all');const [dateFilter,setDateFilter]=useState(()=>defaultDateFilter(preferences.defaultPeriod));const [loading,setLoading]=useState(true);const [error,setError]=useState('');
+  const remembered=rememberedFilter<{query:string;status:string;clientId:string;countryFilter:string;collectionFilter:CollectionFilter;dateFilter:ReturnType<typeof defaultDateFilter>}>(preferences,'sales.filters',{query:'',status:'all',clientId:'all',countryFilter:'all',collectionFilter:'all',dateFilter:defaultDateFilter(preferences.defaultPeriod)});
+  const [query,setQuery]=useState(remembered.query);const [status,setStatus]=useState(remembered.status);const [clientId,setClientId]=useState(remembered.clientId);const [countryFilter,setCountryFilter]=useState(remembered.countryFilter);const [collectionFilter,setCollectionFilter]=useState<CollectionFilter>(remembered.collectionFilter);const [dateFilter,setDateFilter]=useState(remembered.dateFilter);const [loading,setLoading]=useState(true);const [error,setError]=useState('');
   const [modal,setModal]=useState(false);const [editing,setEditing]=useState<SalesInvoice|null>(null);const [detail,setDetail]=useState<SalesInvoice|null>(null);const [businessModal,setBusinessModal]=useState(false);const [seriesModal,setSeriesModal]=useState(false);const [paymentInvoice,setPaymentInvoice]=useState<SalesInvoice|null>(null);const [bulkPaymentInvoices,setBulkPaymentInvoices]=useState<SalesInvoice[]>([]);const [sendInvoice,setSendInvoice]=useState<SalesInvoice|null>(null);const [busyId,setBusyId]=useState<string|null>(null);const [bulkDeleting,setBulkDeleting]=useState(false);const [bulkIssuing,setBulkIssuing]=useState(false);
   const refresh=async()=>{setLoading(true);try{await ensureSalesSeries(new Date().getFullYear());const [nextInvoices,nextClients,nextSettings,nextProducts,nextBranding]=await Promise.all([loadSalesInvoices(),loadClients(),loadBusinessSettings(),loadBillableProducts(),loadCompanyBranding()]);setInvoices(nextInvoices);setClients(nextClients);setSettings(nextSettings);setProducts(nextProducts);setBranding(nextBranding);setDetail(current=>current?nextInvoices.find(item=>item.id===current.id)||null:null);setError('');}catch(e){setError(errorMessage(e,'No se pudo cargar la facturación.'));}finally{setLoading(false);}};
   useEffect(()=>{void refresh();},[]);
@@ -298,6 +300,7 @@ export function SalesInvoices({
     return true;
   });},[invoices,query,status,clientId,countryFilter,collectionFilter,dateFilter,clientById]);
   useEffect(()=>{onSelectedIdsChange?.([]);},[query,status,clientId,countryFilter,collectionFilter,dateFilter]);
+  useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'sales.filters',{query,status,clientId,countryFilter,collectionFilter,dateFilter})},350);return()=>window.clearTimeout(timer)},[query,status,clientId,countryFilter,collectionFilter,dateFilter,preferences.rememberFilters]);
   useEffect(()=>{onFiltersChange?.({query,status,clientId,country:countryFilter,collection:collectionFilter,from:dateFilter.from,to:dateFilter.to});},[query,status,clientId,countryFilter,collectionFilter,dateFilter,onFiltersChange]);
   const selectedSet=useMemo(()=>new Set(selectedIds),[selectedIds]);
   const selectedVisible=filtered.filter(invoice=>selectedSet.has(invoice.id));
