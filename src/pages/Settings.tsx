@@ -1747,7 +1747,7 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
       {repairPreview&&<div className="settingsResetPreview">
         <strong>Vista previa · {repairPreview.kind==='costs'?'Costes actuales':repairPreview.kind==='supplierLinks'?'Relaciones producto-proveedor':'Histórico de precios'}</strong>
         <div className="settingsPreviewCounts">{Object.entries(repairPreview.data).filter(([key])=>!['ok','preview','message'].includes(key)).map(([key,value])=><span key={key}><strong>{String(value)}</strong><small>{key}</small></span>)}</div>
-        {repairPreview.data.message&&<small>{String(repairPreview.data.message)}</small>}
+        {typeof repairPreview.data.message==='string'&&repairPreview.data.message&&<small>{repairPreview.data.message}</small>}
         <div className="settingsInlineActions"><button type="button" className="secondary" onClick={()=>setRepairPreview(null)}>Cerrar</button>{repairPreview.data.preview!==false&&<button type="button" className="primary" disabled={busy!==null} onClick={()=>void applyRepair()}>Aplicar reparación</button>}</div>
       </div>}
 
