@@ -68,6 +68,23 @@ async function workspaceConfig(admin:any,ownerId:string){
     integrations:(config as any).integrations||{},
   };
 }
+
+async function orderLabelAutomation(admin:any,ownerId:string){
+  const {data,error}=await admin.from('automation_rules')
+    .select('enabled,config')
+    .eq('owner_id',ownerId)
+    .eq('rule_key','order_label_created')
+    .maybeSingle();
+  if(error)throw error;
+  const enabled=data?.enabled!==false;
+  const raw=(data?.config&&typeof data.config==='object'&&!Array.isArray(data.config))?data.config:{};
+  const flag=(key:string,fallback=true)=>typeof (raw as any)[key]==='boolean'?(raw as any)[key]:fallback;
+  return {
+    enabled,
+    saveTracking:enabled&&flag('saveTracking',true),
+    markSent:enabled&&flag('markSent',true),
+  };
+}
 function enabledCarrier(option:any,enabled:unknown){
   const values=Array.isArray(enabled)?enabled.map(value=>clean(value).toLowerCase()).filter(Boolean):[];
   if(!values.length)return true;
@@ -178,12 +195,14 @@ Deno.serve(async(req:Request)=>{
       const {data}=await sendcloudJson('/orders/create-label-sync',{method:'POST',body:JSON.stringify(payload)}),created=Array.isArray(data?.data)?data.data[0]:null;if(!created?.parcel_id||!created?.label?.file)throw new Error('Sendcloud no devolvió la etiqueta creada.');
       const ship=created.ship_with?.properties||{},optionCode=ship.shipping_option_code||selected?.code||null,code=carrierCode(optionCode,created.tracking_url),now=new Date().toISOString();
       const selectedPrice=selected?.price==null?null:Number(selected.price),selectedCurrency=clean(selected?.currency).toUpperCase()||null;
+      const automation=await orderLabelAutomation(admin,caller.data_owner_id);
       const persistShippingCost=shippingConfig.persistShippingCost!==false;
       const markSentAfterLabel=ordersConfig.markSentAfterLabel!==false;
       const confirmShipmentAfterLabel=shippingConfig.confirmShipmentAfterLabel!==false;
-      const shouldMarkSent=markSentAfterLabel&&confirmShipmentAfterLabel;
+      const shouldMarkSent=automation.markSent&&markSentAfterLabel&&confirmShipmentAfterLabel;
       const costPatch=persistShippingCost&&Number.isFinite(selectedPrice)?{shipping_cost_amount:selectedPrice,shipping_cost_currency:selectedCurrency||'EUR',shipping_cost_source:'sendcloud_quote',shipping_cost_net_amount:selectedPrice,shipping_cost_tax_amount:0,shipping_cost_recorded_at:now}:{};
-      const shipmentPatch:any={sendcloud_parcel_id:Number(created.parcel_id),sendcloud_shipment_id:created.shipment_id==null?null:String(created.shipment_id),tracking_number:created.tracking_number||null,tracking_url:created.tracking_url||null,shipping_option_code:optionCode,contract_id:ship.contract_id??selected?.contractId??null,carrier_code:code,carrier_name:selected?.carrierName||friendlyCarrier(code),shipping_service_name:selected?.name||optionCode,label_created_at:now,tracking_status_code:'READY_TO_SEND',tracking_status_message:'Ready to send',tracking_updated_at:now,...costPatch};
+      const trackingPatch=automation.saveTracking?{tracking_number:created.tracking_number||null,tracking_url:created.tracking_url||null,tracking_status_code:'READY_TO_SEND',tracking_status_message:'Ready to send',tracking_updated_at:now}:{};
+      const shipmentPatch:any={sendcloud_parcel_id:Number(created.parcel_id),sendcloud_shipment_id:created.shipment_id==null?null:String(created.shipment_id),shipping_option_code:optionCode,contract_id:ship.contract_id??selected?.contractId??null,carrier_code:code,carrier_name:selected?.carrierName||friendlyCarrier(code),shipping_service_name:selected?.name||optionCode,label_created_at:now,...trackingPatch,...costPatch};
       if(shouldMarkSent){shipmentPatch.fulfilled_at=now;shipmentPatch.source_status='shipped';}
       const {error:updateError}=await admin.from('fulfillment_orders').update(shipmentPatch).eq('id',order.id).eq('owner_id',caller.data_owner_id);if(updateError)throw updateError;
       return response({parcelId:Number(created.parcel_id),shipmentId:created.shipment_id==null?null:String(created.shipment_id),trackingNumber:created.tracking_number||null,trackingUrl:created.tracking_url||null,shippingOptionCode:optionCode,contractId:ship.contract_id??selected?.contractId??null,carrierCode:code,carrierName:selected?.carrierName||friendlyCarrier(code),shippingServiceName:selected?.name||optionCode,mimeType:created.label.mime_type||'application/pdf',base64:String(created.label.file)});
