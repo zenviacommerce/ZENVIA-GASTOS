@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import type { BusinessSettings, SalesInvoice } from './sales';
+import type { SalesSettings } from './settingsSchema';
 
 export type InvoicePdfBranding = {
   logoDataUrl?: string | null;
@@ -25,7 +26,7 @@ function addLogo(doc:jsPDF,logoDataUrl?:string|null){
   }catch{return 0;}
 }
 
-export function createSalesInvoicePdfBlob(invoice:SalesInvoice,settings?:BusinessSettings|null,branding?:InvoicePdfBranding|null){
+export function createSalesInvoicePdfBlob(invoice:SalesInvoice,settings?:BusinessSettings|null,branding?:InvoicePdfBranding|null,salesSettings?:SalesSettings|null){
   const doc=new jsPDF({unit:'mm',format:'a4'});
   const issuerName=invoice.issuerName||settings?.legalName||'ZENVIA COMMERCE SL';
   const issuerTaxId=invoice.issuerTaxId||settings?.taxId||'';
@@ -41,7 +42,7 @@ export function createSalesInvoicePdfBlob(invoice:SalesInvoice,settings?:Busines
   let issuerY=logoHeight?14+logoHeight+4:16;
   doc.setFont('helvetica','bold');doc.setFontSize(10.5);doc.text(issuerName,14,issuerY);
   issuerY+=5;doc.setFont('helvetica','normal');doc.setFontSize(8.5);
-  if(issuerTaxId){doc.text(`${taxCountry&&taxCountry!=='ES'?'VAT':'NIF/CIF'}${taxLabel?` · ${taxLabel}`:''}: ${issuerTaxId}`,14,issuerY);issuerY+=4.5;}
+  if(issuerTaxId&&(salesSettings?.showFiscalDataOnPdf??true)){doc.text(`${taxCountry&&taxCountry!=='ES'?'VAT':'NIF/CIF'}${taxLabel?` · ${taxLabel}`:''}: ${issuerTaxId}`,14,issuerY);issuerY+=4.5;}
   const issuerLines=doc.splitTextToSize(issuerAddress||'',78);if(issuerLines.length){doc.text(issuerLines,14,issuerY);issuerY+=issuerLines.length*4;}
   if(issuerEmail){doc.text(issuerEmail,14,issuerY);issuerY+=4;}
   if(issuerPhone){doc.text(issuerPhone,14,issuerY);issuerY+=4;}
@@ -49,13 +50,13 @@ export function createSalesInvoicePdfBlob(invoice:SalesInvoice,settings?:Busines
   doc.setFont('helvetica','bold');doc.setFontSize(18);doc.text(title,196,16,{align:'right'});
   doc.setFontSize(11);doc.text(number,196,24,{align:'right'});doc.setFont('helvetica','normal');doc.setFontSize(9);
   doc.text(`Fecha: ${dateLabel(invoice.issueDate)}`,196,31,{align:'right'});
-  if(invoice.dueDate)doc.text(`Vencimiento: ${dateLabel(invoice.dueDate)}`,196,37,{align:'right'});
+  if(invoice.dueDate&&(salesSettings?.showDueDateOnPdf??true))doc.text(`Vencimiento: ${dateLabel(invoice.dueDate)}`,196,37,{align:'right'});
   if(invoice.operationDate)doc.text(`Operación: ${dateLabel(invoice.operationDate)}`,196,43,{align:'right'});
 
   const blockY=Math.max(60,issuerY+7);
   doc.setDrawColor(210);doc.line(14,blockY-5,196,blockY-5);doc.setFont('helvetica','bold');doc.setFontSize(9);doc.text('FACTURAR A',14,blockY);doc.setFont('helvetica','normal');
   let clientY=blockY+7;doc.setFontSize(10);doc.text(invoice.clientName,14,clientY);clientY+=6;doc.setFontSize(8.8);
-  if(invoice.clientTaxId){doc.text(`NIF/CIF: ${invoice.clientTaxId}`,14,clientY);clientY+=4.5;}
+  if(invoice.clientTaxId&&(salesSettings?.showFiscalDataOnPdf??true)){doc.text(`NIF/CIF: ${invoice.clientTaxId}`,14,clientY);clientY+=4.5;}
   const clientAddress=doc.splitTextToSize(invoice.clientAddress||'',90);if(clientAddress.length){doc.text(clientAddress,14,clientY);clientY+=clientAddress.length*4;}
   if(invoice.clientEmail){doc.text(invoice.clientEmail,14,clientY);clientY+=4;}
   if(invoice.clientPhone){doc.text(invoice.clientPhone,14,clientY);clientY+=4;}
@@ -76,12 +77,12 @@ export function createSalesInvoicePdfBlob(invoice:SalesInvoice,settings?:Busines
 
   doc.setFont('helvetica','normal');doc.setFontSize(8.5);let footerY=Math.max(y+16,265);
   if(footerY>278){doc.addPage();footerY=24;}
-  if(invoice.paymentMethod){doc.text(`Forma de pago: ${invoice.paymentMethod}`,14,footerY);footerY+=5;}
-  if(settings?.iban){doc.text(`IBAN: ${settings.iban}`,14,footerY);footerY+=5;}
+  if(invoice.paymentMethod&&(salesSettings?.showPaymentMethodOnPdf??true)){doc.text(`Forma de pago: ${invoice.paymentMethod}`,14,footerY);footerY+=5;}
+  if(settings?.iban&&(salesSettings?.showIbanOnPdf??true)){doc.text(`IBAN: ${settings.iban}`,14,footerY);footerY+=5;}
   if(invoice.notes){doc.text(doc.splitTextToSize(`Notas: ${invoice.notes}`,180),14,footerY);footerY+=8;}
   if(settings?.invoiceFooter)doc.text(doc.splitTextToSize(settings.invoiceFooter,180),14,footerY);
   return doc.output('blob');
 }
 
-export function downloadSalesInvoicePdf(invoice:SalesInvoice,settings?:BusinessSettings|null,branding?:InvoicePdfBranding|null){const blob=createSalesInvoicePdfBlob(invoice,settings,branding);const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=salesInvoicePdfFilename(invoice);document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1000);}
-export function printSalesInvoicePdf(invoice:SalesInvoice,settings?:BusinessSettings|null,branding?:InvoicePdfBranding|null){const blob=createSalesInvoicePdfBlob(invoice,settings,branding);const url=URL.createObjectURL(blob);const printWindow=window.open(url,'_blank','noopener,noreferrer');if(!printWindow){URL.revokeObjectURL(url);throw new Error('El navegador ha bloqueado la ventana de impresión. Permite las ventanas emergentes para ZENVIA Gestión e inténtalo de nuevo.');}const cleanup=()=>window.setTimeout(()=>URL.revokeObjectURL(url),60000);printWindow.addEventListener('load',()=>{window.setTimeout(()=>{try{printWindow.focus();printWindow.print();}catch{}cleanup();},700);},{once:true});window.setTimeout(cleanup,65000);}
+export function downloadSalesInvoicePdf(invoice:SalesInvoice,settings?:BusinessSettings|null,branding?:InvoicePdfBranding|null,salesSettings?:SalesSettings|null){const blob=createSalesInvoicePdfBlob(invoice,settings,branding,salesSettings);const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=salesInvoicePdfFilename(invoice);document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1000);}
+export function printSalesInvoicePdf(invoice:SalesInvoice,settings?:BusinessSettings|null,branding?:InvoicePdfBranding|null,salesSettings?:SalesSettings|null){const blob=createSalesInvoicePdfBlob(invoice,settings,branding,salesSettings);const url=URL.createObjectURL(blob);const printWindow=window.open(url,'_blank','noopener,noreferrer');if(!printWindow){URL.revokeObjectURL(url);throw new Error('El navegador ha bloqueado la ventana de impresión. Permite las ventanas emergentes para ZENVIA Gestión e inténtalo de nuevo.');}const cleanup=()=>window.setTimeout(()=>URL.revokeObjectURL(url),60000);printWindow.addEventListener('load',()=>{window.setTimeout(()=>{try{printWindow.focus();printWindow.print();}catch{}cleanup();},700);},{once:true});window.setTimeout(cleanup,65000);}
