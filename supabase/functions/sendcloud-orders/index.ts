@@ -65,6 +65,7 @@ async function workspaceConfig(admin:any,ownerId:string){
   return {
     orders:(config as any).orders||{},
     shipping:(config as any).shipping||{},
+    integrations:(config as any).integrations||{},
   };
 }
 function enabledCarrier(option:any,enabled:unknown){
@@ -118,7 +119,7 @@ Deno.serve(async(req:Request)=>{
   const url=Deno.env.get('SUPABASE_URL')||'',adminKey=getAdminKey();if(!url||!adminKey)return fail('Configuración del backend no disponible.',500);
   const admin=createClient(url,adminKey,{auth:{persistSession:false,autoRefreshToken:false}});
   try{
-    const caller=await authenticate(req,admin),body=await req.json().catch(()=>({})),action=String(body?.action||'status'),credentials=sendcloudCredentials(),config=await workspaceConfig(admin,caller.data_owner_id),ordersConfig=config.orders,shippingConfig=config.shipping;
+    const caller=await authenticate(req,admin),body=await req.json().catch(()=>({})),action=String(body?.action||'status'),credentials=sendcloudCredentials(),config=await workspaceConfig(admin,caller.data_owner_id),ordersConfig=config.orders,shippingConfig=config.shipping,integrationConfig=config.integrations;
     if(action==='status'){
       if(!credentials.configured)return response({configured:false,integrations:[],message:'Faltan SENDCLOUD_PUBLIC_KEY y SENDCLOUD_SECRET_KEY.'});
       try{return response({configured:true,integrations:await integrations()})}catch(error){return response({configured:true,integrations:[],message:error instanceof Error?error.message:String(error)})}
@@ -126,10 +127,15 @@ Deno.serve(async(req:Request)=>{
     if(!credentials.configured)return fail('Sendcloud todavía no está conectado. Configura las claves Public y Secret de la integración Sendcloud API.',503);
 
     if(action==='sync'){
-      const history=Boolean(body?.history),linked=await integrations(),integrationMap=new Map(linked.map(i=>[i.id,i])),orders=await fetchOrders(history),now=new Date().toISOString();
+      const history=Boolean(body?.history),automatic=Boolean(body?.automatic),linked=await integrations();
+      if(automatic&&integrationConfig.sendcloudEnabled===false)return response({ok:true,synced:0,enriched:0,history,integrations:linked,disabled:true});
+      const allowedChannels=new Set<string>(['other']);
+      if(!automatic||integrationConfig.amazonEnabled!==false)allowedChannels.add('amazon');
+      if(!automatic||integrationConfig.shopifyEnabled!==false)allowedChannels.add('shopify');
+      const integrationMap=new Map(linked.map(i=>[i.id,i])),orders=await fetchOrders(history),now=new Date().toISOString();
       let shipments:any[]=[];try{shipments=await fetchShipments(history)}catch{/* sincronización base continúa */}
       const shipmentMap=new Map<string,any>();for(const s of shipments){const key=clean(s?.order_number);if(key&&!shipmentMap.has(key))shipmentMap.set(key,s)}
-      const rows=orders.map((order:any)=>{const integrationId=Number(order?.order_details?.integration?.id||0),integration=integrationMap.get(integrationId),total=order?.payment_details?.total_price;return {owner_id:caller.data_owner_id,sendcloud_id:String(order.id),order_id:order.order_id==null?null:String(order.order_id),order_number:order.order_number==null?null:String(order.order_number),integration_id:integrationId,integration_name:integration?.shopName||null,integration_type:integration?.type||null,source_channel:integration?.channel||'other',source_status:order?.order_details?.status?.code||null,order_created_at:order?.order_details?.order_created_at||order?.created_at||null,order_updated_at:order?.order_details?.order_updated_at||order?.modified_at||null,customer_name:orderName(order),customer_email:orderEmail(order),customer_phone:orderPhone(order),shipping_address:order?.shipping_address||{},billing_address:order?.billing_address||{},items:Array.isArray(order?.order_details?.order_items)?order.order_details.order_items:[],total_amount:total?.value==null?null:Number(total.value),currency:total?.currency||null,raw_payload:order,last_synced_at:now};}).filter((r:any)=>r.integration_id&&r.sendcloud_id);
+      const rows=orders.map((order:any)=>{const integrationId=Number(order?.order_details?.integration?.id||0),integration=integrationMap.get(integrationId),total=order?.payment_details?.total_price;return {owner_id:caller.data_owner_id,sendcloud_id:String(order.id),order_id:order.order_id==null?null:String(order.order_id),order_number:order.order_number==null?null:String(order.order_number),integration_id:integrationId,integration_name:integration?.shopName||null,integration_type:integration?.type||null,source_channel:integration?.channel||'other',source_status:order?.order_details?.status?.code||null,order_created_at:order?.order_details?.order_created_at||order?.created_at||null,order_updated_at:order?.order_details?.order_updated_at||order?.modified_at||null,customer_name:orderName(order),customer_email:orderEmail(order),customer_phone:orderPhone(order),shipping_address:order?.shipping_address||{},billing_address:order?.billing_address||{},items:Array.isArray(order?.order_details?.order_items)?order.order_details.order_items:[],total_amount:total?.value==null?null:Number(total.value),currency:total?.currency||null,raw_payload:order,last_synced_at:now};}).filter((r:any)=>r.integration_id&&r.sendcloud_id&&(!automatic||allowedChannels.has(r.source_channel)));
       if(rows.length){const {error}=await admin.from('fulfillment_orders').upsert(rows,{onConflict:'owner_id,sendcloud_id'});if(error)throw error;}
       const enriched=rows.map((r:any)=>{const s=shipmentMap.get(clean(r.order_number));return s?{...r,...shipmentMeta(s)}:null}).filter(Boolean);
       if(enriched.length){const {error}=await admin.from('fulfillment_orders').upsert(enriched,{onConflict:'owner_id,sendcloud_id'});if(error)throw error;}
