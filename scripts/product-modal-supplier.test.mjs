@@ -21,10 +21,11 @@ test('ProductModal exposes searchable supplier correction and emits supplierId',
   assert.match(source,/no crea una compra/i);
 });
 
-test('ProductModal keeps default cost plus 25 percent and shows markup over cost',async()=>{
+test('ProductModal derives the automatic sale price from configurable target margin',async()=>{
   const source=await read('../src/components/ProductModal.tsx');
-  assert.match(source,/cost\*1\.25/);
-  assert.match(source,/25 %/);
+  assert.match(source,/settings\.products\.targetMarginPct/);
+  assert.match(source,/settings\.products\.priceRounding/);
+  assert.match(source,/1\+targetMarginPct\/100/);
   assert.match(source,/sobre coste/i);
 });
 
