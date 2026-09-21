@@ -1,4 +1,4 @@
-.settingsPage{max-width:1500px}
+.settingsPage{width:100%;max-width:none;min-width:0}
 .settingsPageHead{align-items:center}
 .settingsLoading{display:flex;align-items:center;gap:7px;padding:8px 11px;border:1px solid var(--border,#dbe2ea);border-radius:999px;background:var(--surface,#fff);color:var(--muted,#64748b);font-size:12px;font-weight:700}
 .settingsWarning{display:flex;align-items:flex-start;gap:11px;margin:0 0 18px;padding:13px 15px;border:1px solid #facc15;background:#fefce8;color:#854d0e;border-radius:12px}
