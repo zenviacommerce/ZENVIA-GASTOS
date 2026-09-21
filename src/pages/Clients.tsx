@@ -13,6 +13,7 @@ import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
 import { StatCard } from '../components/StatCard';
 import { defaultDateFilter, periodLabel } from '../services/filters';
 import { useSettings } from '../context/SettingsContext';
+import { persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
 import '../sales.css';
 
 const emptyClient = (settings:{defaultCountryCode:string;defaultPaymentTermsDays:number;defaultVatRate:number;defaultPaymentMethod:string}): ClientInput => ({
@@ -128,15 +129,16 @@ function ClientDrawer({client,metric,period,onClose,onEdit,onDelete,busy}:{clien
 }
 
 export function Clients(){
-  const {preferences}=useSettings();
+  const {preferences,updatePreferences}=useSettings();
   const pageSize=preferences.pageSize;
+  const remembered=rememberedFilter<{query:string;dateFilter:ReturnType<typeof defaultDateFilter>;balanceFilter:ClientBalanceFilter;countryFilter:string}>(preferences,'clients.filters',{query:'',dateFilter:defaultDateFilter(preferences.defaultPeriod),balanceFilter:'all',countryFilter:'all'});
   const [clients,setClients]=useState<Client[]>([]);
   const [invoices,setInvoices]=useState<SalesInvoice[]>([]);
   const [loading,setLoading]=useState(true);
-  const [query,setQuery]=useState('');
-  const [dateFilter,setDateFilter]=useState(()=>defaultDateFilter(preferences.defaultPeriod));
-  const [balanceFilter,setBalanceFilter]=useState<ClientBalanceFilter>('all');
-  const [countryFilter,setCountryFilter]=useState('all');
+  const [query,setQuery]=useState(remembered.query);
+  const [dateFilter,setDateFilter]=useState(remembered.dateFilter);
+  const [balanceFilter,setBalanceFilter]=useState<ClientBalanceFilter>(remembered.balanceFilter);
+  const [countryFilter,setCountryFilter]=useState(remembered.countryFilter);
   const [editing,setEditing]=useState<Client|null>(null);
   const [selected,setSelected]=useState<Client|null>(null);
   const [modal,setModal]=useState(false);
@@ -186,6 +188,7 @@ export function Clients(){
   const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
   const paged=useMemo(()=>filtered.slice((page-1)*pageSize,page*pageSize),[filtered,page]);
   useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,balanceFilter,countryFilter,dateFilter]);
+  useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'clients.filters',{query,dateFilter,balanceFilter,countryFilter})},350);return()=>window.clearTimeout(timer)},[query,dateFilter,balanceFilter,countryFilter,preferences.rememberFilters]);
   useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
 
   const totals=useMemo(()=>{
