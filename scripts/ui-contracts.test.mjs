@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-test('Orders exposes bulk pending-label generation and downloads newly created labels', async () => {
+test('Orders exposes bulk label generation and configurable post-create downloads', async () => {
   const source = await readFile(new URL('../src/pages/Orders.tsx', import.meta.url), 'utf8');
   assert.match(source, /Generar etiquetas pendientes/);
   assert.match(source, /generatePendingLabels/);
-  assert.match(source, /downloadLabel\(blob,/);
-  assert.doesNotMatch(source, /handleBlob\(blob,fresh,'print'\)/);
+  assert.match(source, /settings\.orders\.downloadLabelAfterCreation/);
+  assert.match(source, /settings\.shipping\.autoDownload/);
+  assert.match(source, /prepareLabelPdf/);
+  assert.match(source, /bulkLabelZipFilename/);
 });
 
 test('the shared invoice period filters expose Hoy', async () => {
