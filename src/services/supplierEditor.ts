@@ -10,6 +10,7 @@ export type SupplierInput = {
   address?: string;
   website?: string;
   supplierType: SupplierType;
+  defaultCategoryId?: string|null;
 };
 
 function supplierRow(input: SupplierInput) {
@@ -21,6 +22,7 @@ function supplierRow(input: SupplierInput) {
     address: input.address?.trim() || null,
     website: input.website?.trim() || null,
     supplier_type: input.supplierType,
+    default_category_id: input.defaultCategoryId || null,
   };
 }
 
