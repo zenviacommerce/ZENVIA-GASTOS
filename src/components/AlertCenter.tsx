@@ -7,6 +7,7 @@ import { listFulfillmentOrders } from '../services/orders';
 import { loadIntegrationHealth } from '../services/integrations';
 import { evaluateAlerts, type AlertPage, type AppAlert } from '../services/alerts';
 import { useSettings } from '../context/SettingsContext';
+import { formatAppDateTime } from '../services/formatting';
 
 export function AlertCenter({
   notifications,
@@ -122,7 +123,7 @@ export function AlertCenter({
         })}
       </div>
       <div className="alertCenterFooter">
-        <small>{lastRefresh?'Actualizado '+new Date(lastRefresh).toLocaleString('es-ES'):'Sin actualizar'}</small>
+        <small>{lastRefresh?'Actualizado '+formatAppDateTime(lastRefresh,settings.general):'Sin actualizar'}</small>
         <button type="button" onClick={()=>{onNavigate('settings');setOpen(false)}}>Configurar alertas</button>
       </div>
     </div>}
