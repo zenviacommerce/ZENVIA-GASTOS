@@ -1,10 +1,24 @@
-import { createAdminClient, requireInternalSecret } from '../_shared/amazon/supabase.ts';
+import { createAdminClient, getAdminKey, requireInternalSecret } from '../_shared/amazon/supabase.ts';
 import { ensureAmazonAccountAndMarketplaces } from '../_shared/amazon/marketplaces.ts';
 import { enqueueHourlySync, enqueueInitialBackfill } from '../_shared/amazon/sync.ts';
 import { filterAutomaticMarketplaces, loadAmazonAutomaticSyncSettings } from '../_shared/amazon/settings.ts';
 
 const jsonHeaders={'Content-Type':'application/json'};
 function response(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:jsonHeaders});}
+
+async function requestAutomaticImageSync(ownerId:string){
+  const url=(Deno.env.get('SUPABASE_URL')||'').trim();
+  const key=getAdminKey();
+  if(!url||!key)throw new Error('Configuración interna de Supabase no disponible para imágenes Amazon.');
+  const result=await fetch(`${url.replace(/\/$/,'')}/functions/v1/amazon-sync-product-images`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':key},
+    body:JSON.stringify({ownerId,limit:10}),
+  });
+  const payload=await result.json().catch(()=>({}));
+  if(!result.ok||payload?.error)throw new Error(String(payload?.error||`Error HTTP ${result.status} sincronizando imágenes Amazon.`));
+  return payload;
+}
 
 Deno.serve(async(req:Request)=>{
   if(req.method!=='POST')return response({error:'Método no permitido.'},405);
@@ -50,7 +64,19 @@ Deno.serve(async(req:Request)=>{
           created=await enqueueHourlySync(admin,account,marketplaces,'reconcile',new Date(),enabledSources);
         }
         jobs+=created.length;
-        await admin.from('amazon_sync_runs').update({status:'success',finished_at:new Date().toISOString(),rows_processed:created.length,checkpoint:{queued_jobs:created.length},updated_at:new Date().toISOString()}).eq('id',run.id);
+        let imageSync:Record<string,unknown>|null=null;
+        let imageSyncError:string|null=null;
+        if(automaticSettings.autoSyncImages){
+          try{imageSync=await requestAutomaticImageSync(ownerId);}
+          catch(error){imageSyncError=error instanceof Error?error.message:'No se pudieron actualizar las imágenes Amazon.';}
+        }
+        await admin.from('amazon_sync_runs').update({
+          status:'success',
+          finished_at:new Date().toISOString(),
+          rows_processed:created.length,
+          checkpoint:{queued_jobs:created.length,image_sync:imageSync,image_sync_error:imageSyncError},
+          updated_at:new Date().toISOString()
+        }).eq('id',run.id);
       }catch(error){
         await admin.from('amazon_sync_runs').update({status:'failed',finished_at:new Date().toISOString(),error_message:error instanceof Error?error.message.slice(0,700):'Error de orquestación',updated_at:new Date().toISOString()}).eq('id',run.id);
         throw error;
