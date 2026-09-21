@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import type { Supplier } from '../types';
+import type { ExpenseCategory, Supplier } from '../types';
 import type { SupplierInput, SupplierType } from '../services/supplierEditor';
 import { emailError, nameError, normalizeEmail, normalizePhone, normalizeTaxId, phoneError, taxIdError } from '../services/validation';
 import { SelectField } from './forms/SelectField';
 import { showSuccess } from '../services/toast';
+import { useSettings } from '../context/SettingsContext';
 
 type FieldErrors = {name?:string;taxId?:string;email?:string;phone?:string};
 const SUPPLIER_TYPE_OPTIONS=[
@@ -14,7 +15,8 @@ const SUPPLIER_TYPE_OPTIONS=[
  {value:'both',label:'Ambos'},
 ];
 
-export function SupplierModal({open,onClose,onSave,supplier}:{open:boolean;onClose:()=>void;onSave:(v:SupplierInput)=>Promise<void>;supplier?:Supplier|null}){
+export function SupplierModal({open,onClose,onSave,supplier,categories}:{open:boolean;onClose:()=>void;onSave:(v:SupplierInput)=>Promise<void>;supplier?:Supplier|null;categories:ExpenseCategory[]}){
+ const {settings}=useSettings();
  const [name,setName]=useState('');
  const [taxId,setTaxId]=useState('');
  const [email,setEmail]=useState('');
@@ -22,6 +24,7 @@ export function SupplierModal({open,onClose,onSave,supplier}:{open:boolean;onClo
  const [address,setAddress]=useState('');
  const [website,setWebsite]=useState('');
  const [supplierType,setSupplierType]=useState<SupplierType>('unclassified');
+ const [defaultCategoryId,setDefaultCategoryId]=useState('');
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
  const [fieldErrors,setFieldErrors]=useState<FieldErrors>({});
@@ -34,10 +37,11 @@ export function SupplierModal({open,onClose,onSave,supplier}:{open:boolean;onClo
    setPhone(supplier?.phone ?? '');
    setAddress(supplier?.address ?? '');
    setWebsite(supplier?.website ?? '');
-   setSupplierType((supplier?.supplierType as SupplierType) ?? 'unclassified');
+   setSupplierType((supplier?.supplierType as SupplierType) ?? (settings.suppliers.defaultType as SupplierType|null) ?? 'unclassified');
+   setDefaultCategoryId(supplier?.defaultCategoryId ?? settings.suppliers.defaultCategoryId ?? '');
    setError('');
    setFieldErrors({});
- },[open,supplier]);
+ },[open,supplier,settings.suppliers.defaultType,settings.suppliers.defaultCategoryId]);
 
  if(!open)return null;
  const editing=Boolean(supplier);
@@ -66,6 +70,7 @@ export function SupplierModal({open,onClose,onSave,supplier}:{open:boolean;onClo
        address:address.trim()||undefined,
        website:website.trim()||undefined,
        supplierType,
+       defaultCategoryId:defaultCategoryId||null,
      });
      showSuccess(editing?'Proveedor modificado correctamente.':'Proveedor creado correctamente.');
      onClose();
@@ -83,6 +88,7 @@ export function SupplierModal({open,onClose,onSave,supplier}:{open:boolean;onClo
      <label>Dirección<input value={address} onChange={e=>setAddress(e.target.value)} placeholder="Calle, número, código postal y localidad"/></label>
      <label>Web<input type="url" inputMode="url" value={website} onChange={e=>setWebsite(e.target.value)} placeholder="https://empresa.com"/></label>
      <label>Tipo de proveedor<SelectField value={supplierType} options={SUPPLIER_TYPE_OPTIONS} onChange={value=>setSupplierType(value as SupplierType)} ariaLabel="Tipo de proveedor"/></label>
+     <label>Categoría habitual<SelectField value={defaultCategoryId} allowEmpty emptyLabel="Sin categoría habitual" options={categories.map(category=>({value:category.id,label:category.name}))} onChange={setDefaultCategoryId} ariaLabel="Categoría habitual del proveedor"/></label>
    </div>
    {error&&<div className="errorBox">{error}</div>}
    <div className="modalActions"><button className="secondary" onClick={onClose} disabled={busy}>Cancelar</button><button className="primary" onClick={save} disabled={busy||!name.trim()}>{busy?'Guardando…':editing?'Guardar cambios':'Crear proveedor'}</button></div>
