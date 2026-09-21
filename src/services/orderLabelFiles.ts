@@ -1,19 +1,9 @@
-import type { FulfillmentOrder, ShippingOption } from './orders';
+import type { FulfillmentOrder } from './orders';
 
-type LabelOrder = Pick<FulfillmentOrder, 'orderNumber' | 'shippingAddress' | 'items'> & { customerName?: string | null };
-type LabelOption = Pick<ShippingOption, 'code' | 'name' | 'carrierCode' | 'carrierName' | 'contractId'>;
+type LabelOrder = Pick<FulfillmentOrder, 'orderNumber' | 'items'> & { customerName?: string | null };
 
 function text(value: unknown) {
   return typeof value === 'string' ? value : '';
-}
-
-function normalized(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 export type LabelFilenameOptions={
@@ -82,25 +72,3 @@ export function bulkLabelZipFilename(template:string,scope:string,date:string){
   return base.toLowerCase().endsWith('.zip')?base:`${base}.zip`;
 }
 
-export function isBalearicOrder(order: LabelOrder) {
-  const country = text(order.shippingAddress?.country_code).trim().toUpperCase();
-  const postal = text(order.shippingAddress?.postal_code).replace(/\s+/g, '').trim();
-  return country === 'ES' && /^07\d{3}$/.test(postal);
-}
-
-function isCorreos(option: LabelOption) {
-  return normalized(`${option.carrierCode || ''} ${option.carrierName || ''} ${option.name || ''} ${option.code || ''}`).includes('correos');
-}
-
-function isMrwUrgent1900(option: LabelOption) {
-  const raw = `${option.carrierCode || ''} ${option.carrierName || ''} ${option.name || ''} ${option.code || ''}`.toLowerCase();
-  const friendly = normalized(raw);
-  const friendlyMatch = friendly.includes('mrw') && friendly.includes('urgent') && (friendly.includes('19:00') || friendly.includes('19 00')) && friendly.includes('expedition');
-  const technicalMatch = raw.includes('mrw:') && (raw.includes('timeslot=19') || raw.includes('timeslot=19:00')) && raw.includes('expedition');
-  return friendlyMatch || technicalMatch;
-}
-
-export function selectAutomaticShippingOption<T extends LabelOption>(order: LabelOrder, options: T[]): T | null {
-  if (isBalearicOrder(order)) return options.find(isCorreos) || null;
-  return options.find(isMrwUrgent1900) || null;
-}
