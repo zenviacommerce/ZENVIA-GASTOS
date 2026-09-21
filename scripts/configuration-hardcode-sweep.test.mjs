@@ -89,3 +89,10 @@ test('final theme consistency stylesheet is loaded after settings and alerts',as
   const themePos=main.indexOf("import './theme-consistency.css';");
   assert.ok(settingsPos>=0&&alertsPos>=0&&themePos>settingsPos&&themePos>alertsPos);
 });
+
+
+test('Configuration page uses the same full available width as the other sections',async()=>{
+  const css=await read('src/settings.css');
+  assert.match(css,/\.settingsPage\{[^}]*width:100%[^}]*max-width:none[^}]*min-width:0/);
+  assert.doesNotMatch(css,/\.settingsPage\{[^}]*max-width:\s*\d+px/);
+});
