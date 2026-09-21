@@ -45,6 +45,13 @@ const regionNames=typeof Intl!=='undefined'&&'DisplayNames' in Intl?new Intl.Dis
 const countryName=(code:string)=>regionNames?.of(code)||code;
 type CollectionFilter='all'|'open'|'overdue'|'paid';
 const emptyLine=(position=1,taxRate=21):SalesInvoiceLine=>({position,description:'',quantity:1,unit:'ud',unitPrice:0,discountPercent:0,taxRate,productId:null});
+const clientDefaultVatRate=(client:Client|undefined|null,globalVatRate:number)=>client?.defaultVatRate==null?globalVatRate:client.defaultVatRate;
+const clientDefaultPaymentMethod=(client:Client|undefined|null,sales:SalesSettings)=>{
+  const preferredId=client?.defaultPaymentMethod||sales.defaultPaymentMethod;
+  return sales.paymentMethods.find(item=>item.id===preferredId&&item.active)?.label
+    ||sales.paymentMethods.find(item=>item.active)?.label
+    ||'';
+};
 const calcLine=(line:SalesInvoiceLine)=>{const gross=line.quantity*line.unitPrice;const net=gross*(1-(line.discountPercent||0)/100);const tax=net*(line.taxRate||0)/100;return {gross,net,tax,total:net+tax};};
 
 function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:boolean;invoice:SalesInvoice|null;clients:Client[];products:BillableProduct[];onClose:()=>void;onSaved:()=>Promise<void>}){
@@ -70,7 +77,7 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
     searchText:[client.name,client.taxId,client.email,client.phone,client.city].filter(Boolean).join(' '),
   })),[clients]);
   const paymentMethodOptions=useMemo(()=>settings.sales.paymentMethods.filter(item=>item.active).map(item=>({value:item.label,label:item.label})),[settings.sales.paymentMethods]);
-  const defaultPaymentMethod=useMemo(()=>settings.sales.paymentMethods.find(item=>item.id===settings.sales.defaultPaymentMethod&&item.active)?.label||settings.sales.paymentMethods.find(item=>item.active)?.label||'',[settings.sales.paymentMethods,settings.sales.defaultPaymentMethod]);
+  const defaultPaymentMethod=useMemo(()=>clientDefaultPaymentMethod(clients.find(client=>client.id===clientId),settings.sales),[clients,clientId,settings.sales]);
 
   useEffect(()=>{
     if(!open)return;
@@ -81,7 +88,7 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
     }else{
       const firstClient=clients[0];
       const initialIssueDate=today();
-      setClientId(firstClient?.id||'');setSeriesId(settings.sales.defaultSeriesId||'');setInvoiceNumber('');setTaxRegistrationId(settings.sales.defaultTaxRegistrationId||'');setIssueDate(initialIssueDate);setOperationDate('');setPaymentMethod(defaultPaymentMethod);setNotes(settings.sales.defaultNotes);setLines([emptyLine(1,settings.sales.defaultVatRate)]);
+      setClientId(firstClient?.id||'');setSeriesId(settings.sales.defaultSeriesId||'');setInvoiceNumber('');setTaxRegistrationId(settings.sales.defaultTaxRegistrationId||'');setIssueDate(initialIssueDate);setOperationDate('');setPaymentMethod(clientDefaultPaymentMethod(firstClient,settings.sales));setNotes(settings.sales.defaultNotes);setLines([emptyLine(1,clientDefaultVatRate(firstClient,settings.sales.defaultVatRate))]);
       setDueDate(defaultSalesDueDate(initialIssueDate,resolveSalesDueDays(firstClient?.paymentTermsDays,settings.sales.defaultDueDays)));
     }
     setError('');
@@ -117,8 +124,10 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
   const seriesOptions=selectableSeries.map(s=>({value:s.id,label:`${s.name} · próximo ${s.prefix}${String(s.nextNumber).padStart(s.padding,'0')}`,searchText:`${s.name} ${s.code||''} ${s.prefix}`}));
   const taxRegistrationOptions=taxRegistrations.map(item=>({value:item.id,label:`${item.label} · ${item.vatNumber}${item.isDefault?' · predeterminado':''}`,searchText:`${item.label} ${item.vatNumber} ${item.countryCode}`}));
   const updateLine=(index:number,patch:Partial<SalesInvoiceLine>)=>setLines(current=>current.map((line,i)=>i===index?{...line,...patch}:line));
-  const removeLine=(index:number)=>setLines(current=>current.length===1?[emptyLine(1,settings.sales.defaultVatRate)]:current.filter((_,i)=>i!==index).map((line,i)=>({...line,position:i+1})));
-  const addFreeLine=()=>setLines(current=>[...current,emptyLine(current.length+1,settings.sales.defaultVatRate)]);
+  const selectedClient=clients.find(client=>client.id===clientId);
+  const selectedDefaultVat=clientDefaultVatRate(selectedClient,settings.sales.defaultVatRate);
+  const removeLine=(index:number)=>setLines(current=>current.length===1?[emptyLine(1,selectedDefaultVat)]:current.filter((_,i)=>i!==index).map((line,i)=>({...line,position:i+1})));
+  const addFreeLine=()=>setLines(current=>[...current,emptyLine(current.length+1,selectedDefaultVat)]);
   const addProduct=(product:BillableProduct)=>setLines(current=>{
     const productLine:SalesInvoiceLine={position:current.length+1,productId:product.id,description:product.description,quantity:1,unit:product.unit,unitPrice:product.salePrice??0,discountPercent:0,taxRate:product.taxRate};
     if(current.length===1&&!current[0].description.trim()&&!current[0].productId)return [productLine];
@@ -128,6 +137,9 @@ function InvoiceModal({open,invoice,clients,products,onClose,onSaved}:{open:bool
     setClientId(value);
     const client=clients.find(c=>c.id===value);
     setDueDate(defaultSalesDueDate(issueDate,resolveSalesDueDays(client?.paymentTermsDays,settings.sales.defaultDueDays)));
+    setPaymentMethod(clientDefaultPaymentMethod(client,settings.sales));
+    const vat=clientDefaultVatRate(client,settings.sales.defaultVatRate);
+    setLines(current=>current.map(line=>!line.productId&&!line.description.trim()?{...line,taxRate:vat}:line));
   };
   const changeIssueDate=(value:string)=>{
     setIssueDate(value);
