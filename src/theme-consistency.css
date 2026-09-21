@@ -190,3 +190,59 @@ html[data-theme='dark'] .globalError button{
     border-color:#243244!important;
   }
 }
+
+
+/* Per-user list density. */
+html[data-density='compact'] .page{padding-top:26px}
+html[data-density='compact'] :where(.stat,.cardHead,.businessFilterBar,.settingsSubsection){padding-top:12px;padding-bottom:12px}
+html[data-density='compact'] :where(td,.masterTable td,.ordersTable td){padding-top:9px;padding-bottom:9px}
+html[data-density='compact'] :where(.masterMobileRow,.ordersMobileRow,.salesInvoiceMobileCard){min-height:0}
+html[data-density='compact'] .settingsFormGrid{gap:10px;padding-top:14px;padding-bottom:14px}
+
+html[data-density='spacious'] .page{padding-top:42px}
+html[data-density='spacious'] :where(.stat,.businessFilterBar,.settingsSubsection){padding-top:21px;padding-bottom:21px}
+html[data-density='spacious'] :where(td,.masterTable td,.ordersTable td){padding-top:17px;padding-bottom:17px}
+html[data-density='spacious'] .settingsFormGrid{gap:19px;padding-top:24px;padding-bottom:24px}
+
+/* Desktop column visibility. Selection and action columns are intentionally permanent. */
+table[data-preference-table='expenses'][data-hidden-columns~='date'] :is(th,td):nth-child(2),
+table[data-preference-table='expenses'][data-hidden-columns~='supplier'] :is(th,td):nth-child(3),
+table[data-preference-table='expenses'][data-hidden-columns~='invoice'] :is(th,td):nth-child(4),
+table[data-preference-table='expenses'][data-hidden-columns~='category'] :is(th,td):nth-child(5),
+table[data-preference-table='expenses'][data-hidden-columns~='source'] :is(th,td):nth-child(6),
+table[data-preference-table='expenses'][data-hidden-columns~='status'] :is(th,td):nth-child(7),
+table[data-preference-table='expenses'][data-hidden-columns~='vat'] :is(th,td):nth-child(8),
+table[data-preference-table='expenses'][data-hidden-columns~='total'] :is(th,td):nth-child(9),
+
+table[data-preference-table='suppliers'][data-hidden-columns~='supplier'] :is(th,td):nth-child(2),
+table[data-preference-table='suppliers'][data-hidden-columns~='taxId'] :is(th,td):nth-child(3),
+table[data-preference-table='suppliers'][data-hidden-columns~='type'] :is(th,td):nth-child(4),
+table[data-preference-table='suppliers'][data-hidden-columns~='category'] :is(th,td):nth-child(5),
+table[data-preference-table='suppliers'][data-hidden-columns~='contact'] :is(th,td):nth-child(6),
+table[data-preference-table='suppliers'][data-hidden-columns~='invoiceCount'] :is(th,td):nth-child(7),
+table[data-preference-table='suppliers'][data-hidden-columns~='spend'] :is(th,td):nth-child(8),
+table[data-preference-table='suppliers'][data-hidden-columns~='lastInvoice'] :is(th,td):nth-child(9),
+
+table[data-preference-table='clients'][data-hidden-columns~='client'] :is(th,td):nth-child(2),
+table[data-preference-table='clients'][data-hidden-columns~='taxId'] :is(th,td):nth-child(3),
+table[data-preference-table='clients'][data-hidden-columns~='country'] :is(th,td):nth-child(4),
+table[data-preference-table='clients'][data-hidden-columns~='contact'] :is(th,td):nth-child(5),
+table[data-preference-table='clients'][data-hidden-columns~='invoiced'] :is(th,td):nth-child(6),
+table[data-preference-table='clients'][data-hidden-columns~='pending'] :is(th,td):nth-child(7),
+table[data-preference-table='clients'][data-hidden-columns~='lastInvoice'] :is(th,td):nth-child(8),
+
+table[data-preference-table='products'][data-hidden-columns~='product'] :is(th,td):nth-child(2),
+table[data-preference-table='products'][data-hidden-columns~='sku'] :is(th,td):nth-child(3),
+table[data-preference-table='products'][data-hidden-columns~='supplier'] :is(th,td):nth-child(4),
+table[data-preference-table='products'][data-hidden-columns~='lastPurchase'] :is(th,td):nth-child(5),
+table[data-preference-table='products'][data-hidden-columns~='cost'] :is(th,td):nth-child(6),
+table[data-preference-table='products'][data-hidden-columns~='salePrice'] :is(th,td):nth-child(7),
+table[data-preference-table='products'][data-hidden-columns~='margin'] :is(th,td):nth-child(8),
+table[data-preference-table='products'][data-hidden-columns~='costChange'] :is(th,td):nth-child(9){
+  display:none!important;
+}
+
+@media(max-width:760px){
+  html[data-density='spacious'] .page,
+  html[data-density='compact'] .page{padding-top:calc(80px + env(safe-area-inset-top))!important}
+}
