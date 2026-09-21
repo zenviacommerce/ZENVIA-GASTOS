@@ -111,8 +111,8 @@ export async function listFulfillmentOrders():Promise<FulfillmentOrder[]>{
   return (data||[]).map(mapRow);
 }
 export function getSendcloudStatus(){return invokeSendcloud<SendcloudStatus>({action:'status'});}
-export async function syncSendcloudOrders(history=false,retryTracking=true){
-  const result=await invokeSendcloud<{ok:true;synced:number;enriched?:number;history?:boolean;integrations:SendcloudIntegration[]}>({action:'sync',history});
+export async function syncSendcloudOrders(history=false,retryTracking=true,automatic=false){
+  const result=await invokeSendcloud<{ok:true;synced:number;enriched?:number;history?:boolean;integrations:SendcloudIntegration[]}>({action:'sync',history,automatic});
   if(retryTracking){try{await invokeAmazonTracking({action:'retry_pending',limit:10})}catch{/* Amazon tracking is retried on the next enabled Sendcloud sync. */}}
   return result;
 }
