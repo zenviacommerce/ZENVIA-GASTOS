@@ -235,8 +235,8 @@ export function Orders(){
     return()=>{cancelled=true};
   },[orders]);
 
-  const sync=useCallback(async(silent=false,history=false)=>{if(syncing)return;setSyncing(true);if(!silent)setError('');try{const result=await syncSendcloudOrders(history,settings.orders.retryTrackingConfirmation);setStatus({configured:true,integrations:result.integrations});await refresh();if(history)markHistorySyncDone();if(!silent)showSuccess(`${result.synced} pedidos actualizados desde Sendcloud.`)}catch(e){const message=errorMessage(e,'No se pudieron actualizar los pedidos.');if(!silent)showError(message)}finally{setSyncing(false)}},[refresh,syncing,settings.orders.retryTrackingConfirmation]);
-  useEffect(()=>{if(!status?.configured)return;void sync(true,shouldRunHistorySync());const timer=window.setInterval(()=>void sync(true,false),Math.max(30,settings.orders.refreshSeconds)*1000);return()=>window.clearInterval(timer)},[status?.configured,sync,settings.orders.refreshSeconds]);
+  const sync=useCallback(async(silent=false,history=false,automatic=false)=>{if(syncing)return;setSyncing(true);if(!silent)setError('');try{const result=await syncSendcloudOrders(history,settings.orders.retryTrackingConfirmation,automatic);setStatus({configured:true,integrations:result.integrations});await refresh();if(history)markHistorySyncDone();if(!silent)showSuccess(`${result.synced} pedidos actualizados desde Sendcloud.`)}catch(e){const message=errorMessage(e,'No se pudieron actualizar los pedidos.');if(!silent)showError(message)}finally{setSyncing(false)}},[refresh,syncing,settings.orders.retryTrackingConfirmation]);
+  useEffect(()=>{if(!status?.configured||!settings.integrations.sendcloudEnabled)return;void sync(true,shouldRunHistorySync(),true);const timer=window.setInterval(()=>void sync(true,false,true),Math.max(30,settings.orders.refreshSeconds)*1000);return()=>window.clearInterval(timer)},[status?.configured,sync,settings.orders.refreshSeconds,settings.integrations.sendcloudEnabled]);
 
   const dateFrom=dateFilter.from,dateTo=dateFilter.to;
   const selectedPeriod=periodLabel(dateFilter);
