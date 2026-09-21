@@ -6,7 +6,10 @@ export const OVERLAP_HOURS=6;
 export const CURRENT_SYNC_MAX_LOOKBACK_HOURS=7*24;
 
 type Mode='initial'|'hourly'|'manual'|'reconcile';
-type Source='orders'|'finances'|'inventory';
+export type AmazonSyncSource='orders'|'finances'|'inventory';
+type Source=AmazonSyncSource;
+const ALL_SYNC_SOURCES:AmazonSyncSource[]=['orders','finances','inventory'];
+function enabledSourceSet(enabledSources?:AmazonSyncSource[]){return new Set(enabledSources?.length?enabledSources:ALL_SYNC_SOURCES);}
 type Account={id:string;owner_id:string;initial_sync_from?:string|null};
 type Marketplace={marketplace_id:string;active?:boolean};
 
@@ -28,29 +31,32 @@ async function insertJobs(admin:any,rows:any[]){
   return rows.length;
 }
 
-export async function enqueueInitialBackfill(admin:any,account:Account,marketplaces:Marketplace[],until=new Date()){
+export async function enqueueInitialBackfill(admin:any,account:Account,marketplaces:Marketplace[],until=new Date(),enabledSources?:AmazonSyncSource[]){
   const start=new Date(account.initial_sync_from||INITIAL_SYNC_FROM);
   const end=new Date(until);
   const rows:any[]=[];
+  const enabled=enabledSourceSet(enabledSources);
   for(const marketplace of marketplaces.filter(item=>item.active!==false)){
     let cursor=new Date(start);
     while(cursor<end){
       const windowEnd=plusDays(cursor,BACKFILL_WINDOW_DAYS);
       const clipped=windowEnd>end?end:windowEnd;
       for(const source of ['orders','finances'] as const){
+        if(!enabled.has(source))continue;
         const from=iso(cursor),to=iso(clipped);
         rows.push({owner_id:account.owner_id,amazon_account_id:account.id,job_key:jobKey(source,marketplace.marketplace_id,from,to,'initial'),source,marketplace_id:marketplace.marketplace_id,scope_key:marketplace.marketplace_id,window_from:from,window_to:to,status:'queued',attempts:0,max_attempts:5,available_at:new Date().toISOString(),payload:{mode:'initial'}});
       }
       cursor=clipped;
     }
-    rows.push({owner_id:account.owner_id,amazon_account_id:account.id,job_key:jobKey('inventory',marketplace.marketplace_id,null,hourKey(end),'initial'),source:'inventory',marketplace_id:marketplace.marketplace_id,scope_key:marketplace.marketplace_id,status:'queued',attempts:0,max_attempts:5,available_at:new Date().toISOString(),payload:{mode:'initial',snapshot:'current'}});
+    if(enabled.has('inventory'))rows.push({owner_id:account.owner_id,amazon_account_id:account.id,job_key:jobKey('inventory',marketplace.marketplace_id,null,hourKey(end),'initial'),source:'inventory',marketplace_id:marketplace.marketplace_id,scope_key:marketplace.marketplace_id,status:'queued',attempts:0,max_attempts:5,available_at:new Date().toISOString(),payload:{mode:'initial',snapshot:'current'}});
   }
   await insertJobs(admin,rows);
   return rows;
 }
 
-export async function enqueueHourlySync(admin:any,account:Account,marketplaces:Marketplace[],mode:Extract<Mode,'hourly'|'manual'|'reconcile'>='hourly',now=new Date()){
+export async function enqueueHourlySync(admin:any,account:Account,marketplaces:Marketplace[],mode:Extract<Mode,'hourly'|'manual'|'reconcile'>='hourly',now=new Date(),enabledSources?:AmazonSyncSource[]){
   const ids=marketplaces.filter(item=>item.active!==false).map(item=>item.marketplace_id);
+  const enabled=enabledSourceSet(enabledSources);
   const {data:states,error}=await admin.from('amazon_sync_state')
     .select('source,scope_key,marketplace_id,high_water_mark')
     .eq('owner_id',account.owner_id)
@@ -60,6 +66,7 @@ export async function enqueueHourlySync(admin:any,account:Account,marketplaces:M
   const rows:any[]=[];
   for(const marketplaceId of ids){
     for(const source of ['orders','finances'] as const){
+      if(!enabled.has(source))continue;
       const state:any=stateMap.get(`${source}:${marketplaceId}`);
       const baseline=state?.high_water_mark?new Date(state.high_water_mark):minusHours(now,OVERLAP_HOURS);
       const overlapStart=minusHours(baseline,OVERLAP_HOURS);
@@ -68,7 +75,7 @@ export async function enqueueHourlySync(admin:any,account:Account,marketplaces:M
       const from=iso(boundedStart),to=iso(now);
       rows.push({owner_id:account.owner_id,amazon_account_id:account.id,job_key:jobKey(source,marketplaceId,from,to,mode),source,marketplace_id:marketplaceId,scope_key:marketplaceId,window_from:from,window_to:to,status:'queued',attempts:0,max_attempts:5,available_at:new Date().toISOString(),payload:{mode,high_water_mark:state?.high_water_mark||null}});
     }
-    rows.push({owner_id:account.owner_id,amazon_account_id:account.id,job_key:jobKey('inventory',marketplaceId,null,hourKey(now),mode),source:'inventory',marketplace_id:marketplaceId,scope_key:marketplaceId,status:'queued',attempts:0,max_attempts:5,available_at:new Date().toISOString(),payload:{mode,snapshot:'current'}});
+    if(enabled.has('inventory'))rows.push({owner_id:account.owner_id,amazon_account_id:account.id,job_key:jobKey('inventory',marketplaceId,null,hourKey(now),mode),source:'inventory',marketplace_id:marketplaceId,scope_key:marketplaceId,status:'queued',attempts:0,max_attempts:5,available_at:new Date().toISOString(),payload:{mode,snapshot:'current'}});
   }
   await insertJobs(admin,rows);
   return rows;
