@@ -25,8 +25,9 @@ test('manual client creation uses configured defaults and persists billing prefe
   const page=await read('../src/pages/Clients.tsx');
   const sales=await read('../src/services/sales.ts');
   assert.match(page,/useSettings/);
-  assert.match(page,/settings\.clients\.defaultCountryCode/);
-  assert.match(page,/settings\.clients\.defaultPaymentTermsDays/);
+  assert.match(page,/emptyClient\(settings\.clients\)/);
+  assert.match(page,/defaultCountryCode/);
+  assert.match(page,/defaultPaymentTermsDays/);
   assert.match(page,/defaultVatRate/);
   assert.match(page,/defaultPaymentMethod/);
   assert.match(sales,/default_vat_rate/);
