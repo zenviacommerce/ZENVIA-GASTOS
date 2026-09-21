@@ -58,6 +58,11 @@ export function shippingRuleMatchesOption(option:RuleOption,rule:ShippingRule){
   return (rule.action.serviceIncludes||[]).every(token=>all.includes(normalized(token)));
 }
 
+export function firstMatchingShippingRule(order:RuleOrder,rules:ShippingRule[]):ShippingRule|null{
+  const sorted=[...rules].filter(rule=>rule.active).sort((a,b)=>a.priority-b.priority||a.name.localeCompare(b.name));
+  return sorted.find(rule=>shippingRuleMatchesOrder(order,rule))||null;
+}
+
 export function selectShippingOptionByRules<T extends RuleOption>(
   order:RuleOrder,
   options:T[],
