@@ -358,7 +358,7 @@ export function friendlySalesImportError(error:unknown){
   return raw||'No se pudo guardar el borrador.';
 }
 
-export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoiceImportCandidate,defaultDueDays:number,clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients){
+export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoiceImportCandidate,defaultDueDays:number,currencyCode:string,clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients){
   const reviewed=recalculateSalesImportCandidate(candidate);
   let clientId=reviewed.clientId;
   let createdClientId='';
@@ -375,7 +375,7 @@ export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoic
     if(!reviewed.issueDate)throw new Error('Indica la fecha de factura.');
     const lines=cleanImportLines(reviewed);
     if(!lines.length)throw new Error('No hay líneas válidas para guardar esta factura.');
-    const payload:SalesInvoiceDraftInput={clientId,seriesId:reviewed.seriesId,taxRegistrationId:reviewed.taxRegistrationId||null,issueDate:reviewed.issueDate,dueDate:reviewed.dueDate||defaultSalesDueDate(reviewed.issueDate,resolveSalesDueDays(undefined,defaultDueDays))||undefined,paymentMethod:reviewed.paymentMethod||undefined,notes:reviewed.notes||undefined,lines};
+    const payload:SalesInvoiceDraftInput={clientId,seriesId:reviewed.seriesId,taxRegistrationId:reviewed.taxRegistrationId||null,issueDate:reviewed.issueDate,dueDate:reviewed.dueDate||defaultSalesDueDate(reviewed.issueDate,resolveSalesDueDays(undefined,defaultDueDays))||undefined,currency:currencyCode,paymentMethod:reviewed.paymentMethod||undefined,notes:reviewed.notes||undefined,lines};
 
     if(reviewed.existingInvoiceId){
       if(reviewed.existingInvoiceNumber&&reviewed.invoiceNumber.trim()!==reviewed.existingInvoiceNumber){
