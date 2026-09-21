@@ -232,7 +232,7 @@ async function isMerchandiseCategory(categoryId?: string) {
   return Boolean(data?.name && normalizeProductKey(data.name).includes('mercancia'));
 }
 
-async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: string, input: NewInvoiceInput, policy:ExpenseImportPolicy, productSettings:ProductsSettings) {
+async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: string, input: NewInvoiceInput, policy:ExpenseImportPolicy, productSettings:ProductsSettings, currencyCode:string) {
   if (!input.lines?.length) return;
 
   const merchandise = await isMerchandiseCategory(input.categoryId);
@@ -360,7 +360,7 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
           purchase_unit_price:line.unit_price,
           normalized_unit_price:line.normalized_unit_price,
           base_unit:product?.base_unit||line.unit||productSettings.defaultUnit,
-          currency:'EUR',
+          currency:currencyCode,
         },{onConflict:'invoice_line_id'});
         if(historyError)throw historyError;
       }
@@ -506,7 +506,7 @@ export async function createInvoice(input: NewInvoiceInput) {
   }
 
   try {
-    await createInvoiceLinesWithProducts(invoice.id, supplierId, preparedInput, policy, loadedSettings.settings.products);
+    await createInvoiceLinesWithProducts(invoice.id, supplierId, preparedInput, policy, loadedSettings.settings.products, loadedSettings.settings.general.currencyCode);
   } catch (lineError) {
     await supabase.from('invoices').delete().eq('id', invoice.id);
     await supabase.storage.from(INVOICE_BUCKET).remove([storagePath]);
