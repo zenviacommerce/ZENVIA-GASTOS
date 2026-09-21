@@ -4,8 +4,10 @@ import { isAmazonConnectivityError, loadAmazonOrders, type AmazonAnalyticsFilter
 import { errorMessage } from '../../services/toast';
 import { formatAmazonMarketplace } from './marketplaceLabel';
 import { readViewCache, stableCacheKey, writeViewCache } from '../../services/viewCache';
-const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'});
+import { useSettings } from '../../context/SettingsContext';
 export function AmazonOrders({filters,marketplaces,refreshToken=0}:{filters:AmazonAnalyticsFilters;marketplaces:AmazonMarketplaceStatus[];refreshToken?:number}){
+  const {settings}=useSettings();
+  const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:settings.amazon.consolidatedCurrency});
  const [search,setSearch]=useState('');const [page,setPage]=useState(1);const initialKey=stableCacheKey('amazon:orders',{filters,search:'',page:1,pageSize:25});const [data,setData]=useState<AmazonPageResult<AmazonOrderAnalytics>>(()=>readViewCache<AmazonPageResult<AmazonOrderAnalytics>>(initialKey)||{items:[],page:1,pageSize:25,total:0});const [error,setError]=useState('');
  const refresh=()=>{const key=stableCacheKey('amazon:orders',{filters,search,page,pageSize:25});const cached=readViewCache<AmazonPageResult<AmazonOrderAnalytics>>(key);if(cached)setData(cached);setError('');return loadAmazonOrders(filters,search,page,25).then(next=>{setData(next);writeViewCache(key,next);}).catch(e=>{if(!isAmazonConnectivityError(e))setError(errorMessage(e,'No se pudieron cargar los pedidos.'));});};
  useEffect(()=>{void refresh();},[filters.from,filters.to,filters.marketplaceIds.join(','),search,page,refreshToken]);
