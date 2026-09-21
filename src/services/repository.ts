@@ -9,6 +9,7 @@ import { sanitizeDatabaseSingleLine, sanitizeDatabaseText, sanitizeDatabaseValue
 import { resolveEntityAlias } from './entityAliases';
 import { loadAppSettings } from './settings';
 import { expenseImportPolicyFromSettings, type ExpenseImportPolicy } from './expenseImportPolicy';
+import type { SuppliersSettings } from './settingsSchema';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
 const normalizeProductKey = (value: string) => value
@@ -131,14 +132,14 @@ function cleanSupplierContact(contact: SupplierProfileData): SupplierProfileData
   };
 }
 
-async function ensureSupplier(name: string, contactInput: SupplierProfileData = {}, supplierTypeHint?: 'goods', policy:ExpenseImportPolicy=expenseImportPolicyFromSettings(undefined)): Promise<{ id: string; created: boolean }> {
+async function ensureSupplier(name: string, contactInput: SupplierProfileData = {}, supplierTypeHint?: 'goods', policy:ExpenseImportPolicy=expenseImportPolicyFromSettings(undefined), supplierSettings:SuppliersSettings): Promise<{ id: string; created: boolean }> {
   const clean = sanitizeDatabaseSingleLine(canonicalizeSupplierName(name) || name).slice(0, 120);
   const cleanKey = supplierIdentityKey(clean);
   const contact = cleanSupplierContact(contactInput);
 
   const { data: existing, error: findError } = await supabase
     .from('suppliers')
-    .select('id,name,tax_id,email,phone,address,website,supplier_type');
+    .select('id,name,tax_id,email,phone,address,website,supplier_type,default_category_id');
   if (findError) throw findError;
 
   const alias=await resolveEntityAlias('supplier',clean);
@@ -153,9 +154,10 @@ async function ensureSupplier(name: string, contactInput: SupplierProfileData = 
       const existingTaxId = supplier.tax_id ? normalizeTaxId(supplier.tax_id) : '';
       let score = 0;
       if (aliasMatch?.id===supplier.id) score = 200;
-      else if (contact.taxId && existingTaxId && contact.taxId === existingTaxId) score = 140;
-      else if (cleanKey && existingKey === cleanKey) score = 100;
-      else if (isLikelySameSupplier(clean, supplier.name || '')) score = 80;
+      else if (supplierSettings.detectDuplicates && contact.taxId && existingTaxId && contact.taxId === existingTaxId) score = 140;
+      else if (supplierSettings.detectDuplicates && cleanKey && existingKey === cleanKey) score = 100;
+      else if (supplierSettings.detectDuplicates && isLikelySameSupplier(clean, supplier.name || '')) score = 80;
+      if(score>0 && score<supplierSettings.identityThreshold && aliasMatch?.id!==supplier.id) score = 0;
       if (score && supplier.tax_id) score += 3;
       if (score && supplier.email) score += 1;
       return { supplier, score };
@@ -166,17 +168,19 @@ async function ensureSupplier(name: string, contactInput: SupplierProfileData = 
   const bestMatch = ranked[0];
   const match = bestMatch?.supplier;
   if (match?.id) {
-    const patch: Record<string, string> = {};
+    const patch: Record<string, string|null> = {};
     // Solo enriquecemos datos fiscales/contacto cuando la identidad es exacta
     // o coincide el propio identificador fiscal. Una coincidencia por nombre
     // abreviado sirve para reutilizar el proveedor, pero no para copiar datos
     // potencialmente pertenecientes al bloque del cliente de la factura.
-    const safeToEnrich = policy.fillMissingSupplierData && (bestMatch?.score ?? 0) >= 100;
-    if (safeToEnrich && !match.tax_id && contact.taxId) patch.tax_id = contact.taxId;
-    if (safeToEnrich && !match.email && contact.email) patch.email = contact.email;
-    if (safeToEnrich && !match.phone && contact.phone) patch.phone = contact.phone;
-    if (safeToEnrich && !match.address && contact.address) patch.address = contact.address;
-    if (safeToEnrich && !match.website && contact.website) patch.website = contact.website;
+    const safeToEnrich = policy.fillMissingSupplierData && (bestMatch?.score ?? 0) >= Math.max(100,supplierSettings.identityThreshold);
+    const mayWrite=(current:unknown)=>!supplierSettings.onlyFillEmpty||!String(current||'').trim();
+    if (safeToEnrich && supplierSettings.enrichTaxId && contact.taxId && mayWrite(match.tax_id)) patch.tax_id = contact.taxId;
+    if (safeToEnrich && supplierSettings.enrichEmail && contact.email && mayWrite(match.email)) patch.email = contact.email;
+    if (safeToEnrich && supplierSettings.enrichPhone && contact.phone && mayWrite(match.phone)) patch.phone = contact.phone;
+    if (safeToEnrich && supplierSettings.enrichAddress && contact.address && mayWrite(match.address)) patch.address = contact.address;
+    if (safeToEnrich && supplierSettings.enrichWebsite && contact.website && mayWrite(match.website)) patch.website = contact.website;
+    if (!match.default_category_id && supplierSettings.defaultCategoryId) patch.default_category_id=supplierSettings.defaultCategoryId;
     if (supplierTypeHint === 'goods') {
       if (!match.supplier_type || match.supplier_type === 'unclassified') patch.supplier_type = 'goods';
       else if (match.supplier_type === 'service') patch.supplier_type = 'both';
@@ -188,10 +192,10 @@ async function ensureSupplier(name: string, contactInput: SupplierProfileData = 
     return { id: match.id as string, created: false };
   }
 
-  if(!policy.autoCreateSuppliers){
+  if(!policy.autoCreateSuppliers||!supplierSettings.autoCreate){
     throw new Error('La creación automática de proveedores está desactivada. Selecciona o crea el proveedor antes de guardar la factura.');
   }
-  const createdSupplierType=supplierTypeHint==='goods'?'goods':(policy.defaultSupplierType||'unclassified');
+  const createdSupplierType=supplierTypeHint==='goods'?'goods':(supplierSettings.defaultType||policy.defaultSupplierType||'unclassified');
   const { data, error } = await supabase.from('suppliers').insert({
     name: clean,
     tax_id: contact.taxId || null,
@@ -200,7 +204,7 @@ async function ensureSupplier(name: string, contactInput: SupplierProfileData = 
     address: contact.address || null,
     website: contact.website || null,
     supplier_type: createdSupplierType,
-    default_category_id: policy.defaultCategoryId || null,
+    default_category_id: supplierSettings.defaultCategoryId || policy.defaultCategoryId || null,
   }).select('id').single();
   if (error) throw error;
   return { id: data.id, created: true };
@@ -404,7 +408,7 @@ export async function createInvoice(input: NewInvoiceInput) {
     phone: input.supplierPhone || extractedContact.phone,
     address: input.supplierAddress || extractedDetails.address,
     website: input.supplierWebsite || extractedDetails.website,
-  }, merchandiseSupplier ? 'goods' : undefined, policy);
+  }, merchandiseSupplier ? 'goods' : undefined, policy, loadedSettings.settings.suppliers);
   const supplierId = supplierResult.id;
   const year = input.invoiceDate ? new Date(`${input.invoiceDate}T12:00:00`).getFullYear() : new Date().getFullYear();
   const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-100);
