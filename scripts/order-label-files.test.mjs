@@ -20,14 +20,14 @@ const baseOrder = {
 
 test('uses the order number as the PDF filename', async () => {
   const { labelPdfBaseName, labelPdfFilename } = await loadModule();
-  assert.equal(labelPdfBaseName(baseOrder), '403-1234567-1234567');
-  assert.equal(labelPdfFilename(baseOrder), '403-1234567-1234567.pdf');
+  assert.equal(labelPdfBaseName(baseOrder,{strategy:'order_number'}), '403-1234567-1234567');
+  assert.equal(labelPdfFilename(baseOrder,{strategy:'order_number'}), '403-1234567-1234567.pdf');
 });
 
 test('deduplicates repeated label PDF filenames', async () => {
   const { uniqueLabelPdfFilename } = await loadModule();
   const used = new Set();
-  assert.equal(uniqueLabelPdfFilename(baseOrder, used), '403-1234567-1234567.pdf');
-  assert.equal(uniqueLabelPdfFilename(baseOrder, used), '403-1234567-1234567_2.pdf');
+  assert.equal(uniqueLabelPdfFilename(baseOrder, used,{strategy:'order_number'}), '403-1234567-1234567.pdf');
+  assert.equal(uniqueLabelPdfFilename(baseOrder, used,{strategy:'order_number'}), '403-1234567-1234567_2.pdf');
 });
 
