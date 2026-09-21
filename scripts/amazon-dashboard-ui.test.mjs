@@ -53,10 +53,12 @@ test('Amazon detail tabs use typed loaders and expose approved fields',async()=>
   for(const [path,loader,labels] of cases){const text=await source(path);assert.match(text,new RegExp(loader));for(const label of labels)assert.match(text,new RegExp(label));}
 });
 
-test('Sin vincular uses the shared mapping editor for product selection and consumption factor',async()=>{
+test('Sin vincular uses the shared mapping editor through the mapping modal',async()=>{
   const unmapped=await source('src/components/amazon/AmazonUnmapped.tsx');
+  const modal=await source('src/components/amazon/AmazonMappingModal.tsx');
   const editor=await source('src/components/amazon/AmazonMappingEditor.tsx');
-  assert.match(unmapped,/loadAmazonUnmapped/);assert.match(unmapped,/AmazonMappingEditor/);assert.match(unmapped,/sellerSku/);
+  assert.match(unmapped,/loadAmazonUnmapped/);assert.match(unmapped,/AmazonMappingModal/);assert.match(unmapped,/sellerSku/);
+  assert.match(modal,/AmazonMappingEditor/);
   assert.match(editor,/setAmazonProductMapping/);assert.match(editor,/Factor|factor/);assert.match(editor,/Producto interno|producto interno/);assert.doesNotMatch(editor,/<select/i);
 });
 
