@@ -48,6 +48,7 @@ import './dark-mode-consistency.css';
 import './layout-polish.css';
 import './action-dialog.css';
 import './settings.css';
+import './alerts.css';
 
 const favicon=document.querySelector<HTMLLinkElement>("link[rel~='icon']")||document.createElement('link');
 favicon.rel='icon';
