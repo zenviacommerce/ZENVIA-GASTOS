@@ -4,6 +4,7 @@ import { defaultSalesDueDate, resolveSalesDueDays } from './salesDefaults';
 import { updateSalesInvoiceNumber } from './salesInvoiceNumber';
 import { deleteSalesInvoiceDraftSafe } from './salesDraftDelete';
 import { extractInvoiceParty } from './invoicePartyExtractor';
+import { DEFAULT_APP_SETTINGS, type ClientsSettings } from './settingsSchema';
 
 export type SalesInvoiceImportStatus='needs_review'|'ready'|'importing'|'imported'|'error'|'duplicate';
 
@@ -82,7 +83,7 @@ function extractSalesDueDate(text:string,issueDate:string,defaultDueDays=30){
   return defaultSalesDueDate(issueDate,resolveSalesDueDays(undefined,defaultDueDays));
 }
 
-function extractSalesRecipient(text:string,filename:string,invoiceNumber:string,invoiceDate=''):ClientInput|null{
+function extractSalesRecipient(text:string,filename:string,invoiceNumber:string,invoiceDate='',clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients):ClientInput|null{
   const nameHint=clientNameFromFilename(filename,invoiceNumber);
   const party=extractInvoiceParty(text,{role:'recipient',nameHint,invoiceNumber,invoiceDate});
   const name=party.name||nameHint;
@@ -97,41 +98,64 @@ function extractSalesRecipient(text:string,filename:string,invoiceNumber:string,
     postalCode:party.postalCode||'',
     city:party.city||'',
     province:party.province||'',
-    countryCode:party.countryCode||'XX',
-    paymentTermsDays:0,
+    countryCode:party.countryCode&&party.countryCode!=='XX'?party.countryCode:clientSettings.defaultCountryCode,
+    paymentTermsDays:clientSettings.defaultPaymentTermsDays,
+    defaultVatRate:clientSettings.defaultVatRate,
+    defaultPaymentMethod:clientSettings.defaultPaymentMethod,
     notes:'',
   };
 }
 
-function matchClientIdentity(input:ClientInput,clients:Client[]){
-  const tax=normalize(input.taxId);
-  if(tax.length>=5){const byTax=clients.find(client=>normalize(client.taxId)===tax);if(byTax)return byTax;}
-  const name=normalize(input.name);
-  return clients.find(client=>normalize(client.name)===name)||null;
+function matchClientIdentity(input:ClientInput,clients:Client[],clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients){
+  const criteria=clientSettings.duplicateIdentity;
+  if(criteria.includes('tax_id')){
+    const tax=normalize(input.taxId);
+    if(tax.length>=5){const byTax=clients.find(client=>normalize(client.taxId)===tax);if(byTax)return byTax;}
+  }
+  if(criteria.includes('email')){
+    const email=String(input.email||'').trim().toLowerCase();
+    if(email){const byEmail=clients.find(client=>String(client.email||'').trim().toLowerCase()===email);if(byEmail)return byEmail;}
+  }
+  if(criteria.includes('name')){
+    const name=normalize(input.name);
+    const byName=clients.find(client=>normalize(client.name)===name);
+    if(byName)return byName;
+  }
+  return null;
 }
 
-function mergedImportedClient(existing:Client,input:ClientInput):ClientInput{
+function mergedImportedClient(existing:Client,input:ClientInput,clientSettings:ClientsSettings):ClientInput{
+  const overwrite=clientSettings.overwriteReviewed;
+  const choose=(current:string|undefined|null,incoming:string|undefined|null,enabled=true)=>{
+    if(!enabled)return current||'';
+    if(overwrite&&incoming)return incoming;
+    return current||incoming||'';
+  };
   return {
     name:existing.name,
-    taxId:existing.taxId||input.taxId||'',
+    taxId:choose(existing.taxId,input.taxId,clientSettings.fillTaxId),
     email:existing.email||input.email||'',
     phone:existing.phone||input.phone||'',
-    addressLine1:existing.addressLine1||input.addressLine1||'',
-    addressLine2:existing.addressLine2||input.addressLine2||'',
-    postalCode:existing.postalCode||input.postalCode||'',
-    city:existing.city||input.city||'',
-    province:existing.province||input.province||'',
-    countryCode:existing.countryCode&&existing.countryCode!=='XX'?existing.countryCode:(input.countryCode||'XX'),
-    paymentTermsDays:existing.paymentTermsDays||input.paymentTermsDays||0,
+    addressLine1:choose(existing.addressLine1,input.addressLine1,clientSettings.fillAddress),
+    addressLine2:choose(existing.addressLine2,input.addressLine2,clientSettings.fillAddress),
+    postalCode:choose(existing.postalCode,input.postalCode,clientSettings.fillAddress),
+    city:choose(existing.city,input.city,clientSettings.fillAddress),
+    province:choose(existing.province,input.province,clientSettings.fillAddress),
+    countryCode:clientSettings.fillCountry
+      ? ((overwrite&&input.countryCode&&input.countryCode!=='XX')?input.countryCode:(existing.countryCode&&existing.countryCode!=='XX'?existing.countryCode:(input.countryCode||clientSettings.defaultCountryCode)))
+      : existing.countryCode,
+    paymentTermsDays:existing.paymentTermsDays||input.paymentTermsDays||clientSettings.defaultPaymentTermsDays,
+    defaultVatRate:existing.defaultVatRate??input.defaultVatRate??clientSettings.defaultVatRate,
+    defaultPaymentMethod:existing.defaultPaymentMethod||input.defaultPaymentMethod||clientSettings.defaultPaymentMethod,
     notes:existing.notes||'',
   };
 }
 
-async function enrichImportedClient(clientId:string,input:ClientInput){
+async function enrichImportedClientasync function enrichImportedClient(clientId:string,input:ClientInput,clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients){
   const [clients,business]=await Promise.all([loadClients(),loadBusinessSettings()]);
   const existing=clients.find(client=>client.id===clientId);
   if(!existing)return;
-  const merged=mergedImportedClient(existing,input);
+  const merged=mergedImportedClient(existing,input,clientSettings);
 
   // Previous importer versions could accidentally copy issuer contact data into
   // the recipient because PDF.js joins left/right columns on the same baseline.
@@ -154,16 +178,17 @@ async function enrichImportedClient(clientId:string,input:ClientInput){
   if(changed)await updateClient(clientId,merged);
 }
 
-async function ensureImportedClient(input:ClientInput){
+async function ensureImportedClient(input:ClientInput,clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients){
   let clients=await loadClients();
-  const existing=matchClientIdentity(input,clients);
-  if(existing){await enrichImportedClient(existing.id,input);return {id:existing.id,created:false};}
+  const existing=matchClientIdentity(input,clients,clientSettings);
+  if(existing){await enrichImportedClient(existing.id,input,clientSettings);return {id:existing.id,created:false};}
+  if(!clientSettings.autoCreate)throw new Error('La creación automática de clientes está desactivada. Selecciona un cliente existente o créalo manualmente.');
   try{return {id:await addClient(input),created:true};}
   catch(error:any){
     if(error?.code!=='23505')throw error;
     clients=await loadClients();
-    const raced=matchClientIdentity(input,clients);
-    if(raced){await enrichImportedClient(raced.id,input);return {id:raced.id,created:false};}
+    const raced=matchClientIdentity(input,clients,clientSettings);
+    if(raced){await enrichImportedClient(raced.id,input,clientSettings);return {id:raced.id,created:false};}
     throw error;
   }
 }
@@ -257,15 +282,15 @@ function salesLineFromRead(line:any,index:number,fallbackTaxRate:number):SalesIn
   return {position:index+1,description:String(line?.description||`Concepto importado ${index+1}`).trim()||`Concepto importado ${index+1}`,quantity,unit:String(line?.unit||'ud'),unitPrice:Number.isFinite(Number(unitPrice))?Number(unitPrice):0,discountPercent:0,taxRate:Number.isFinite(taxRate)?taxRate:0,productId:null};
 }
 
-export async function prepareSalesInvoiceImportCandidate(file:File,clients:Client[],defaultDueDays=30):Promise<SalesInvoiceImportCandidate>{
+export async function prepareSalesInvoiceImportCandidate(file:File,clients:Client[],defaultDueDays=30,clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients):Promise<SalesInvoiceImportCandidate>{
   const read=await readInvoiceDocumentEnhanced(file,[]);
   const fiscal=extractSalesFiscalTotals(read.text);
   const subtotal=fiscal?.subtotal||read.subtotal;
   const vat=fiscal?.vat??read.vat;
   const total=fiscal?.total||read.total;
-  const proposedClient=extractSalesRecipient(read.text,file.name,read.invoiceNumber||'',read.invoiceDate||'');
+  const proposedClient=extractSalesRecipient(read.text,file.name,read.invoiceNumber||'',read.invoiceDate||'',clientSettings);
   const dueDate=extractSalesDueDate(read.text,read.invoiceDate||'',defaultDueDays);
-  const matched=(proposedClient&&matchClientIdentity(proposedClient,clients))||matchSalesInvoiceClient(read.text,clients);
+  const matched=(proposedClient&&matchClientIdentity(proposedClient,clients,clientSettings))||matchSalesInvoiceClient(read.text,clients);
   const fallbackTaxRate=nearestTaxRate(subtotal,vat);
   const exactLines=extractSalesConceptLines(read.text,fallbackTaxRate);
   let lines=exactLines.length?exactLines:(read.lines||[]).map((line,index)=>salesLineFromRead(line,index,fallbackTaxRate));
@@ -329,14 +354,14 @@ export function friendlySalesImportError(error:unknown){
   return raw||'No se pudo guardar el borrador.';
 }
 
-export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoiceImportCandidate,defaultDueDays=30){
+export async function createSalesInvoiceDraftFromCandidate(candidate:SalesInvoiceImportCandidate,defaultDueDays=30,clientSettings:ClientsSettings=DEFAULT_APP_SETTINGS.clients){
   const reviewed=recalculateSalesImportCandidate(candidate);
   let clientId=reviewed.clientId;
   let createdClientId='';
   try{
-    if(clientId&&reviewed.proposedClient?.name)await enrichImportedClient(clientId,reviewed.proposedClient);
+    if(clientId&&reviewed.proposedClient?.name)await enrichImportedClient(clientId,reviewed.proposedClient,clientSettings);
     if(!clientId&&reviewed.proposedClient?.name){
-      const ensured=await ensureImportedClient(reviewed.proposedClient);
+      const ensured=await ensureImportedClient(reviewed.proposedClient,clientSettings);
       clientId=ensured.id;
       if(ensured.created)createdClientId=ensured.id;
     }
