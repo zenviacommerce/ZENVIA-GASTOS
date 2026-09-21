@@ -52,3 +52,30 @@ export function selectedPreferenceKeys(configured:string[],defaults:readonly str
   const selected=configured.filter(key=>allowed.has(key));
   return selected.length?Array.from(new Set(selected)):[...defaults];
 }
+
+
+export const DASHBOARD_KPI_DEFAULTS=[
+  'sales','expenses','result','vatBalance','receivable','pendingExpenses',
+  'orders','orderValue','pendingOrders','shippedOrders','cancelledOrders',
+] as const;
+
+export const TABLE_COLUMN_DEFAULTS={
+  expenses:['date','supplier','invoice','category','source','status','vat','total'],
+  suppliers:['supplier','taxId','type','category','contact','invoiceCount','spend','lastInvoice'],
+  clients:['client','taxId','country','contact','invoiced','pending','lastInvoice'],
+  products:['product','sku','supplier','lastPurchase','cost','salePrice','margin','costChange'],
+} as const;
+
+export type PreferenceTableKey=keyof typeof TABLE_COLUMN_DEFAULTS;
+
+export function visibleTableColumns(preferences:UserPreferences,table:PreferenceTableKey):string[]{
+  const defaults=[...TABLE_COLUMN_DEFAULTS[table]];
+  if(!Object.prototype.hasOwnProperty.call(preferences.tableColumns,table))return defaults;
+  const allowed=new Set<string>(defaults);
+  return (preferences.tableColumns[table]||[]).filter(key=>allowed.has(key));
+}
+
+export function hiddenTableColumns(preferences:UserPreferences,table:PreferenceTableKey):string{
+  const visible=new Set(visibleTableColumns(preferences,table));
+  return TABLE_COLUMN_DEFAULTS[table].filter(key=>!visible.has(key)).join(' ');
+}
