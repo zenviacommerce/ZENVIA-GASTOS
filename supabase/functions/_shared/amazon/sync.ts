@@ -9,7 +9,7 @@ type Mode='initial'|'hourly'|'manual'|'reconcile';
 export type AmazonSyncSource='orders'|'finances'|'inventory';
 type Source=AmazonSyncSource;
 const ALL_SYNC_SOURCES:AmazonSyncSource[]=['orders','finances','inventory'];
-function enabledSourceSet(enabledSources?:AmazonSyncSource[]){return new Set(enabledSources?.length?enabledSources:ALL_SYNC_SOURCES);}
+function enabledSourceSet(enabledSources?:AmazonSyncSource[]){return new Set(enabledSources===undefined?ALL_SYNC_SOURCES:enabledSources);}
 type Account={id:string;owner_id:string;initial_sync_from?:string|null};
 type Marketplace={marketplace_id:string;active?:boolean};
 
