@@ -204,7 +204,7 @@ export function Orders(){
   const [query,setQuery]=useState(''),[channel,setChannel]=useState<'all'|OrderChannel>(initialChannel),[state,setState]=useState<OrderFilter>('pending'),[trackingFilter,setTrackingFilter]=useState<TrackingFilter>('all'),[countryFilter,setCountryFilter]=useState('all'),[carrierFilter,setCarrierFilter]=useState('all');
   const [selected,setSelected]=useState<FulfillmentOrder|null>(null),[labelOrder,setLabelOrder]=useState<FulfillmentOrder|null>(null),[options,setOptions]=useState<ShippingOption[]>([]),[optionsLoading,setOptionsLoading]=useState(false),[busyOrder,setBusyOrder]=useState<string|null>(null);
   const [printers,setPrinters]=useState<LocalPrinter[]>([]),[printer,setPrinter]=useState(preferences.labelPrinterId||''),[printerChecking,setPrinterChecking]=useState(false);
-  const [dateFilter,setDateFilter]=useState(defaultDateFilter);
+  const [dateFilter,setDateFilter]=useState(()=>defaultDateFilter(preferences.defaultPeriod));
   const [manualOpen,setManualOpen]=useState(false),[manualSaving,setManualSaving]=useState(false);
   const [editOrder,setEditOrder]=useState<FulfillmentOrder|null>(null),[editSaving,setEditSaving]=useState(false);
   const [bulkGenerating,setBulkGenerating]=useState(false),[bulkProgress,setBulkProgress]=useState('');
