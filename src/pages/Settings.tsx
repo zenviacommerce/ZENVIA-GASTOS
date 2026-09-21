@@ -20,13 +20,16 @@ import {
 } from 'lucide-react';
 import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
+import { SearchableSelect } from '../components/forms/SearchableSelect';
 import { showError, showSuccess } from '../services/toast';
-import type { ClientsSettings, ExpensesSettings, SalesSettings, UserPreferences } from '../services/settingsSchema';
+import type { ClientsSettings, ExpensesSettings, SalesSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 import { loadManagedSalesSeries, loadTaxRegistrations, type ManagedSalesSeries, type TaxRegistration } from '../services/salesConfig';
 import { loadExpenseCategories } from '../services/expenseCategories';
 import type { ExpenseCategory } from '../types';
+import { addEntityAlias, deleteEntityAlias, loadEntityAliases, updateEntityAlias, type EntityAliasRule } from '../services/entityAliases';
+import { loadSupplierOptions, type SupplierOption } from '../services/supplierEditor';
 
 type SettingsSectionId =
   | 'general'
@@ -575,6 +578,159 @@ function ClientsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   </section>;
 }
 
+
+function SuppliersSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {settings,updateSection,resetSection}=useSettings();
+  const [draft,setDraft]=useState<SuppliersSettings>(settings.suppliers);
+  const [categories,setCategories]=useState<ExpenseCategory[]>([]);
+  const [suppliers,setSuppliers]=useState<SupplierOption[]>([]);
+  const [aliases,setAliases]=useState<EntityAliasRule[]>([]);
+  const [newAlias,setNewAlias]=useState({alias:'',targetEntityId:'',priority:100,active:true});
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [aliasBusy,setAliasBusy]=useState<string|null>(null);
+
+  useEffect(()=>{setDraft(settings.suppliers);onDirtyChange(false)},[settings.suppliers,onDirtyChange]);
+
+  const reloadAliases=async()=>setAliases(await loadEntityAliases('supplier'));
+
+  useEffect(()=>{
+    let active=true;
+    setLoading(true);
+    Promise.all([loadExpenseCategories(),loadSupplierOptions(),loadEntityAliases('supplier')])
+      .then(([nextCategories,nextSuppliers,nextAliases])=>{
+        if(!active)return;
+        setCategories(nextCategories);
+        setSuppliers(nextSuppliers);
+        setAliases(nextAliases);
+      })
+      .catch(e=>showError(e instanceof Error?e.message:'No se pudo cargar la configuración de proveedores.'))
+      .finally(()=>{if(active)setLoading(false)});
+    return()=>{active=false};
+  },[]);
+
+  const update=<K extends keyof SuppliersSettings>(key:K,value:SuppliersSettings[K])=>{
+    setDraft(current=>({...current,[key]:value}));
+    onDirtyChange(true);
+  };
+
+  const save=async()=>{
+    setSaving(true);
+    try{await updateSection('suppliers',draft);onDirtyChange(false);showSuccess('Configuración de proveedores guardada.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración de proveedores.');}
+    finally{setSaving(false);}
+  };
+
+  const restore=async()=>{
+    if(!window.confirm('Se restaurarán los valores predeterminados de Proveedores. ¿Continuar?'))return;
+    setSaving(true);
+    try{await resetSection('suppliers');onDirtyChange(false);showSuccess('Valores predeterminados de Proveedores restaurados.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
+    finally{setSaving(false);}
+  };
+
+  const addAlias=async()=>{
+    if(!newAlias.alias.trim()||!newAlias.targetEntityId){showError('Indica el alias y el proveedor de destino.');return;}
+    setAliasBusy('new');
+    try{
+      await addEntityAlias({entityType:'supplier',alias:newAlias.alias,targetEntityId:newAlias.targetEntityId,priority:newAlias.priority,active:newAlias.active});
+      await reloadAliases();
+      setNewAlias({alias:'',targetEntityId:'',priority:100,active:true});
+      showSuccess('Alias añadido.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo añadir el alias.');}
+    finally{setAliasBusy(null);}
+  };
+
+  const patchAlias=(id:string,patch:Partial<EntityAliasRule>)=>{
+    setAliases(current=>current.map(item=>item.id===id?{...item,...patch}:item));
+  };
+
+  const saveAlias=async(alias:EntityAliasRule)=>{
+    if(!alias.alias.trim()||!alias.targetEntityId){showError('El alias necesita texto y proveedor de destino.');return;}
+    setAliasBusy(alias.id);
+    try{
+      await updateEntityAlias(alias.id,{entityType:'supplier',alias:alias.alias,targetEntityId:alias.targetEntityId,priority:alias.priority,active:alias.active});
+      await reloadAliases();
+      showSuccess('Alias actualizado.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo actualizar el alias.');}
+    finally{setAliasBusy(null);}
+  };
+
+  const removeAlias=async(alias:EntityAliasRule)=>{
+    if(!window.confirm(`¿Eliminar el alias “${alias.alias}”?`))return;
+    setAliasBusy(alias.id);
+    try{await deleteEntityAlias(alias.id);await reloadAliases();showSuccess('Alias eliminado.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo eliminar el alias.');}
+    finally{setAliasBusy(null);}
+  };
+
+  const supplierOptions=suppliers.map(item=>({value:item.id,label:item.name,description:item.taxId||undefined,searchText:[item.name,item.taxId].filter(Boolean).join(' ')}));
+  const typeOptions=[
+    {value:'goods',label:'Mercancía'},
+    {value:'service',label:'Servicios'},
+    {value:'both',label:'Mercancía y servicios'},
+  ];
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero">
+      <div className="settingsSectionIcon"><Building2 size={22}/></div>
+      <div><h2>Configuración de proveedores</h2><p>Defaults, enriquecimiento, detección de identidad y alias explícitos del proveedor.</p></div>
+    </div>
+    {loading?<div className="settingsInlineLoading">Cargando proveedores y alias…</div>:<>
+      <div className="settingsSubsection">
+        <h3>Valores por defecto</h3>
+        <div className="settingsFormGrid">
+          <label className="settingsField"><span>Tipo por defecto</span><SelectField ariaLabel="Tipo por defecto del proveedor" allowEmpty emptyLabel="Sin clasificar" value={draft.defaultType||''} options={typeOptions} onChange={value=>update('defaultType',(value||null) as SuppliersSettings['defaultType'])}/></label>
+          <label className="settingsField"><span>Categoría por defecto</span><SelectField ariaLabel="Categoría por defecto del proveedor" allowEmpty emptyLabel="Sin categoría" value={draft.defaultCategoryId||''} options={categories.map(item=>({value:item.id,label:item.name}))} onChange={value=>update('defaultCategoryId',value||null)}/></label>
+          <label className="settingsField"><span>Umbral de identidad</span><div className="settingsNumberWithSuffix"><input type="number" min="0" max="200" value={draft.identityThreshold} onChange={e=>update('identityThreshold',Number(e.target.value))}/><em>pts</em></div></label>
+        </div>
+        <div className="settingsToggleGrid">
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.autoCreate} onChange={e=>update('autoCreate',e.target.checked)}/><span><strong>Crear proveedores automáticamente</strong><small>Permite crear el proveedor si alias e identidad no encuentran coincidencia.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.detectDuplicates} onChange={e=>update('detectDuplicates',e.target.checked)}/><span><strong>Detectar proveedores duplicados</strong><small>Activa coincidencias fiscales, exactas y heurísticas además de los alias explícitos.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.onlyFillEmpty} onChange={e=>update('onlyFillEmpty',e.target.checked)}/><span><strong>Solo completar campos vacíos</strong><small>Evita sustituir información ya revisada del proveedor.</small></span></label>
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <h3>Enriquecimiento automático</h3>
+        <div className="settingsToggleGrid">
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.enrichTaxId} onChange={e=>update('enrichTaxId',e.target.checked)}/><span><strong>Enriquecer CIF/NIF</strong><small>Completa el identificador fiscal cuando la identidad es segura.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.enrichEmail} onChange={e=>update('enrichEmail',e.target.checked)}/><span><strong>Enriquecer email</strong><small>Completa el correo detectado en la factura.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.enrichPhone} onChange={e=>update('enrichPhone',e.target.checked)}/><span><strong>Enriquecer teléfono</strong><small>Completa el teléfono detectado en la factura.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.enrichWebsite} onChange={e=>update('enrichWebsite',e.target.checked)}/><span><strong>Enriquecer web</strong><small>Completa la web detectada en la factura.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.enrichAddress} onChange={e=>update('enrichAddress',e.target.checked)}/><span><strong>Enriquecer dirección</strong><small>Completa la dirección postal detectada.</small></span></label>
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <div className="settingsSubsectionHead"><div><h3>Alias explícitos</h3><p>Tienen prioridad sobre cualquier heurística. Úsalos cuando una factura imprime un nombre comercial o abreviado distinto al proveedor real.</p></div></div>
+        <div className="settingsAliasCreate">
+          <input value={newAlias.alias} onChange={e=>setNewAlias(current=>({...current,alias:e.target.value}))} placeholder="Ej. Compost & Paper"/>
+          <SearchableSelect value={newAlias.targetEntityId} options={supplierOptions} onChange={value=>setNewAlias(current=>({...current,targetEntityId:value}))} placeholder="Proveedor de destino" searchPlaceholder="Buscar proveedor…" ariaLabel="Proveedor de destino del alias"/>
+          <input type="number" min="0" max="10000" value={newAlias.priority} onChange={e=>setNewAlias(current=>({...current,priority:Number(e.target.value)}))} aria-label="Prioridad del alias"/>
+          <label className="settingsInlineCheck"><input type="checkbox" checked={newAlias.active} onChange={e=>setNewAlias(current=>({...current,active:e.target.checked}))}/> Activo</label>
+          <button type="button" className="secondaryButton" disabled={aliasBusy==='new'} onClick={()=>void addAlias()}><Plus size={15}/> Añadir alias</button>
+        </div>
+        <div className="settingsAliasList">
+          {aliases.length===0?<div className="settingsEmptyMini">Todavía no hay alias explícitos.</div>:aliases.map(alias=><div className="settingsAliasRow" key={alias.id}>
+            <input value={alias.alias} onChange={e=>patchAlias(alias.id,{alias:e.target.value})} aria-label="Alias del proveedor"/>
+            <SearchableSelect value={alias.targetEntityId} options={supplierOptions} onChange={value=>patchAlias(alias.id,{targetEntityId:value})} searchPlaceholder="Buscar proveedor…" ariaLabel="Proveedor asociado al alias"/>
+            <input type="number" min="0" max="10000" value={alias.priority} onChange={e=>patchAlias(alias.id,{priority:Number(e.target.value)})} aria-label="Prioridad"/>
+            <label className="settingsInlineCheck"><input type="checkbox" checked={alias.active} onChange={e=>patchAlias(alias.id,{active:e.target.checked})}/> Activo</label>
+            <button type="button" className="secondaryButton" disabled={aliasBusy===alias.id} onClick={()=>void saveAlias(alias)}>Guardar</button>
+            <button type="button" className="iconBtn dangerIcon" disabled={aliasBusy===alias.id} aria-label="Eliminar alias" onClick={()=>void removeAlias(alias)}><Trash2 size={15}/></button>
+          </div>)}
+        </div>
+      </div>
+
+      <div className="settingsSectionActions">
+        <button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
+        <button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
+      </div>
+    </>}
+  </section>;
+}
+
 const themeOptions=[
   {value:'system',label:'Sistema'},
   {value:'light',label:'Claro'},
@@ -711,7 +867,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
