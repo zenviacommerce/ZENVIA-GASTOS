@@ -35,3 +35,12 @@ export async function updateSupplier(supplierId: string, input: SupplierInput) {
   const { error } = await supabase.from('suppliers').update(supplierRow(input)).eq('id', supplierId);
   if (error) throw error;
 }
+
+
+export type SupplierOption={id:string;name:string;taxId:string|null};
+
+export async function loadSupplierOptions():Promise<SupplierOption[]>{
+  const {data,error}=await supabase.from('suppliers').select('id,name,tax_id').order('name');
+  if(error)throw error;
+  return (data??[]).map((row:any)=>({id:row.id,name:row.name,taxId:row.tax_id||null}));
+}
