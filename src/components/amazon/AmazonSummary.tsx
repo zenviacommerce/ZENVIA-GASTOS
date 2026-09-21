@@ -6,14 +6,16 @@ import { errorMessage } from '../../services/toast';
 import { AmazonCompleteness } from './AmazonCompleteness';
 import { AmazonProducts } from './AmazonProducts';
 import { readViewCache, stableCacheKey, writeViewCache } from '../../services/viewCache';
+import { useSettings } from '../../context/SettingsContext';
 
-const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'});
 const integer=new Intl.NumberFormat('es-ES',{maximumFractionDigits:0});
 function spanDays(filters:AmazonAnalyticsFilters){return Math.max(1,Math.round((new Date(`${filters.to}T00:00:00`).getTime()-new Date(`${filters.from}T00:00:00`).getTime())/86400000)+1);}
 function dateRangeLabel(filters:AmazonAnalyticsFilters){const fmt=(value:string)=>new Date(value+'T12:00:00').toLocaleDateString('es-ES');return fmt(filters.from)+' – '+fmt(filters.to);}
 function DetailRow({label,value,note}:{label:string;value:string;note?:string}){return <div className="amazonDetailsRow"><div><span>{label}</span>{note&&<small>{note}</small>}</div><strong>{value}</strong></div>;}
 
 export function AmazonSummary({filters,onLoaded,refreshToken=0,visibleKpis}:{filters:AmazonAnalyticsFilters;onLoaded?:(summary:AmazonSummaryData)=>void;refreshToken?:number;visibleKpis?:AmazonKpiKey[]}){
+  const {settings}=useSettings();
+  const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:settings.amazon.consolidatedCurrency});
   const summaryCacheKey=stableCacheKey('amazon:summary',filters);
   const detailCacheKey=stableCacheKey('amazon:detail',filters);
   const seriesCacheKey=stableCacheKey('amazon:series',{...filters,grain:spanDays(filters)>93?'month':'day'});
