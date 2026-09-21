@@ -12,6 +12,7 @@ import { productMarginMetrics } from '../services/productMetrics';
 import { showError, showSuccess } from '../services/toast';
 import { confirmAction, openActionProcess } from '../services/actionDialog';
 import { useSettings } from '../context/SettingsContext';
+import { persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
 import '../supplier-actions.css';
 
 const money=(value:number|null,decimals=2,maxDecimals=Math.max(decimals,4))=>value==null?'—':`${value.toLocaleString('es-ES',{minimumFractionDigits:decimals,maximumFractionDigits:maxDecimals})} €`;
@@ -51,17 +52,18 @@ function ProductDrawer({product,extra,onClose,onEdit,onDelete,busy}:{product:Pro
 }
 
 export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];onAdd:()=>void;onEdit:(product:Product)=>void;onDelete:(product:Product)=>Promise<void>}){
- const {settings,preferences}=useSettings();
+ const {settings,preferences,updatePreferences}=useSettings();
  const pageSize=preferences.pageSize;
  const marginAlertThreshold=Math.max(settings.products.minimumMarginPct,settings.products.marginAlertPct);
  const costIncreaseThreshold=settings.products.costIncreaseAlertPct;
  const costMoney=(value:number|null)=>money(value,Math.min(settings.products.costDecimals,8),Math.min(settings.products.costDecimals,8));
- const [query,setQuery]=useState('');
- const [dateFilter,setDateFilter]=useState(()=>dateFilterForPreset(preferences.defaultPeriod));
- const [categoryFilter,setCategoryFilter]=useState('all');
- const [supplierFilter,setSupplierFilter]=useState('all');
- const [scope,setScope]=useState<ProductScope>('all');
- const [taxFilter,setTaxFilter]=useState('all');
+ const remembered=rememberedFilter<{query:string;dateFilter:ReturnType<typeof dateFilterForPreset>;categoryFilter:string;supplierFilter:string;scope:ProductScope;taxFilter:string}>(preferences,'products.filters',{query:'',dateFilter:dateFilterForPreset(preferences.defaultPeriod),categoryFilter:'all',supplierFilter:'all',scope:'all',taxFilter:'all'});
+ const [query,setQuery]=useState(remembered.query);
+ const [dateFilter,setDateFilter]=useState(remembered.dateFilter);
+ const [categoryFilter,setCategoryFilter]=useState(remembered.categoryFilter);
+ const [supplierFilter,setSupplierFilter]=useState(remembered.supplierFilter);
+ const [scope,setScope]=useState<ProductScope>(remembered.scope);
+ const [taxFilter,setTaxFilter]=useState(remembered.taxFilter);
  const [busyId,setBusyId]=useState<string|null>(null);
  const [error,setError]=useState('');
  const [page,setPage]=useState(1);
@@ -120,6 +122,7 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
  const totalPages=Math.max(1,Math.ceil(shown.length/pageSize));
  const paged=useMemo(()=>shown.slice((page-1)*pageSize,page*pageSize),[shown,page]);
  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,dateFilter,categoryFilter,supplierFilter,taxFilter,scope]);
+ useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'products.filters',{query,dateFilter,categoryFilter,supplierFilter,scope,taxFilter})},350);return()=>window.clearTimeout(timer)},[query,dateFilter,categoryFilter,supplierFilter,scope,taxFilter,preferences.rememberFilters]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  useEffect(()=>{if(selected&&!products.some(product=>product.id===selected.id))setSelected(null)},[products,selected]);
  const totals=useMemo(()=>{
