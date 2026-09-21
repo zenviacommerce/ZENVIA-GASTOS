@@ -36,6 +36,7 @@ import { loadIntegrationHealth, syncIntegration, testIntegrationConnection, type
 import { DEFAULT_AUTOMATION_RULES, loadAutomationRules, saveAutomationRule, type AutomationRule } from '../services/automationRules';
 import { findClientDuplicates, findInvoiceDuplicates, findProductDuplicates, findSupplierDuplicates, listClientsMissingTaxId, listProductsWithoutCost, listSuppliersMissingTaxId, mergeClient, mergeSupplier, previewClientMerge, previewSupplierMerge, runAmazonSync, runSendcloudSync, type DuplicateCandidate, type MergePreview } from '../services/maintenance';
 import { downloadSettingsExport, previewSettingsReset, resetAllSettingsToDefaults, type SettingsResetPreview } from '../services/settingsExport';
+import { DASHBOARD_KPI_DEFAULTS, TABLE_COLUMN_DEFAULTS, type PreferenceTableKey } from '../services/uiPreferences';
 
 type SettingsSectionId =
   | 'general'
@@ -1410,6 +1411,36 @@ function PreferencesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
     onDirtyChange(true);
   };
 
+  const dashboardLabels:Record<string,string>={
+    sales:'Facturación',expenses:'Gastos',result:'Resultado',vatBalance:'IVA neto',receivable:'Pendiente de cobro',
+    pendingExpenses:'Gastos por revisar',orders:'Pedidos',orderValue:'Valor de pedidos',pendingOrders:'Pedidos pendientes',
+    shippedOrders:'Pedidos enviados',cancelledOrders:'Pedidos cancelados',
+  };
+  const tableLabels:Record<PreferenceTableKey,string>={expenses:'Gastos',suppliers:'Proveedores',clients:'Clientes',products:'Productos'};
+  const columnLabels:Record<string,string>={
+    date:'Fecha',supplier:'Proveedor',invoice:'Factura',category:'Categoría',source:'Origen',status:'Estado',vat:'IVA',total:'Total',
+    taxId:'CIF/NIF',type:'Tipo',contact:'Contacto',invoiceCount:'Facturas',spend:'Gasto',lastInvoice:'Última factura',
+    client:'Cliente',country:'País',invoiced:'Facturado',pending:'Pendiente',
+    product:'Producto',sku:'SKU / EAN',lastPurchase:'Última compra',cost:'Coste',salePrice:'P. venta',margin:'Margen',costChange:'Var. coste',
+  };
+  const selectedDashboardKpis=draft.dashboardKpis.length?draft.dashboardKpis:[...DASHBOARD_KPI_DEFAULTS];
+  const toggleDashboardKpi=(key:string,checked:boolean)=>{
+    const next=new Set(selectedDashboardKpis);
+    if(checked)next.add(key);else next.delete(key);
+    if(next.size===0){showError('Debe quedar al menos un KPI visible en el Resumen.');return;}
+    update('dashboardKpis',next.size===DASHBOARD_KPI_DEFAULTS.length?[]:DASHBOARD_KPI_DEFAULTS.filter(item=>next.has(item)));
+  };
+  const visibleColumns=(table:PreferenceTableKey)=>{
+    const defaults=[...TABLE_COLUMN_DEFAULTS[table]];
+    return Object.prototype.hasOwnProperty.call(draft.tableColumns,table)?(draft.tableColumns[table]||[]):defaults;
+  };
+  const toggleColumn=(table:PreferenceTableKey,key:string,checked:boolean)=>{
+    const next=new Set(visibleColumns(table));
+    if(checked)next.add(key);else next.delete(key);
+    if(next.size===0){showError('Debe quedar al menos una columna de datos visible.');return;}
+    update('tableColumns',{...draft.tableColumns,[table]:TABLE_COLUMN_DEFAULTS[table].filter(item=>next.has(item))});
+  };
+
   const save=async()=>{
     setSaving(true);
     try{
@@ -1436,6 +1467,22 @@ function PreferencesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
       <label className="settingsField"><span>Página inicial</span><SelectField ariaLabel="Página inicial" value={draft.startPage||''} options={startPageOptions} onChange={value=>update('startPage',value||null)}/></label>
       <label className="settingsField"><span>Periodo inicial</span><SelectField ariaLabel="Periodo inicial" value={draft.defaultPeriod} options={periodOptions} onChange={value=>update('defaultPeriod',value as UserPreferences['defaultPeriod'])}/></label>
       <label className="settingsToggleField"><input type="checkbox" checked={draft.rememberFilters} onChange={event=>update('rememberFilters',event.target.checked)}/><span><strong>Recordar filtros</strong><small>Conserva los últimos filtros de cada pantalla cuando vuelvas a entrar.</small></span></label>
+    </div>
+
+    <div className="settingsSubsection">
+      <h3>KPIs del Resumen</h3>
+      <div className="settingsToggleGrid">
+        {DASHBOARD_KPI_DEFAULTS.map(key=><label className="settingsToggleField" key={key}><input type="checkbox" checked={selectedDashboardKpis.includes(key)} onChange={e=>toggleDashboardKpi(key,e.target.checked)}/><span><strong>{dashboardLabels[key]||key}</strong><small>Mostrar en el panel principal.</small></span></label>)}
+      </div>
+    </div>
+
+    <div className="settingsSubsection">
+      <h3>Columnas visibles</h3>
+      {Object.entries(TABLE_COLUMN_DEFAULTS).map(([rawTable,columns])=>{
+        const table=rawTable as PreferenceTableKey;
+        const visible=visibleColumns(table);
+        return <div className="settingsPreferenceColumns" key={table}><strong>{tableLabels[table]}</strong><div className="settingsToggleGrid">{columns.map(key=><label className="settingsToggleField" key={key}><input type="checkbox" checked={visible.includes(key)} onChange={e=>toggleColumn(table,key,e.target.checked)}/><span><strong>{columnLabels[key]||key}</strong></span></label>)}</div></div>;
+      })}
     </div>
 
     <div className="settingsSectionActions">
