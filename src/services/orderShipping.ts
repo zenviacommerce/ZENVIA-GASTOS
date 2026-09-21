@@ -16,17 +16,13 @@ export interface ShippingPricePreview{
 }
 
 const clean=(value:unknown)=>String(value??'').trim();
-const isBalearic=(order:FulfillmentOrder)=>clean(order.shippingAddress?.country_code).toUpperCase()==='ES'&&/^07\d{3}$/.test(clean(order.shippingAddress?.postal_code).replace(/\s+/g,''));
-
-export function defaultCarrierCode(order:FulfillmentOrder){return isBalearic(order)?'correos':'mrw'}
-
 function addLengthIssue(issues:OrderValidationIssue[],field:string,label:string,value:unknown,max:number,required=false){
   const text=clean(value);
   if(required&&!text){issues.push({field,severity:'error',message:`${label}: obligatorio.`});return}
   if(text.length>max)issues.push({field,severity:'error',message:`${label}: ${text.length}/${max} caracteres.`});
 }
 
-export function validateOrderForCarrier(order:FulfillmentOrder,carrierCode=defaultCarrierCode(order)):OrderValidationResult{
+export function validateOrderForCarrier(order:FulfillmentOrder,carrierCode=''):OrderValidationResult{
   const address=order.shippingAddress||{},issues:OrderValidationIssue[]=[];
   const name=order.customerName||address.name;
   addLengthIssue(issues,'name','Nombre',name,carrierCode==='mrw'?50:80,true);
@@ -49,8 +45,8 @@ function inDateRange(document:TransportTariffDocument,order:FulfillmentOrder){
   return (!document.effectiveFrom||raw>=document.effectiveFrom)&&(!document.effectiveTo||raw<=document.effectiveTo);
 }
 
-export function calculateDefaultShippingPreview(order:FulfillmentOrder,tariffs:TransportTariffDocument[],vatRate=21):ShippingPricePreview|null{
-  if(defaultCarrierCode(order)!=='mrw'||order.weightKg==null)return null;
+export function calculateDefaultShippingPreview(order:FulfillmentOrder,tariffs:TransportTariffDocument[],carrierCode='',vatRate=21):ShippingPricePreview|null{
+  if(!clean(carrierCode).toLowerCase().includes('mrw')||order.weightKg==null)return null;
   const country=clean(order.shippingAddress?.country_code).toUpperCase();
   if(!['ES','PT'].includes(country))return null;
   const document=tariffs.filter(item=>(item.status==='active'||item.status==='superseded')&&item.carrierCode==='mrw'&&inDateRange(item,order)).sort((a,b)=>(b.effectiveFrom||'').localeCompare(a.effectiveFrom||''))[0];
