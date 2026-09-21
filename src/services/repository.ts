@@ -9,7 +9,7 @@ import { sanitizeDatabaseSingleLine, sanitizeDatabaseText, sanitizeDatabaseValue
 import { resolveEntityAlias } from './entityAliases';
 import { loadAppSettings } from './settings';
 import { expenseImportPolicyFromSettings, type ExpenseImportPolicy } from './expenseImportPolicy';
-import type { SuppliersSettings } from './settingsSchema';
+import { DEFAULT_APP_SETTINGS, type SuppliersSettings } from './settingsSchema';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
 const normalizeProductKey = (value: string) => value
@@ -132,7 +132,7 @@ function cleanSupplierContact(contact: SupplierProfileData): SupplierProfileData
   };
 }
 
-async function ensureSupplier(name: string, contactInput: SupplierProfileData = {}, supplierTypeHint?: 'goods', policy:ExpenseImportPolicy=expenseImportPolicyFromSettings(undefined), supplierSettings:SuppliersSettings): Promise<{ id: string; created: boolean }> {
+async function ensureSupplier(name: string, contactInput: SupplierProfileData = {}, supplierTypeHint?: 'goods', policy:ExpenseImportPolicy=expenseImportPolicyFromSettings(undefined), supplierSettings:SuppliersSettings=DEFAULT_APP_SETTINGS.suppliers): Promise<{ id: string; created: boolean }> {
   const clean = sanitizeDatabaseSingleLine(canonicalizeSupplierName(name) || name).slice(0, 120);
   const cleanKey = supplierIdentityKey(clean);
   const contact = cleanSupplierContact(contactInput);
