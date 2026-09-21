@@ -1,13 +1,11 @@
 import jsPDF from 'jspdf';
 import type { BusinessSettings, SalesInvoice } from './sales';
-import type { SalesSettings } from './settingsSchema';
+import { DEFAULT_APP_SETTINGS, type GeneralSettings, type SalesSettings } from './settingsSchema';
+import { formatAppDate, formatAppMoney, invoiceDocumentLabels, localeForLanguage } from './formatting';
 
 export type InvoicePdfBranding = {
   logoDataUrl?: string | null;
 };
-
-const money=(value:number)=>`${value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €`;
-const dateLabel=(value:string)=>new Date(`${value}T12:00:00`).toLocaleDateString('es-ES');
 
 export function salesInvoicePdfFilename(invoice:SalesInvoice){
   const number=invoice.invoiceNumber||'BORRADOR';
@@ -26,8 +24,18 @@ function addLogo(doc:jsPDF,logoDataUrl?:string|null){
   }catch{return 0;}
 }
 
-export function createSalesInvoicePdfBlob(invoice:SalesInvoice,settings?:BusinessSettings|null,branding?:InvoicePdfBranding|null,salesSettings?:SalesSettings|null){
+export function createSalesInvoicePdfBlob(
+  invoice:SalesInvoice,
+  settings?:BusinessSettings|null,
+  branding?:InvoicePdfBranding|null,
+  salesSettings?:SalesSettings|null,
+  generalSettings:GeneralSettings=DEFAULT_APP_SETTINGS.general,
+){
   const doc=new jsPDF({unit:'mm',format:'a4'});
+  const labels=invoiceDocumentLabels(generalSettings.documentLanguage);
+  const locale=localeForLanguage(generalSettings.documentLanguage);
+  const money=(value:number)=>formatAppMoney(value,invoice.currency,generalSettings,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const dateLabel=(value:string)=>formatAppDate(value,generalSettings,'');
   const issuerName=invoice.issuerName||settings?.legalName||'ZENVIA COMMERCE SL';
   const issuerTaxId=invoice.issuerTaxId||settings?.taxId||'';
   const issuerAddress=invoice.issuerAddress||[settings?.addressLine1,settings?.addressLine2,[settings?.postalCode,settings?.city].filter(Boolean).join(' '),settings?.province,settings?.countryCode].filter(Boolean).join(', ');
@@ -35,54 +43,62 @@ export function createSalesInvoicePdfBlob(invoice:SalesInvoice,settings?:Busines
   const issuerPhone=invoice.issuerPhone||settings?.phone||'';
   const taxLabel=invoice.issuerTaxRegistrationLabel||invoice.taxRegistrationLabel||'';
   const taxCountry=invoice.issuerTaxCountryCode||invoice.taxRegistrationCountryCode||'';
-  const number=invoice.invoiceNumber||'BORRADOR';
-  const title=invoice.status==='draft'?(invoice.invoiceType==='rectifying'?'BORRADOR RECTIFICATIVA':'BORRADOR DE FACTURA'):(invoice.invoiceType==='rectifying'?'FACTURA RECTIFICATIVA':'FACTURA');
+  const number=invoice.invoiceNumber||labels.draftInvoice;
+  const title=invoice.status==='draft'
+    ?(invoice.invoiceType==='rectifying'?labels.draftRectifyingInvoice:labels.draftInvoice)
+    :(invoice.invoiceType==='rectifying'?labels.rectifyingInvoice:labels.invoice);
 
   const logoHeight=addLogo(doc,branding?.logoDataUrl);
   let issuerY=logoHeight?14+logoHeight+4:16;
   doc.setFont('helvetica','bold');doc.setFontSize(10.5);doc.text(issuerName,14,issuerY);
   issuerY+=5;doc.setFont('helvetica','normal');doc.setFontSize(8.5);
-  if(issuerTaxId&&(salesSettings?.showFiscalDataOnPdf??true)){doc.text(`${taxCountry&&taxCountry!=='ES'?'VAT':'NIF/CIF'}${taxLabel?` · ${taxLabel}`:''}: ${issuerTaxId}`,14,issuerY);issuerY+=4.5;}
+  if(issuerTaxId&&(salesSettings?.showFiscalDataOnPdf??true)){doc.text(`${taxCountry&&taxCountry!=='ES'?'VAT':labels.taxId}${taxLabel?` · ${taxLabel}`:''}: ${issuerTaxId}`,14,issuerY);issuerY+=4.5;}
   const issuerLines=doc.splitTextToSize(issuerAddress||'',78);if(issuerLines.length){doc.text(issuerLines,14,issuerY);issuerY+=issuerLines.length*4;}
   if(issuerEmail){doc.text(issuerEmail,14,issuerY);issuerY+=4;}
   if(issuerPhone){doc.text(issuerPhone,14,issuerY);issuerY+=4;}
 
   doc.setFont('helvetica','bold');doc.setFontSize(18);doc.text(title,196,16,{align:'right'});
   doc.setFontSize(11);doc.text(number,196,24,{align:'right'});doc.setFont('helvetica','normal');doc.setFontSize(9);
-  doc.text(`Fecha: ${dateLabel(invoice.issueDate)}`,196,31,{align:'right'});
-  if(invoice.dueDate&&(salesSettings?.showDueDateOnPdf??true))doc.text(`Vencimiento: ${dateLabel(invoice.dueDate)}`,196,37,{align:'right'});
-  if(invoice.operationDate)doc.text(`Operación: ${dateLabel(invoice.operationDate)}`,196,43,{align:'right'});
+  doc.text(`${labels.date}: ${dateLabel(invoice.issueDate)}`,196,31,{align:'right'});
+  if(invoice.dueDate&&(salesSettings?.showDueDateOnPdf??true))doc.text(`${labels.dueDate}: ${dateLabel(invoice.dueDate)}`,196,37,{align:'right'});
+  if(invoice.operationDate)doc.text(`${labels.operationDate}: ${dateLabel(invoice.operationDate)}`,196,43,{align:'right'});
 
   const blockY=Math.max(60,issuerY+7);
-  doc.setDrawColor(210);doc.line(14,blockY-5,196,blockY-5);doc.setFont('helvetica','bold');doc.setFontSize(9);doc.text('FACTURAR A',14,blockY);doc.setFont('helvetica','normal');
+  doc.setDrawColor(210);doc.line(14,blockY-5,196,blockY-5);doc.setFont('helvetica','bold');doc.setFontSize(9);doc.text(labels.billTo,14,blockY);doc.setFont('helvetica','normal');
   let clientY=blockY+7;doc.setFontSize(10);doc.text(invoice.clientName,14,clientY);clientY+=6;doc.setFontSize(8.8);
-  if(invoice.clientTaxId&&(salesSettings?.showFiscalDataOnPdf??true)){doc.text(`NIF/CIF: ${invoice.clientTaxId}`,14,clientY);clientY+=4.5;}
+  if(invoice.clientTaxId&&(salesSettings?.showFiscalDataOnPdf??true)){doc.text(`${labels.taxId}: ${invoice.clientTaxId}`,14,clientY);clientY+=4.5;}
   const clientAddress=doc.splitTextToSize(invoice.clientAddress||'',90);if(clientAddress.length){doc.text(clientAddress,14,clientY);clientY+=clientAddress.length*4;}
   if(invoice.clientEmail){doc.text(invoice.clientEmail,14,clientY);clientY+=4;}
   if(invoice.clientPhone){doc.text(invoice.clientPhone,14,clientY);clientY+=4;}
 
   let y=Math.max(blockY+34,clientY+7);
   doc.setFillColor(245,247,249);doc.rect(14,y-5,182,8,'F');doc.setFont('helvetica','bold');doc.setFontSize(8.5);
-  doc.text('Descripción',16,y);doc.text('Cant.',112,y,{align:'right'});doc.text('Precio',135,y,{align:'right'});doc.text('IVA',153,y,{align:'right'});doc.text('Total',194,y,{align:'right'});y+=7;doc.setFont('helvetica','normal');
+  doc.text(labels.description,16,y);doc.text(labels.quantity,112,y,{align:'right'});doc.text(labels.price,135,y,{align:'right'});doc.text(labels.vat,153,y,{align:'right'});doc.text(labels.total,194,y,{align:'right'});y+=7;doc.setFont('helvetica','normal');
   for(const line of invoice.lines){
     if(y>258){doc.addPage();y=20;}
-    const description=doc.splitTextToSize(line.description,85);doc.text(description,16,y);doc.text(line.quantity.toLocaleString('es-ES'),112,y,{align:'right'});doc.text(money(line.unitPrice),135,y,{align:'right'});doc.text(`${line.taxRate.toLocaleString('es-ES')} %`,153,y,{align:'right'});doc.text(money(line.lineTotal??0),194,y,{align:'right'});y+=Math.max(7,description.length*4.5+2);
+    const description=doc.splitTextToSize(line.description,85);doc.text(description,16,y);doc.text(line.quantity.toLocaleString(locale),112,y,{align:'right'});doc.text(money(line.unitPrice),135,y,{align:'right'});doc.text(`${line.taxRate.toLocaleString(locale)} %`,153,y,{align:'right'});doc.text(money(line.lineTotal??0),194,y,{align:'right'});y+=Math.max(7,description.length*4.5+2);
   }
 
   if(y>250){doc.addPage();y=24;}else y+=4;
   doc.line(115,y,196,y);y+=7;doc.setFontSize(9);
-  doc.text('Base imponible:',150,y,{align:'right'});doc.text(money(invoice.subtotal),194,y,{align:'right'});y+=6;
-  if(invoice.discountAmount!==0){doc.text('Descuentos:',150,y,{align:'right'});doc.text(money(-invoice.discountAmount),194,y,{align:'right'});y+=6;}
-  doc.text('IVA:',150,y,{align:'right'});doc.text(money(invoice.taxAmount),194,y,{align:'right'});y+=8;doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('TOTAL:',150,y,{align:'right'});doc.text(money(invoice.totalAmount),194,y,{align:'right'});
+  doc.text(`${labels.taxableBase}:`,150,y,{align:'right'});doc.text(money(invoice.subtotal),194,y,{align:'right'});y+=6;
+  if(invoice.discountAmount!==0){doc.text(`${labels.discounts}:`,150,y,{align:'right'});doc.text(money(-invoice.discountAmount),194,y,{align:'right'});y+=6;}
+  doc.text(`${labels.vat}:`,150,y,{align:'right'});doc.text(money(invoice.taxAmount),194,y,{align:'right'});y+=8;doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text(`${labels.total}:`,150,y,{align:'right'});doc.text(money(invoice.totalAmount),194,y,{align:'right'});
 
   doc.setFont('helvetica','normal');doc.setFontSize(8.5);let footerY=Math.max(y+16,265);
   if(footerY>278){doc.addPage();footerY=24;}
-  if(invoice.paymentMethod&&(salesSettings?.showPaymentMethodOnPdf??true)){doc.text(`Forma de pago: ${invoice.paymentMethod}`,14,footerY);footerY+=5;}
+  if(invoice.paymentMethod&&(salesSettings?.showPaymentMethodOnPdf??true)){doc.text(`${labels.paymentMethod}: ${invoice.paymentMethod}`,14,footerY);footerY+=5;}
   if(settings?.iban&&(salesSettings?.showIbanOnPdf??true)){doc.text(`IBAN: ${settings.iban}`,14,footerY);footerY+=5;}
-  if(invoice.notes){doc.text(doc.splitTextToSize(`Notas: ${invoice.notes}`,180),14,footerY);footerY+=8;}
+  if(invoice.notes){doc.text(doc.splitTextToSize(`${labels.notes}: ${invoice.notes}`,180),14,footerY);footerY+=8;}
   if(settings?.invoiceFooter)doc.text(doc.splitTextToSize(settings.invoiceFooter,180),14,footerY);
   return doc.output('blob');
 }
 
-export function downloadSalesInvoicePdf(invoice:SalesInvoice,settings?:BusinessSettings|null,branding?:InvoicePdfBranding|null,salesSettings?:SalesSettings|null){const blob=createSalesInvoicePdfBlob(invoice,settings,branding,salesSettings);const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=salesInvoicePdfFilename(invoice);document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1000);}
-export function printSalesInvoicePdf(invoice:SalesInvoice,settings?:BusinessSettings|null,branding?:InvoicePdfBranding|null,salesSettings?:SalesSettings|null){const blob=createSalesInvoicePdfBlob(invoice,settings,branding,salesSettings);const url=URL.createObjectURL(blob);const printWindow=window.open(url,'_blank','noopener,noreferrer');if(!printWindow){URL.revokeObjectURL(url);throw new Error('El navegador ha bloqueado la ventana de impresión. Permite las ventanas emergentes para ZENVIA Gestión e inténtalo de nuevo.');}const cleanup=()=>window.setTimeout(()=>URL.revokeObjectURL(url),60000);printWindow.addEventListener('load',()=>{window.setTimeout(()=>{try{printWindow.focus();printWindow.print();}catch{}cleanup();},700);},{once:true});window.setTimeout(cleanup,65000);}
+export function downloadSalesInvoicePdf(invoice:SalesInvoice,settings?:BusinessSettings|null,branding?:InvoicePdfBranding|null,salesSettings?:SalesSettings|null,generalSettings:GeneralSettings=DEFAULT_APP_SETTINGS.general){
+  const blob=createSalesInvoicePdfBlob(invoice,settings,branding,salesSettings,generalSettings);
+  const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=salesInvoicePdfFilename(invoice);document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+export function printSalesInvoicePdf(invoice:SalesInvoice,settings?:BusinessSettings|null,branding?:InvoicePdfBranding|null,salesSettings?:SalesSettings|null,generalSettings:GeneralSettings=DEFAULT_APP_SETTINGS.general){
+  const blob=createSalesInvoicePdfBlob(invoice,settings,branding,salesSettings,generalSettings);
+  const url=URL.createObjectURL(blob);const printWindow=window.open(url,'_blank','noopener,noreferrer');if(!printWindow){URL.revokeObjectURL(url);throw new Error('El navegador ha bloqueado la ventana de impresión. Permite las ventanas emergentes para ZENVIA Gestión e inténtalo de nuevo.');}const cleanup=()=>window.setTimeout(()=>URL.revokeObjectURL(url),60000);printWindow.addEventListener('load',()=>{window.setTimeout(()=>{try{printWindow.focus();printWindow.print();}catch{}cleanup();},700),{once:true});window.setTimeout(cleanup,65000);
+}
