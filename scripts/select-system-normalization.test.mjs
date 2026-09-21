@@ -43,7 +43,7 @@ test('orders use searchable selects for growing catalogs and SelectField for tra
   const orders=await source('src/pages/Orders.tsx');
   assert.match(orders,/Integración Sendcloud<\/span><SearchableSelect/);
   assert.match(orders,/Impresora directa:<\/span>\{printers\.length\?<SearchableSelect/);
-  assert.match(orders,/ordersTrackingFilter[^]*<SelectField/);
+  assert.match(orders,/Seguimiento<\/span><SelectField[^]*ariaLabel="Filtrar por seguimiento"/);
 });
 
 test('unified select system exposes simple and searchable sibling controls',async()=>{
