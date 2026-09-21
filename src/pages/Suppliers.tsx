@@ -11,6 +11,7 @@ import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
 import { defaultDateFilter, periodLabel } from '../services/filters';
 import '../supplier-actions.css';
 import { useSettings } from '../context/SettingsContext';
+import { persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
 
 const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
@@ -49,20 +50,21 @@ function SupplierDrawer({supplier,metric,period,onClose,onEdit,onDelete,busy}:{s
 }
 
 export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[];onAdd:()=>void;onEdit:(supplier:Supplier)=>void;onDelete:(supplier:Supplier)=>Promise<void>}){
- const {preferences}=useSettings();
+ const {preferences,updatePreferences}=useSettings();
  const pageSize=preferences.pageSize;
+ const remembered=rememberedFilter<{query:string;typeFilter:SupplierTypeFilter;activityFilter:SupplierActivityFilter;categoryFilter:string;dateFilter:ReturnType<typeof defaultDateFilter>}>(preferences,'suppliers.filters',{query:'',typeFilter:'all',activityFilter:'all',categoryFilter:'all',dateFilter:defaultDateFilter(preferences.defaultPeriod)});
  const [busyId,setBusyId]=useState<string|null>(null);
  const [error,setError]=useState('');
- const [query,setQuery]=useState('');
- const [typeFilter,setTypeFilter]=useState<SupplierTypeFilter>('all');
- const [activityFilter,setActivityFilter]=useState<SupplierActivityFilter>('all');
- const [categoryFilter,setCategoryFilter]=useState('all');
+ const [query,setQuery]=useState(remembered.query);
+ const [typeFilter,setTypeFilter]=useState<SupplierTypeFilter>(remembered.typeFilter);
+ const [activityFilter,setActivityFilter]=useState<SupplierActivityFilter>(remembered.activityFilter);
+ const [categoryFilter,setCategoryFilter]=useState(remembered.categoryFilter);
  const [selected,setSelected]=useState<Supplier|null>(null);
  const [checkedIds,setCheckedIds]=useState<Set<string>>(()=>new Set());
  const [bulkBusy,setBulkBusy]=useState(false);
  const [invoices,setInvoices]=useState<Invoice[]>([]);
  const [categories,setCategories]=useState<ExpenseCategory[]>([]);
- const [dateFilter,setDateFilter]=useState(()=>defaultDateFilter(preferences.defaultPeriod));
+ const [dateFilter,setDateFilter]=useState(remembered.dateFilter);
  const [page,setPage]=useState(1);
 
  useEffect(()=>{let cancelled=false;loadAppData().then(data=>{if(!cancelled){setInvoices(data.invoices);setCategories(data.categories)}}).catch(()=>{});return()=>{cancelled=true}},[suppliers]);
@@ -103,6 +105,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
  const paged=useMemo(()=>filtered.slice((page-1)*pageSize,page*pageSize),[filtered,page]);
  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,typeFilter,categoryFilter,activityFilter,dateFilter]);
+ useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'suppliers.filters',{query,typeFilter,activityFilter,categoryFilter,dateFilter})},350);return()=>window.clearTimeout(timer)},[query,typeFilter,activityFilter,categoryFilter,dateFilter,preferences.rememberFilters]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  const totals=useMemo(()=>({spent:filtered.reduce((sum,s)=>sum+(metrics.get(s.id)?.total||0),0),invoices:filtered.reduce((sum,s)=>sum+(metrics.get(s.id)?.count||0),0),active:filtered.filter(s=>(metrics.get(s.id)?.count||0)>0).length}),[filtered,metrics]);
 
