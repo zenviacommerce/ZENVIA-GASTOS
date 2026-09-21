@@ -20,14 +20,14 @@ import {
   type SendcloudStatus, type ShippingOption,
 } from '../services/orders';
 import { bulkLabelZipFilename, labelPdfFilename, uniqueLabelPdfFilename } from '../services/orderLabelFiles';
-import { selectShippingOptionByRules } from '../services/shippingRuleCore';
+import { firstMatchingShippingRule, selectShippingOptionByRules } from '../services/shippingRuleCore';
 import { defaultShippingRules, loadShippingRules, type ShippingRule } from '../services/shippingRules';
 import { prepareLabelPdf } from '../services/labelPdf';
 import { useSettings } from '../context/SettingsContext';
 import { loadAmazonProductImages } from '../services/amazon';
 import { listTransportTariffs, type TransportTariffDocument } from '../services/transportTariffs';
 import {
-  calculateDefaultShippingPreview, defaultCarrierCode, previewFromShippingOption, shippingPriceForOrder, validateOrderForCarrier,
+  calculateDefaultShippingPreview, previewFromShippingOption, shippingPriceForOrder, validateOrderForCarrier,
   type OrderValidationIssue, type ShippingPricePreview,
 } from '../services/orderShipping';
 import { errorMessage, showError, showSuccess } from '../services/toast';
@@ -249,7 +249,7 @@ export function Orders(){
   const labelContextOrders=useMemo(()=>labelPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter,countryFilter,carrierFilter)),[labelPeriodOrders,query,channel,trackingFilter,countryFilter,carrierFilter]);
   const shippedContextOrders=useMemo(()=>shippedPeriodOrders.filter(order=>matchesOrderContext(order,query,channel,trackingFilter,countryFilter,carrierFilter)),[shippedPeriodOrders,query,channel,trackingFilter,countryFilter,carrierFilter]);
   const pendingOrders=useMemo(()=>orderContextOrders.filter(isPendingOrder),[orderContextOrders]);
-  const tariffPreviews=useMemo(()=>{const map:Record<string,ShippingPricePreview>={};for(const order of orders){const preview=calculateDefaultShippingPreview(order,tariffs);if(preview)map[order.id]=preview}return map},[orders,tariffs]);
+  const tariffPreviews=useMemo(()=>{const map:Record<string,ShippingPricePreview>={};for(const order of orders){const configuredCarrier=firstMatchingShippingRule(order,shippingRules)?.action.carrierContains||settings.orders.defaultCarrier||'';const preview=calculateDefaultShippingPreview(order,tariffs,configuredCarrier);if(preview)map[order.id]=preview}return map},[orders,tariffs,shippingRules,settings.orders.defaultCarrier]);
   const transportKpis=useMemo(()=>{
     let total=0,net=0,tax=0,valued=0,missing=0,mrw=0,correos=0,other=0;
     const shipments=orders.filter(order=>Boolean(order.sendcloudParcelId)&&inPeriod(timestampDateKey(order.shippingCostRecordedAt||order.fulfilledAt||order.labelCreatedAt||order.trackingUpdatedAt||order.orderCreatedAt),dateFrom,dateTo)&&matchesOrderContext(order,query,channel,trackingFilter,countryFilter,carrierFilter));
@@ -289,7 +289,7 @@ export function Orders(){
     const fallback=settings.orders.defaultCarrier?.trim().toLowerCase();
     return fallback?allowed.find(option=>`${option.carrierCode||''} ${option.carrierName||''}`.toLowerCase().includes(fallback))||null:null;
   };
-  const validationCarrier=(order:FulfillmentOrder)=>settings.orders.defaultCarrier||defaultCarrierCode(order);
+  const validationCarrier=(order:FulfillmentOrder)=>firstMatchingShippingRule(order,shippingRules)?.action.carrierContains||settings.orders.defaultCarrier||'';
 
   const prepare=async(order:FulfillmentOrder)=>{
     if(!canPrepareOrder(order)){showError('Este pedido ya no admite una nueva etiqueta.');return}
