@@ -53,7 +53,7 @@ test('supplier model and editor persist address and website', async () => {
 test('new non-merchandise suppliers use configurable type with unclassified as the default fallback', async () => {
   const repository = await readFile(new URL('../src/services/repository.ts', import.meta.url), 'utf8');
   const schema = await readFile(new URL('../src/services/settingsSchema.ts', import.meta.url), 'utf8');
-  assert.match(repository, /createdSupplierType\s*=\s*supplierTypeHint==='goods'\?'goods':\(policy\.defaultSupplierType\|\|'unclassified'\)/);
+  assert.match(repository, /createdSupplierType\s*=\s*supplierTypeHint==='goods'\?'goods':\(supplierSettings\.defaultType\|\|policy\.defaultSupplierType\|\|'unclassified'\)/);
   assert.match(repository, /supplier_type:\s*createdSupplierType/);
   assert.match(schema, /defaultSupplierType:\s*null/);
 });
