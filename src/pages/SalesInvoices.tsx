@@ -9,6 +9,7 @@ import { exportSalesInvoices } from '../services/salesInvoiceExport';
 import { errorMessage, showError, showSuccess } from '../services/toast';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
+import { useSettings } from '../context/SettingsContext';
 import '../sales-transfer.css';
 
 const IMPORT_LABEL='Importar facturas';
@@ -19,6 +20,7 @@ const countryName=(code:string)=>regionNames?.of(code)||code;
 const today=()=>new Date().toISOString().slice(0,10);
 
 export function SalesInvoices(){
+  const {settings:appSettings}=useSettings();
   const [clients,setClients]=useState<Client[]>([]);
   const [invoices,setInvoices]=useState<SalesInvoice[]>([]);
   const [settings,setSettings]=useState<BusinessSettings>({legalName:'ZENVIA COMMERCE SL',countryCode:'ES'});
@@ -126,7 +128,7 @@ export function SalesInvoices(){
     setExporting(true);
     try{
       const scope=exportSelectedOnly?`seleccion-${exportRows.length}`:([from&&`desde-${from}`,to&&`hasta-${to}`,status!=='all'&&status,query.trim()&&'busqueda'].filter(Boolean).join('_')||'todas');
-      const blob=await exportSalesInvoices(exportRows,settings,branding,scope);
+      const blob=await exportSalesInvoices(exportRows,settings,branding,appSettings.sales,appSettings.general,scope);
       downloadBlob(blob,`facturas_venta_${compactDate(from)}_${compactDate(to)}.zip`);
       showSuccess(`Exportadas ${exportRows.length} factura${exportRows.length===1?'':'s'} con CSV y PDF.`);
       setExportOpen(false);
