@@ -6,8 +6,12 @@ import { classifyInvoiceCandidate, createManualInvoiceCandidate, invoiceCandidat
 import { InvoiceCandidateForm } from './InvoiceCandidateForm';
 import { showSuccess } from '../services/toast';
 import type { ExpenseCategory, Invoice, InvoiceImportCandidate, InvoiceSource, NewInvoiceInput } from '../types';
+import { useSettings } from '../context/SettingsContext';
+import { expenseImportPolicyFromSettings } from '../services/expenseImportPolicy';
 
 export function UploadInvoiceModal({open,onClose,onSave,categories,existingInvoices}:{open:boolean;onClose:()=>void;onSave:(input:NewInvoiceInput)=>Promise<void>;categories:ExpenseCategory[];existingInvoices:Invoice[]}) {
+  const {settings}=useSettings();
+  const policy=expenseImportPolicyFromSettings(settings.expenses);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const [file,setFile]=useState<File|null>(null);
@@ -30,8 +34,8 @@ export function UploadInvoiceModal({open,onClose,onSave,categories,existingInvoi
   const runReader = async (prepared: File, analysisFile: File = prepared) => {
     setReading(true);setReaderBlocked(false);setReaderMessage('Analizando factura…');setCandidate(null);
     try {
-      const preparedCandidate=await prepareInvoiceCandidate(prepared,categories,setReaderMessage,analysisFile);
-      const result=classifyInvoiceCandidate(preparedCandidate,existingInvoices);
+      const preparedCandidate=await prepareInvoiceCandidate(prepared,categories,setReaderMessage,analysisFile,policy);
+      const result=classifyInvoiceCandidate(preparedCandidate,existingInvoices,policy);
       setCandidate(result);
       const percent=Math.round(result.confidence*100);
       if(result.status==='duplicate'){
@@ -49,7 +53,7 @@ export function UploadInvoiceModal({open,onClose,onSave,categories,existingInvoi
         setError(e.message);
         setReaderMessage('Documento bloqueado: contiene varias facturas o abonos y no debe contabilizarse como una sola factura.');
       } else {
-        const manualCandidate=classifyInvoiceCandidate(await createManualInvoiceCandidate(prepared),existingInvoices);
+        const manualCandidate=classifyInvoiceCandidate(await createManualInvoiceCandidate(prepared),existingInvoices,policy);
         setCandidate(manualCandidate);
         if(manualCandidate.status==='duplicate'){
           setReaderBlocked(true);
