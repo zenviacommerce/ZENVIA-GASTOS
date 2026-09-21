@@ -6,6 +6,7 @@ import { extractSupplierInvoiceDetails } from './supplierInvoiceDetails';
 import { validateInvoiceRecipient } from './invoiceRecipientRules';
 import { extractInvoiceParty, formatInvoicePartyAddress } from './invoicePartyExtractor';
 import { isLikelySameSupplier } from './supplierIdentity';
+import { expenseImportPolicyFromSettings, expenseRequiresReview, type ExpenseImportPolicy } from './expenseImportPolicy';
 
 async function sha256File(file:File){
   const buffer=await file.arrayBuffer();
@@ -44,6 +45,7 @@ export async function prepareInvoiceCandidate(
   categories:ExpenseCategory[],
   onProgress?:(message:string)=>void,
   analysisFile:File=file,
+  policy:ExpenseImportPolicy=expenseImportPolicyFromSettings(undefined),
 ):Promise<InvoiceImportCandidate>{
   const [read,fileHash]=await Promise.all([
     readInvoiceDocumentEnhanced(analysisFile,categories,onProgress),
@@ -59,12 +61,19 @@ export async function prepareInvoiceCandidate(
 
   let status:InvoiceImportCandidate['status']='ready';
   let reviewReason:string|undefined;
-  if(!read.supplierName.trim()){
+  const configuredReview=expenseRequiresReview(policy,{
+    invoiceNumber:read.invoiceNumber,
+    supplierName:read.supplierName,
+    invoiceDate:read.invoiceDate,
+    total:repairedAmounts.total,
+    confidence:read.confidence,
+  });
+  if(configuredReview.required){
     status='needs_review';
-    reviewReason='No se ha podido identificar el proveedor.';
-  }else if(!read.invoiceDate){
-    status='needs_review';
-    reviewReason='No se ha podido identificar la fecha de la factura.';
+    const parts:string[]=[];
+    if(configuredReview.missing.length)parts.push(`Faltan campos obligatorios: ${configuredReview.missing.join(', ')}`);
+    if(configuredReview.lowConfidence)parts.push(`Confianza inferior al ${Math.round(policy.confidenceThreshold*100)} %`);
+    reviewReason=parts.join(' · ');
   }else if(recipient.needsReview){
     status='needs_review';
     reviewReason=recipient.reason;
@@ -86,7 +95,7 @@ export async function prepareInvoiceCandidate(
     recipientName:recipient.detectedName,
     invoiceNumber:read.invoiceNumber,
     invoiceDate:read.invoiceDate,
-    categoryId:read.categoryId,
+    categoryId:read.categoryId||policy.defaultCategoryId||undefined,
     subtotal:repairedAmounts.subtotal,
     vat:repairedAmounts.vat,
     equivalenceSurcharge,
@@ -99,7 +108,8 @@ export async function prepareInvoiceCandidate(
   };
 }
 
-export function classifyInvoiceCandidate(candidate:InvoiceImportCandidate,existingInvoices:Invoice[]):InvoiceImportCandidate{
+export function classifyInvoiceCandidate(candidate:InvoiceImportCandidate,existingInvoices:Invoice[],policy:ExpenseImportPolicy=expenseImportPolicyFromSettings(undefined)):InvoiceImportCandidate{
+  if(!policy.detectDuplicates)return candidate;
   const supplierName=normalizeKey(candidate.supplierName);
   const invoiceNumber=normalizeKey(candidate.invoiceNumber);
   const duplicate=existingInvoices.find(existing=>
@@ -115,7 +125,9 @@ export function classifyInvoiceCandidate(candidate:InvoiceImportCandidate,existi
     )
   );
   if(duplicate){
-    return {...candidate,status:'duplicate',reviewReason:`Factura duplicada${duplicate.invoiceNumber&&duplicate.invoiceNumber!=='—'?` (${duplicate.invoiceNumber})`:''}.`};
+    const reason=`Factura duplicada${duplicate.invoiceNumber&&duplicate.invoiceNumber!=='—'?` (${duplicate.invoiceNumber})`:''}.`;
+    if(policy.blockHighConfidenceDuplicates)return {...candidate,status:'duplicate',reviewReason:reason};
+    if(policy.warnAmbiguousMatches)return {...candidate,status:'needs_review',reviewReason:`Posible duplicado: ${reason} Revisa antes de guardar.`};
   }
   return candidate;
 }
