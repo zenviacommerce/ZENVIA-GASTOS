@@ -33,6 +33,7 @@ import { loadSupplierOptions, type SupplierOption } from '../services/supplierEd
 import { addShippingRule, deleteShippingRule, loadShippingRules, updateShippingRule, type ShippingRule } from '../services/shippingRules';
 import { AMAZON_KPI_KEYS, loadAmazonStatus, type AmazonMarketplaceStatus } from '../services/amazon';
 import { loadIntegrationHealth, syncIntegration, testIntegrationConnection, type IntegrationHealth, type IntegrationId } from '../services/integrations';
+import { DEFAULT_AUTOMATION_RULES, loadAutomationRules, saveAutomationRule, type AutomationRule } from '../services/automationRules';
 
 type SettingsSectionId =
   | 'general'
@@ -981,9 +982,21 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
 function AlertsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   const {settings,updateSection,resetSection}=useSettings();
   const [draft,setDraft]=useState<NotificationsSettings>(settings.notifications);
+  const [orderRule,setOrderRule]=useState<AutomationRule<'order_label_created'>>(DEFAULT_AUTOMATION_RULES.order_label_created);
+  const [expenseRule,setExpenseRule]=useState<AutomationRule<'expense_invoice_imported'>>(DEFAULT_AUTOMATION_RULES.expense_invoice_imported);
+  const [loadingRules,setLoadingRules]=useState(true);
   const [saving,setSaving]=useState(false);
 
   useEffect(()=>{setDraft(settings.notifications);onDirtyChange(false)},[settings.notifications,onDirtyChange]);
+  useEffect(()=>{
+    let active=true;
+    setLoadingRules(true);
+    loadAutomationRules()
+      .then(rules=>{if(active){setOrderRule(rules.order_label_created);setExpenseRule(rules.expense_invoice_imported);}})
+      .catch(e=>showError(e instanceof Error?e.message:'No se pudieron cargar las reglas de automatización.'))
+      .finally(()=>{if(active)setLoadingRules(false)});
+    return()=>{active=false};
+  },[]);
 
   const definitions:Array<{
     key:keyof NotificationsSettings;
@@ -1009,24 +1022,50 @@ function AlertsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
     setDraft(current=>({...current,[key]:{...current[key],...changes}}));
     onDirtyChange(true);
   };
+  const patchOrderRule=(changes:Partial<AutomationRule<'order_label_created'>['config']>)=>{
+    setOrderRule(current=>({...current,config:{...current.config,...changes}}));
+    onDirtyChange(true);
+  };
+  const patchExpenseRule=(changes:Partial<AutomationRule<'expense_invoice_imported'>['config']>)=>{
+    setExpenseRule(current=>({...current,config:{...current.config,...changes}}));
+    onDirtyChange(true);
+  };
 
   const save=async()=>{
     setSaving(true);
-    try{await updateSection('notifications',draft);onDirtyChange(false);showSuccess('Configuración de alertas guardada.');}
-    catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración de alertas.');}
+    try{
+      const [savedOrder,savedExpense]=await Promise.all([
+        saveAutomationRule(orderRule),
+        saveAutomationRule(expenseRule),
+        updateSection('notifications',draft),
+      ]).then(([nextOrder,nextExpense])=>[nextOrder,nextExpense] as const);
+      setOrderRule(savedOrder);
+      setExpenseRule(savedExpense);
+      onDirtyChange(false);
+      showSuccess('Alertas y automatizaciones guardadas.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudieron guardar las alertas y automatizaciones.');}
     finally{setSaving(false);}
   };
 
   const restore=async()=>{
-    if(!window.confirm('Se restaurarán los valores predeterminados de Alertas. ¿Continuar?'))return;
+    if(!window.confirm('Se restaurarán los valores predeterminados de Alertas y automatizaciones. ¿Continuar?'))return;
     setSaving(true);
-    try{await resetSection('notifications');onDirtyChange(false);showSuccess('Valores predeterminados de Alertas restaurados.');}
-    catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar las alertas.');}
+    try{
+      const [savedOrder,savedExpense]=await Promise.all([
+        saveAutomationRule(DEFAULT_AUTOMATION_RULES.order_label_created),
+        saveAutomationRule(DEFAULT_AUTOMATION_RULES.expense_invoice_imported),
+        resetSection('notifications'),
+      ]).then(([nextOrder,nextExpense])=>[nextOrder,nextExpense] as const);
+      setOrderRule(savedOrder);
+      setExpenseRule(savedExpense);
+      onDirtyChange(false);
+      showSuccess('Valores predeterminados de Alertas y automatizaciones restaurados.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar las alertas y automatizaciones.');}
     finally{setSaving(false);}
   };
 
   return <section className="settingsSectionCard">
-    <div className="settingsSectionHero"><div className="settingsSectionIcon"><BellRing size={22}/></div><div><h2>Alertas y automatizaciones</h2><p>Alertas operativas derivadas de los datos reales de la aplicación. Por ahora, el canal implementado es dentro de la aplicación.</p></div></div>
+    <div className="settingsSectionHero"><div className="settingsSectionIcon"><BellRing size={22}/></div><div><h2>Alertas y automatizaciones</h2><p>Alertas operativas y acciones automáticas controladas después de eventos concretos.</p></div></div>
     <div className="settingsSubsection">
       <h3>Alertas</h3>
       <p className="settingsHelpText">Las alertas no crean registros ni envían correos: se calculan al vuelo y aparecen en la campana global.</p>
@@ -1045,6 +1084,35 @@ function AlertsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
         })}
       </div>
     </div>
+
+    <div className="settingsSubsection">
+      <h3>Automatización tras crear etiqueta</h3>
+      <p className="settingsHelpText">Estas acciones se ejecutan de forma independiente después de que Sendcloud haya creado correctamente la etiqueta. La creación de la etiqueta nunca depende de ellas.</p>
+      {loadingRules?<div className="settingsInlineLoading">Cargando automatizaciones…</div>:<>
+        <label className="settingsToggleField settingsAutomationMaster"><input type="checkbox" checked={orderRule.enabled} onChange={e=>{setOrderRule(current=>({...current,enabled:e.target.checked}));onDirtyChange(true)}}/><span><strong>Automatización de etiqueta activa</strong><small>Desactivarla conserva la etiqueta, pero no ejecuta acciones posteriores automáticas.</small></span></label>
+        <div className="settingsToggleGrid">
+          <label className="settingsToggleField"><input type="checkbox" disabled={!orderRule.enabled} checked={orderRule.config.saveTracking} onChange={e=>patchOrderRule({saveTracking:e.target.checked})}/><span><strong>Guardar tracking</strong><small>Persiste número, URL y estado de seguimiento en el pedido.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" disabled={!orderRule.enabled} checked={orderRule.config.pushToMarketplace} onChange={e=>patchOrderRule({pushToMarketplace:e.target.checked})}/><span><strong>Enviar tracking al marketplace</strong><small>Confirma Amazon justo después de crear la etiqueta cuando corresponde.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" disabled={!orderRule.enabled} checked={orderRule.config.markSent} onChange={e=>patchOrderRule({markSent:e.target.checked})}/><span><strong>Marcar pedido enviado</strong><small>Permite cambiar el pedido a enviado tras una etiqueta correcta.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" disabled={!orderRule.enabled} checked={orderRule.config.downloadPdf} onChange={e=>patchOrderRule({downloadPdf:e.target.checked})}/><span><strong>Descargar PDF automáticamente</strong><small>Controla la descarga automática individual; la descarga manual y el ZIP siguen disponibles.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" disabled={!orderRule.enabled||!orderRule.config.saveTracking} checked={orderRule.config.retryConfirmation&&orderRule.config.saveTracking} onChange={e=>patchOrderRule({retryConfirmation:e.target.checked})}/><span><strong>Reintentar confirmación</strong><small>Reintenta Amazon durante sincronizaciones posteriores. Requiere guardar tracking.</small></span></label>
+        </div>
+      </>}
+    </div>
+
+    <div className="settingsSubsection">
+      <h3>Automatización tras importar gasto</h3>
+      <p className="settingsHelpText">Actúa únicamente sobre acciones posteriores ya implementadas. Los controles de Gastos y Productos siguen siendo condiciones adicionales de seguridad.</p>
+      {loadingRules?<div className="settingsInlineLoading">Cargando automatizaciones…</div>:<>
+        <label className="settingsToggleField settingsAutomationMaster"><input type="checkbox" checked={expenseRule.enabled} onChange={e=>{setExpenseRule(current=>({...current,enabled:e.target.checked}));onDirtyChange(true)}}/><span><strong>Automatización de gasto importado activa</strong><small>Desactivarla guarda la factura sin ejecutar estas actualizaciones posteriores.</small></span></label>
+        <div className="settingsToggleGrid">
+          <label className="settingsToggleField"><input type="checkbox" disabled={!expenseRule.enabled} checked={expenseRule.config.updateProductCosts} onChange={e=>patchExpenseRule({updateProductCosts:e.target.checked})}/><span><strong>Actualizar costes de producto</strong><small>Solo si Gastos y Productos también permiten actualizar costes desde importaciones.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" disabled={!expenseRule.enabled} checked={expenseRule.config.updatePriceHistory} onChange={e=>patchExpenseRule({updatePriceHistory:e.target.checked})}/><span><strong>Actualizar histórico de precios</strong><small>Guarda el precio confirmado en el histórico de compra cuando procede.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" disabled={!expenseRule.enabled} checked={expenseRule.config.createSupplierProductRelation} onChange={e=>patchExpenseRule({createSupplierProductRelation:e.target.checked})}/><span><strong>Crear relación producto-proveedor</strong><small>Vincula la descripción del proveedor con el producto interno cuando existe una coincidencia segura.</small></span></label>
+        </div>
+      </>}
+    </div>
+
     <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
   </section>;
 }
