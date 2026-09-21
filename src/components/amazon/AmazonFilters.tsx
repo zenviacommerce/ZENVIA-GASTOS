@@ -4,8 +4,8 @@ import { amazonQuickRange, type AmazonAnalyticsFilters, type AmazonMarketplaceSt
 
 const presets:[AmazonRangeKey,string][]=[['today','Hoy'],['7d','7 días'],['30d','30 días'],['current_month','Mes actual'],['previous_month','Mes anterior'],['current_quarter','Trimestre actual'],['current_year','Año actual'],['custom','Personalizado']];
 
-export function AmazonFilters({filters,marketplaces,onChange}:{filters:AmazonAnalyticsFilters;marketplaces:AmazonMarketplaceStatus[];onChange:(filters:AmazonAnalyticsFilters)=>void}){
-  const [preset,setPreset]=useState<AmazonRangeKey>('current_month');
+export function AmazonFilters({filters,marketplaces,initialPreset='current_month',onChange}:{filters:AmazonAnalyticsFilters;marketplaces:AmazonMarketplaceStatus[];initialPreset?:AmazonRangeKey;onChange:(filters:AmazonAnalyticsFilters)=>void}){
+  const [preset,setPreset]=useState<AmazonRangeKey>(initialPreset);
   const apply=(key:AmazonRangeKey)=>{setPreset(key);if(key!=='custom')onChange({...amazonQuickRange(key,new Date()),marketplaceIds:filters.marketplaceIds});};
   const toggleMarketplace=(id:string)=>{const selected=filters.marketplaceIds.includes(id);onChange({...filters,marketplaceIds:selected?filters.marketplaceIds.filter(value=>value!==id):[...filters.marketplaceIds,id]});};
   return <section className="card amazonFilters" aria-label="Filtros de Amazon Analytics">
