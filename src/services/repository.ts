@@ -10,6 +10,7 @@ import { resolveEntityAlias } from './entityAliases';
 import { loadAppSettings } from './settings';
 import { expenseImportPolicyFromSettings, type ExpenseImportPolicy } from './expenseImportPolicy';
 import { DEFAULT_APP_SETTINGS, type ProductsSettings, type SuppliersSettings } from './settingsSchema';
+import { applyExpenseInvoiceImportedAutomation, loadAutomationRule } from './automationRules';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
 const normalizeProductKey = (value: string) => value
@@ -422,7 +423,11 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
 
 export async function createInvoice(input: NewInvoiceInput) {
   const loadedSettings=await loadAppSettings();
-  const policy=expenseImportPolicyFromSettings(loadedSettings.settings.expenses);
+  const expenseAutomation=await loadAutomationRule('expense_invoice_imported');
+  const policy=applyExpenseInvoiceImportedAutomation(
+    expenseImportPolicyFromSettings(loadedSettings.settings.expenses),
+    expenseAutomation,
+  );
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
   if (!user) throw new Error('Sesión no válida.');
