@@ -9,7 +9,7 @@ import { sanitizeDatabaseSingleLine, sanitizeDatabaseText, sanitizeDatabaseValue
 import { resolveEntityAlias } from './entityAliases';
 import { loadAppSettings } from './settings';
 import { expenseImportPolicyFromSettings, type ExpenseImportPolicy } from './expenseImportPolicy';
-import { DEFAULT_APP_SETTINGS, type SuppliersSettings } from './settingsSchema';
+import { DEFAULT_APP_SETTINGS, type ProductsSettings, type SuppliersSettings } from './settingsSchema';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
 const normalizeProductKey = (value: string) => value
@@ -231,11 +231,14 @@ async function isMerchandiseCategory(categoryId?: string) {
   return Boolean(data?.name && normalizeProductKey(data.name).includes('mercancia'));
 }
 
-async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: string, input: NewInvoiceInput, policy:ExpenseImportPolicy) {
+async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: string, input: NewInvoiceInput, policy:ExpenseImportPolicy, productSettings:ProductsSettings) {
   if (!input.lines?.length) return;
 
   const merchandise = await isMerchandiseCategory(input.categoryId);
-  const manageProducts = merchandise && (policy.autoCreateProducts || policy.createSupplierProductRelation);
+  const manageProducts = merchandise && ((policy.autoCreateProducts && productSettings.autoCreateFromInvoice) || policy.createSupplierProductRelation);
+  const updateImportedCost = policy.updateProductCosts && productSettings.updateCostFromImports && productSettings.costMethod !== 'manual';
+  const writePriceHistory = policy.updatePriceHistory;
+  const roundCost=(value:number)=>Number(value.toFixed(productSettings.costDecimals));
   const createdProductIds: string[] = [];
   const createdSupplierProductIds: string[] = [];
 
@@ -282,12 +285,14 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
           productId = supplierMatch.productId;
         } else {
           let product = productByName.get(key);
-          if (!product && policy.autoCreateProducts) {
+          if (!product && policy.autoCreateProducts && productSettings.autoCreateFromInvoice) {
             const { data: created, error: productError } = await supabase.from('products').insert({
               name: description,
               sku: null,
-              category: 'Mercancía',
-              base_unit: unit,
+              category: productSettings.defaultCategoryId || 'Mercancía',
+              base_unit: unit || productSettings.defaultUnit,
+              sales_tax_rate: productSettings.defaultVatRate,
+              last_supplier_id: supplierId,
             }).select('id,base_unit').single();
             if (productError) throw productError;
             product = { id: created.id, unit: created.base_unit || unit };
@@ -314,7 +319,8 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
         }
       }
 
-      const normalizedPrice = productId && line.unitPrice != null ? (line.normalizedUnitPrice ?? line.unitPrice) : null;
+      const normalizedPriceRaw = productId && line.unitPrice != null ? (line.normalizedUnitPrice ?? line.unitPrice) : null;
+      const normalizedPrice = normalizedPriceRaw == null ? null : roundCost(Number(normalizedPriceRaw));
       lineRows.push({
         invoice_id: invoiceId,
         product_id: productId,
@@ -329,7 +335,7 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
         tax_rate: line.taxRate ?? null,
         tax_amount: line.taxAmount ?? null,
         line_total: line.lineTotal ?? null,
-        price_update_status: normalizedPrice != null && policy.updateProductCosts && policy.updatePriceHistory ? 'confirmed' : normalizedPrice != null ? 'ignored' : 'pending',
+        price_update_status: normalizedPrice != null && updateImportedCost && writePriceHistory && productSettings.costMethod==='last_purchase' ? 'confirmed' : normalizedPrice != null ? 'ignored' : 'pending',
       });
     }
 
@@ -337,24 +343,11 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
     const { data:insertedLines,error: lineError } = await supabase.from('invoice_lines').insert(lineRows).select('id,product_id,unit_price,normalized_unit_price,unit');
     if (lineError) throw lineError;
 
-    const priced=(insertedLines??[]).filter((line:any)=>line.product_id&&line.normalized_unit_price!=null);
-    if(policy.updateProductCosts&&!policy.updatePriceHistory){
-      for(const line of priced as any[]){
-        const {data:product,error:readError}=await supabase.from('products').select('last_cost,base_unit').eq('id',line.product_id).single();
-        if(readError)throw readError;
-        const nextCost=Number(line.normalized_unit_price);
-        const oldCost=product?.last_cost==null?null:Number(product.last_cost);
-        const {error:updateError}=await supabase.from('products').update({
-          previous_cost:oldCost!=null&&oldCost!==nextCost?oldCost:null,
-          last_cost:nextCost,
-          cost_unit:product?.base_unit||line.unit||'ud',
-          last_supplier_id:supplierId,
-          last_purchase_date:input.invoiceDate||new Date().toISOString().slice(0,10),
-        }).eq('id',line.product_id);
-        if(updateError)throw updateError;
-      }
-    }else if(policy.updatePriceHistory&&!policy.updateProductCosts){
-      for(const line of priced as any[]){
+    const priced=(insertedLines??[]).filter((line:any)=>line.product_id&&line.normalized_unit_price!=null) as any[];
+    const usesAutomaticHistoryTrigger=updateImportedCost&&writePriceHistory&&productSettings.costMethod==='last_purchase';
+
+    if(writePriceHistory&&!usesAutomaticHistoryTrigger){
+      for(const line of priced){
         const {data:product,error:readError}=await supabase.from('products').select('base_unit').eq('id',line.product_id).single();
         if(readError)throw readError;
         const {error:historyError}=await supabase.from('product_price_history').upsert({
@@ -365,10 +358,59 @@ async function createInvoiceLinesWithProducts(invoiceId: string, supplierId: str
           price_date:input.invoiceDate||new Date().toISOString().slice(0,10),
           purchase_unit_price:line.unit_price,
           normalized_unit_price:line.normalized_unit_price,
-          base_unit:product?.base_unit||line.unit||'ud',
+          base_unit:product?.base_unit||line.unit||productSettings.defaultUnit,
           currency:'EUR',
         },{onConflict:'invoice_line_id'});
         if(historyError)throw historyError;
+      }
+    }
+
+    if(updateImportedCost&&productSettings.costMethod==='last_purchase'&&!writePriceHistory){
+      for(const line of priced){
+        const {data:product,error:readError}=await supabase.from('products').select('last_cost,base_unit').eq('id',line.product_id).single();
+        if(readError)throw readError;
+        const nextCost=roundCost(Number(line.normalized_unit_price));
+        const oldCost=product?.last_cost==null?null:Number(product.last_cost);
+        const {error:updateError}=await supabase.from('products').update({
+          previous_cost:oldCost!=null&&oldCost!==nextCost?oldCost:null,
+          last_cost:nextCost,
+          cost_unit:product?.base_unit||line.unit||productSettings.defaultUnit,
+          last_supplier_id:supplierId,
+          last_purchase_date:input.invoiceDate||new Date().toISOString().slice(0,10),
+        }).eq('id',line.product_id);
+        if(updateError)throw updateError;
+      }
+    }
+
+    if(updateImportedCost&&productSettings.costMethod==='average'){
+      const byProduct=new Map<string,any[]>();
+      for(const line of priced){
+        const bucket=byProduct.get(line.product_id)||[];
+        bucket.push(line);
+        byProduct.set(line.product_id,bucket);
+      }
+      for(const [productId,lines] of byProduct){
+        const [{data:product,error:productError},{data:history,error:historyError}]=await Promise.all([
+          supabase.from('products').select('last_cost,base_unit').eq('id',productId).single(),
+          supabase.from('product_price_history').select('normalized_unit_price').eq('product_id',productId),
+        ]);
+        if(productError)throw productError;
+        if(historyError)throw historyError;
+        const historical=(history??[]).map((row:any)=>Number(row.normalized_unit_price)).filter((value:number)=>Number.isFinite(value));
+        const current=writePriceHistory?[]:lines.map(line=>Number(line.normalized_unit_price)).filter(Number.isFinite);
+        const values=[...historical,...current];
+        if(!values.length)continue;
+        const average=roundCost(values.reduce((sum,value)=>sum+value,0)/values.length);
+        const oldCost=product?.last_cost==null?null:Number(product.last_cost);
+        const latest=lines[lines.length-1];
+        const {error:updateError}=await supabase.from('products').update({
+          previous_cost:oldCost!=null&&oldCost!==average?oldCost:null,
+          last_cost:average,
+          cost_unit:product?.base_unit||latest?.unit||productSettings.defaultUnit,
+          last_supplier_id:supplierId,
+          last_purchase_date:input.invoiceDate||new Date().toISOString().slice(0,10),
+        }).eq('id',productId);
+        if(updateError)throw updateError;
       }
     }
   } catch (error) {
@@ -459,7 +501,7 @@ export async function createInvoice(input: NewInvoiceInput) {
   }
 
   try {
-    await createInvoiceLinesWithProducts(invoice.id, supplierId, preparedInput, policy);
+    await createInvoiceLinesWithProducts(invoice.id, supplierId, preparedInput, policy, loadedSettings.settings.products);
   } catch (lineError) {
     await supabase.from('invoices').delete().eq('id', invoice.id);
     await supabase.storage.from(INVOICE_BUCKET).remove([storagePath]);
