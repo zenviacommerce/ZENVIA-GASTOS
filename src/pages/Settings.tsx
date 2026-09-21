@@ -37,6 +37,7 @@ import { DEFAULT_AUTOMATION_RULES, loadAutomationRules, saveAutomationRule, type
 import { applyExpenseInvoiceReprocess, findClientDuplicates, findInvoiceDuplicates, findProductDuplicates, findSupplierDuplicates, listClientsMissingTaxId, listProductsWithoutCost, listReprocessableInvoices, listSuppliersMissingTaxId, mergeClient, mergeSupplier, previewClientMerge, previewExpenseInvoiceReprocess, previewPriceHistoryRebuild, previewProductCostRecalculation, previewSupplierMerge, previewSupplierProductRebuild, rebuildPriceHistoryLinks, rebuildSupplierProductLinks, recalculateProductCosts, runAmazonSync, runSendcloudSync, type DuplicateCandidate, type ExpenseInvoiceReprocessPreview, type MaintenanceRepairPreview, type MergePreview, type ReprocessableInvoiceOption } from '../services/maintenance';
 import { downloadSettingsExport, previewSettingsReset, resetAllSettingsToDefaults, type SettingsResetPreview } from '../services/settingsExport';
 import { DASHBOARD_KPI_DEFAULTS, TABLE_COLUMN_DEFAULTS, type PreferenceTableKey } from '../services/uiPreferences';
+import { formatAppDateTime, formatAppMoney } from '../services/formatting';
 
 type SettingsSectionId =
   | 'general'
@@ -910,7 +911,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
     setDraft(current=>({...current,[settingKey[id]]:value}));
     onDirtyChange(true);
   };
-  const dateTime=(value:string|null)=>value?new Date(value).toLocaleString('es-ES'):'Sin registro';
+  const dateTime=(value:string|null)=>formatAppDateTime(value,settings.general,'Sin registro');
 
   const run=async(id:IntegrationId,action:'test'|'sync')=>{
     const key=`${id}:${action}`;
@@ -1761,7 +1762,7 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
         <div className="settingsPreviewCounts">
           <span><strong>{reprocessPreview.parsed.confidence.toLocaleString('es-ES',{style:'percent',maximumFractionDigits:0})}</strong><small>Confianza</small></span>
           <span><strong>{reprocessPreview.parsed.lines.length}</strong><small>Líneas detectadas</small></span>
-          <span><strong>{reprocessPreview.parsed.total.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong><small>Total detectado</small></span>
+          <span><strong>{formatAppMoney(reprocessPreview.parsed.total,settings.general.currencyCode,settings.general,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong><small>Total detectado</small></span>
         </div>
         {reprocessPreview.warnings.map(item=><small key={item}>{item}</small>)}
         <div className="settingsInlineActions"><button type="button" className="secondary" onClick={()=>setReprocessPreview(null)}>Cancelar</button><button type="button" className="primary" disabled={busy!==null} onClick={()=>void confirmInvoiceReprocess()}>{busy==='reprocess-apply'?'Aplicando…':'Aplicar reprocesado'}</button></div>
