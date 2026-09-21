@@ -28,7 +28,8 @@ test('unknown automation config properties are rejected and missing rows use def
   assert.match(source,/unknownKeys/);
   assert.match(source,/throw new Error/);
   assert.match(source,/DEFAULT_AUTOMATION_RULES/);
-  assert.match(source,/rowsByKey\.get\(key\)\|\|DEFAULT_AUTOMATION_RULES\[key\]/);
+  assert.match(source,/rowsByKey\.get\('order_label_created'\)\|\|DEFAULT_AUTOMATION_RULES\.order_label_created/);
+  assert.match(source,/rowsByKey\.get\('expense_invoice_imported'\)\|\|DEFAULT_AUTOMATION_RULES\.expense_invoice_imported/);
 });
 
 test('order and expense consumers load their automation rules',async()=>{
