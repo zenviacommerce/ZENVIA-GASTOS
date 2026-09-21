@@ -22,7 +22,7 @@ import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
 import { showError, showSuccess } from '../services/toast';
-import type { ClientsSettings, ExpensesSettings, OrdersSettings, ProductsSettings, SalesSettings, ShippingSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
+import type { AmazonSettings, ClientsSettings, ExpensesSettings, OrdersSettings, ProductsSettings, SalesSettings, ShippingSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 import { loadManagedSalesSeries, loadTaxRegistrations, type ManagedSalesSeries, type TaxRegistration } from '../services/salesConfig';
@@ -31,6 +31,7 @@ import type { ExpenseCategory } from '../types';
 import { addEntityAlias, deleteEntityAlias, loadEntityAliases, updateEntityAlias, type EntityAliasRule } from '../services/entityAliases';
 import { loadSupplierOptions, type SupplierOption } from '../services/supplierEditor';
 import { addShippingRule, deleteShippingRule, loadShippingRules, updateShippingRule, type ShippingRule } from '../services/shippingRules';
+import { AMAZON_KPI_KEYS, loadAmazonStatus, type AmazonMarketplaceStatus } from '../services/amazon';
 
 type SettingsSectionId =
   | 'general'
@@ -745,6 +746,130 @@ function ShippingSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   </section>;
 }
 
+function AmazonSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {settings,updateSection,resetSection}=useSettings();
+  const [draft,setDraft]=useState<AmazonSettings>(settings.amazon);
+  const [marketplaces,setMarketplaces]=useState<AmazonMarketplaceStatus[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{setDraft(settings.amazon);onDirtyChange(false)},[settings.amazon,onDirtyChange]);
+  useEffect(()=>{
+    let active=true;
+    setLoading(true);
+    loadAmazonStatus()
+      .then(status=>{if(active)setMarketplaces((status.marketplaces||[]).filter(item=>item.active));})
+      .catch(e=>showError(e instanceof Error?e.message:'No se pudieron cargar los marketplaces de Amazon.'))
+      .finally(()=>{if(active)setLoading(false)});
+    return()=>{active=false};
+  },[]);
+
+  const update=<K extends keyof AmazonSettings>(key:K,value:AmazonSettings[K])=>{
+    setDraft(current=>({...current,[key]:value}));
+    onDirtyChange(true);
+  };
+
+  const effectiveMarketplaceIds=draft.activeMarketplaceIds.length
+    ?draft.activeMarketplaceIds
+    :marketplaces.map(item=>item.id);
+
+  const toggleMarketplace=(id:string,checked:boolean)=>{
+    const current=new Set(effectiveMarketplaceIds);
+    if(checked)current.add(id); else current.delete(id);
+    if(current.size===0){showError('Amazon necesita al menos un marketplace activo.');return;}
+    const allIds=marketplaces.map(item=>item.id);
+    const next=allIds.length&&current.size===allIds.length?[]:allIds.filter(item=>current.has(item));
+    const nextPrimary=draft.primaryMarketplaceId&&current.has(draft.primaryMarketplaceId)
+      ?draft.primaryMarketplaceId
+      :(allIds.find(item=>current.has(item))||null);
+    setDraft(value=>({...value,activeMarketplaceIds:next,primaryMarketplaceId:nextPrimary}));
+    onDirtyChange(true);
+  };
+
+  const save=async()=>{
+    setSaving(true);
+    try{await updateSection('amazon',draft);onDirtyChange(false);showSuccess('Configuración de Amazon guardada.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración de Amazon.');}
+    finally{setSaving(false);}
+  };
+
+  const restore=async()=>{
+    if(!window.confirm('Se restaurarán los valores predeterminados de Amazon. ¿Continuar?'))return;
+    setSaving(true);
+    try{await resetSection('amazon');onDirtyChange(false);showSuccess('Valores predeterminados de Amazon restaurados.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
+    finally{setSaving(false);}
+  };
+
+  const periodOptionsAmazon=[
+    {value:'today',label:'Hoy'},
+    {value:'current_month',label:'Mes actual'},
+    {value:'current_quarter',label:'Trimestre actual'},
+    {value:'current_year',label:'Año actual'},
+    {value:'all',label:'Histórico configurado'},
+  ];
+  const kpiLabels:Record<string,string>={
+    grossSales:'Ventas',salesVat:'IVA ventas',netSales:'Ventas sin IVA',orders:'Pedidos',
+    businessOrders:'Pedidos B2B',units:'Unidades',amazonFees:'Tarifas Amazon',
+    adsCost:'Publicidad',refunds:'Reembolsos',productCost:'Coste producto',
+    fbmShippingCost:'Coste envíos FBM',netProfit:'Ganancia neta',marginPct:'Margen neto',
+  };
+  const visibleKpis=draft.visibleKpis.length?draft.visibleKpis:[...AMAZON_KPI_KEYS];
+  const toggleKpi=(key:string,checked:boolean)=>{
+    const next=new Set(visibleKpis);
+    if(checked)next.add(key);else next.delete(key);
+    update('visibleKpis',next.size===AMAZON_KPI_KEYS.length?[]:AMAZON_KPI_KEYS.filter(item=>next.has(item)));
+  };
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero"><div className="settingsSectionIcon"><Gauge size={22}/></div><div><h2>Configuración de Amazon</h2><p>Marketplaces, criterios analíticos y sincronización automática de Amazon.</p></div></div>
+    {loading?<div className="settingsInlineLoading">Cargando marketplaces de Amazon…</div>:<>
+      <div className="settingsSubsection">
+        <h3>Marketplaces</h3>
+        <div className="settingsToggleGrid">
+          {marketplaces.map(item=><label className="settingsToggleField" key={item.id}><input type="checkbox" checked={effectiveMarketplaceIds.includes(item.id)} onChange={e=>toggleMarketplace(item.id,e.target.checked)}/><span><strong>{item.countryCode} · {item.name}</strong><small>{item.currencyCode} · {item.id}</small></span></label>)}
+          {!marketplaces.length&&<div className="settingsEmptyMini">No hay marketplaces activos disponibles.</div>}
+        </div>
+        <div className="settingsFormGrid">
+          <label className="settingsField"><span>Marketplace principal</span><SelectField ariaLabel="Marketplace principal" allowEmpty emptyLabel="Primero activo" value={draft.primaryMarketplaceId||''} options={marketplaces.filter(item=>effectiveMarketplaceIds.includes(item.id)).map(item=>({value:item.id,label:`${item.countryCode} · ${item.name}`}))} onChange={value=>update('primaryMarketplaceId',value||null)}/></label>
+          <label className="settingsField"><span>Moneda consolidada</span><SelectField ariaLabel="Moneda consolidada" value={draft.consolidatedCurrency} options={[{value:'EUR',label:'EUR · Euro'},{value:'GBP',label:'GBP · Libra esterlina'},{value:'USD',label:'USD · Dólar estadounidense'}]} onChange={value=>update('consolidatedCurrency',value)}/></label>
+          <label className="settingsField"><span>Periodo inicial</span><SelectField ariaLabel="Periodo inicial Amazon" value={draft.defaultPeriod} options={periodOptionsAmazon} onChange={value=>update('defaultPeriod',value as AmazonSettings['defaultPeriod'])}/></label>
+          <label className="settingsField"><span>Histórico</span><div className="settingsNumberWithSuffix"><input type="number" min="1" max="3650" value={draft.historyDays} onChange={e=>update('historyDays',Number(e.target.value))}/><em>días</em></div></label>
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <h3>Criterios analíticos</h3>
+        <div className="settingsFormGrid">
+          <label className="settingsField"><span>IVA de respaldo</span><div className="settingsNumberWithSuffix"><input type="number" min="0" max="100" step="0.1" value={draft.defaultVatRate} onChange={e=>update('defaultVatRate',Number(e.target.value))}/><em>%</em></div><small>Solo se usa si Amazon no aporta un IVA utilizable.</small></label>
+          <label className="settingsField"><span>Factor de consumo por defecto</span><input type="number" min="0.0001" max="100000" step="0.01" value={draft.defaultConsumptionFactor} onChange={e=>update('defaultConsumptionFactor',Number(e.target.value))}/><small>Solo para vínculos SKU nuevos; no modifica factores existentes.</small></label>
+          <label className="settingsField"><span>Política FX</span><SelectField ariaLabel="Política FX" value={draft.fxMissingRatePolicy} options={[{value:'last_known',label:'Usar último cambio conocido'},{value:'exclude',label:'Excluir si falta cambio exacto'}]} onChange={value=>update('fxMissingRatePolicy',value as AmazonSettings['fxMissingRatePolicy'])}/></label>
+          <label className="settingsField"><span>SKU sin vincular</span><SelectField ariaLabel="SKU sin vincular" value={draft.unmappedSkuBehavior} options={[{value:'warn',label:'Incluir y avisar'},{value:'exclude',label:'Excluir de rentabilidad'},{value:'include',label:'Incluir sin aviso'}]} onChange={value=>update('unmappedSkuBehavior',value as AmazonSettings['unmappedSkuBehavior'])}/></label>
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <h3>Sincronización automática</h3>
+        <div className="settingsToggleGrid">
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.autoSyncOrders} onChange={e=>update('autoSyncOrders',e.target.checked)}/><span><strong>Sincronizar pedidos automáticamente</strong><small>El cron no encolará pedidos cuando esté desactivado; la sincronización manual seguirá disponible.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.autoSyncInventory} onChange={e=>update('autoSyncInventory',e.target.checked)}/><span><strong>Sincronizar inventario automáticamente</strong><small>Controla los snapshots periódicos de inventario.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.autoSyncFinance} onChange={e=>update('autoSyncFinance',e.target.checked)}/><span><strong>Sincronizar finanzas automáticamente</strong><small>Controla la cola periódica de eventos financieros.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.autoSyncImages} onChange={e=>update('autoSyncImages',e.target.checked)}/><span><strong>Sincronizar imágenes automáticamente</strong><small>Actualiza la caché de imágenes de productos durante la orquestación.</small></span></label>
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <h3>KPI visibles por defecto</h3>
+        <div className="settingsToggleGrid">
+          {AMAZON_KPI_KEYS.map(key=><label className="settingsToggleField" key={key}><input type="checkbox" checked={visibleKpis.includes(key)} onChange={e=>toggleKpi(key,e.target.checked)}/><span><strong>{kpiLabels[key]||key}</strong><small>Mostrar en el resumen de Amazon.</small></span></label>)}
+        </div>
+      </div>
+
+      <div className="settingsSectionActions"><button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+    </>}
+  </section>;
+}
+
 function ProductsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   const {settings,updateSection,resetSection}=useSettings();
   const [draft,setDraft]=useState<ProductsSettings>(settings.products);
@@ -1126,7 +1251,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='amazon'?<AmazonSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
