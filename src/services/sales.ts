@@ -133,8 +133,6 @@ export type SalesInvoiceDraftInput = {
 const n=(value:unknown)=>Number(value??0)||0;
 const nullable=(value?:string|null)=>{const cleaned=sanitizeDatabaseText(value).trim();return cleaned||null;};
 const addressFrom=(row:any)=>[row?.address_line1,row?.address_line2,[row?.postal_code,row?.city].filter(Boolean).join(' '),row?.province,row?.country_code].filter(Boolean).join(', ');
-export function defaultSalesDueDate(issueDate:string,days=30){if(!/^\d{4}-\d{2}-\d{2}$/.test(issueDate))return '';const date=new Date(`${issueDate}T12:00:00`);if(Number.isNaN(date.getTime()))return '';date.setDate(date.getDate()+days);return date.toISOString().slice(0,10);}
-
 export async function loadClients():Promise<Client[]> {
   const {data,error}=await supabase.from('clients').select('*').eq('active',true).order('name');
   if(error)throw error;
