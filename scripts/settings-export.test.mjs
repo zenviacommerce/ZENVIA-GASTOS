@@ -37,3 +37,13 @@ test('Maintenance UI exposes configuration export and confirmed global reset',as
   assert.match(page,/previewSettingsReset/);
   assert.match(page,/window\.confirm/);
 });
+
+
+test('global reset is performed through an audited admin RPC',async()=>{
+  const source=await read('src/services/settingsExport.ts');
+  const sql=await read('supabase/migrations/20260921114500_configuration_maintenance_repairs.sql');
+  assert.match(source,/configuration_reset_app_settings/);
+  assert.match(sql,/configuration_reset_app_settings/);
+  assert.match(sql,/private\.app_is_admin\(\)/);
+  assert.match(sql,/audit_logs/);
+});
