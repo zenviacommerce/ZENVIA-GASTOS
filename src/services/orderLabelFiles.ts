@@ -33,8 +33,8 @@ function templateValue(order:LabelOrder,key:string,date:string){
   return '';
 }
 
-export function labelPdfBaseName(order: LabelOrder, options:LabelFilenameOptions={}) {
-  const strategy=options.strategy||'order_number';
+export function labelPdfBaseName(order: LabelOrder, options:LabelFilenameOptions) {
+  const strategy=options.strategy;
   const date=options.date||new Date().toISOString().slice(0,10);
   const item=firstItem(order) as Record<string,unknown>;
   let raw='';
@@ -48,11 +48,11 @@ export function labelPdfBaseName(order: LabelOrder, options:LabelFilenameOptions
   return safeName(raw,'pedido');
 }
 
-export function labelPdfFilename(order: LabelOrder, options:LabelFilenameOptions={}) {
+export function labelPdfFilename(order: LabelOrder, options:LabelFilenameOptions) {
   return `${labelPdfBaseName(order,options)}.pdf`;
 }
 
-export function uniqueLabelPdfFilename(order: LabelOrder, used: Set<string>, options:LabelFilenameOptions={}) {
+export function uniqueLabelPdfFilename(order: LabelOrder, used: Set<string>, options:LabelFilenameOptions) {
   const base = labelPdfBaseName(order,options);
   let suffix = 1;
   let fileName = labelPdfFilename(order,options);
