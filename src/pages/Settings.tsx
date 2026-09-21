@@ -22,7 +22,7 @@ import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
 import { showError, showSuccess } from '../services/toast';
-import type { AmazonSettings, ClientsSettings, ExpensesSettings, IntegrationsSettings, MaintenanceSettings, NotificationsSettings, NotificationSetting, OrdersSettings, ProductsSettings, SalesSettings, ShippingSettings, SuppliersSettings, UserPreferences } from '../services/settingsSchema';
+import { DEFAULT_APP_SETTINGS, type AmazonSettings, type ClientsSettings, type ExpensesSettings, type IntegrationsSettings, type MaintenanceSettings, type NotificationsSettings, type NotificationSetting, type OrdersSettings, type ProductsSettings, type SalesSettings, type ShippingSettings, type SuppliersSettings, type UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 import { loadManagedSalesSeries, loadTaxRegistrations, type ManagedSalesSeries, type TaxRegistration } from '../services/salesConfig';
