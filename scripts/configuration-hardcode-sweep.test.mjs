@@ -18,10 +18,13 @@ test('migrated pages do not keep fixed current-quarter initializers or page size
   assert.match(pages.join('\n'),/preferences\.pageSize/);
 });
 
-test('sales due dates have no hidden 30-day service fallback',async()=>{
+test('sales due dates have no hidden 30-day service or import fallback',async()=>{
   const sales=await read('src/services/sales.ts');
+  const salesImport=await read('src/services/salesInvoiceImport.ts');
   assert.doesNotMatch(sales,/defaultDueDays\s*=\s*30/);
+  assert.doesNotMatch(salesImport,/defaultDueDays\s*=\s*30/);
   assert.match(sales,/defaultDueDays:number/);
+  assert.match(salesImport,/defaultDueDays:number/);
 });
 
 test('shipping routing is owned by configured rules rather than geography helpers',async()=>{
