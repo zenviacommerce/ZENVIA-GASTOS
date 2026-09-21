@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { sanitizeDatabaseSingleLine, sanitizeDatabaseText } from './textSanitizer';
 import { defaultSalesDueDate } from './salesDefaults';
+import { DEFAULT_APP_SETTINGS } from './settingsSchema';
 export { defaultSalesDueDate, resolveSalesDueDays } from './salesDefaults';
 
 export type Client = {
@@ -127,6 +128,7 @@ export type SalesInvoiceDraftInput = {
   issueDate: string;
   operationDate?: string;
   dueDate?: string;
+  currency?: string;
   paymentMethod?: string;
   notes?: string;
   lines: SalesInvoiceLine[];
@@ -192,13 +194,13 @@ export async function loadSalesInvoices():Promise<SalesInvoice[]>{
   for(const row of paymentResult.data??[]){const bucket=payments.get(row.invoice_id)??[];bucket.push({id:row.id,paymentDate:row.payment_date,amount:n(row.amount),method:row.method,reference:row.reference,notes:row.notes});payments.set(row.invoice_id,bucket);}
   return (invoiceResult.data??[]).map((row:any)=>{
     const liveClient:any=clients.get(row.client_id);const tax:any=taxRegs.get(row.tax_registration_id)||defaultTax;const draft=row.status==='draft';const invoicePayments=payments.get(row.id)??[];
-    return {id:row.id,clientId:row.client_id,clientName:row.client_name||liveClient?.name||'Cliente',seriesId:row.series_id,seriesName:series.get(row.series_id)||'Serie',taxRegistrationId:row.tax_registration_id||tax?.id||null,taxRegistrationLabel:row.issuer_tax_registration_label||tax?.label||null,taxRegistrationCountryCode:row.issuer_tax_country_code||tax?.country_code||null,invoiceType:row.invoice_type,rectifiesInvoiceId:row.rectifies_invoice_id,invoiceNumber:row.invoice_number,status:row.status,issueDate:row.issue_date,operationDate:row.operation_date,dueDate:row.due_date,currency:row.currency||'EUR',subtotal:n(row.subtotal),discountAmount:n(row.discount_amount),taxAmount:n(row.tax_amount),totalAmount:n(row.total_amount),paymentMethod:row.payment_method,notes:row.notes,
+    return {id:row.id,clientId:row.client_id,clientName:row.client_name||liveClient?.name||'Cliente',seriesId:row.series_id,seriesName:series.get(row.series_id)||'Serie',taxRegistrationId:row.tax_registration_id||tax?.id||null,taxRegistrationLabel:row.issuer_tax_registration_label||tax?.label||null,taxRegistrationCountryCode:row.issuer_tax_country_code||tax?.country_code||null,invoiceType:row.invoice_type,rectifiesInvoiceId:row.rectifies_invoice_id,invoiceNumber:row.invoice_number,status:row.status,issueDate:row.issue_date,operationDate:row.operation_date,dueDate:row.due_date,currency:row.currency||DEFAULT_APP_SETTINGS.general.currencyCode,subtotal:n(row.subtotal),discountAmount:n(row.discount_amount),taxAmount:n(row.tax_amount),totalAmount:n(row.total_amount),paymentMethod:row.payment_method,notes:row.notes,
       clientTaxId:row.client_tax_id||(draft?liveClient?.tax_id:null),clientEmail:row.client_email||(draft?liveClient?.email:null),clientPhone:row.client_phone||(draft?liveClient?.phone:null),clientAddress:row.client_address||(draft?addressFrom(liveClient):null),
       issuerName:row.issuer_name||(draft?tax?.fiscal_name:null),issuerTaxId:row.issuer_tax_id||(draft?tax?.vat_number:null),issuerEmail:row.issuer_email,issuerPhone:row.issuer_phone,issuerAddress:row.issuer_address||(draft?tax?.address_text:null),issuerTaxCountryCode:row.issuer_tax_country_code||(draft?tax?.country_code:null),issuerTaxRegistrationLabel:row.issuer_tax_registration_label||(draft?tax?.label:null),issuedAt:row.issued_at,sentAt:row.sent_at,paidAt:row.paid_at,lines:lines.get(row.id)??[],payments:invoicePayments,paidAmount:invoicePayments.reduce((sum,p)=>sum+p.amount,0)} satisfies SalesInvoice;
   });
 }
 
-function invoiceRow(input:SalesInvoiceDraftInput,defaultDueDays:number){const issueDate=sanitizeDatabaseSingleLine(input.issueDate);return {client_id:input.clientId,series_id:input.seriesId,tax_registration_id:input.taxRegistrationId||null,issue_date:issueDate,operation_date:nullable(input.operationDate),due_date:nullable(input.dueDate)||defaultSalesDueDate(issueDate,defaultDueDays)||null,payment_method:nullable(input.paymentMethod),notes:nullable(input.notes)}}
+function invoiceRow(input:SalesInvoiceDraftInput,defaultDueDays:number){const issueDate=sanitizeDatabaseSingleLine(input.issueDate);const currency=sanitizeDatabaseSingleLine(input.currency||DEFAULT_APP_SETTINGS.general.currencyCode).toUpperCase().slice(0,3)||DEFAULT_APP_SETTINGS.general.currencyCode;return {client_id:input.clientId,series_id:input.seriesId,tax_registration_id:input.taxRegistrationId||null,issue_date:issueDate,operation_date:nullable(input.operationDate),due_date:nullable(input.dueDate)||defaultSalesDueDate(issueDate,defaultDueDays)||null,currency,payment_method:nullable(input.paymentMethod),notes:nullable(input.notes)}}
 function lineRows(invoiceId:string,lines:SalesInvoiceLine[]){return lines.map((line,index)=>({invoice_id:invoiceId,product_id:line.productId||null,position:index+1,description:sanitizeDatabaseSingleLine(line.description),quantity:line.quantity,unit:sanitizeDatabaseSingleLine(line.unit)||'ud',unit_price:line.unitPrice,discount_percent:line.discountPercent||0,tax_rate:line.taxRate}));}
 
 export async function createSalesInvoiceDraft(input:SalesInvoiceDraftInput,defaultDueDays:number){const {data:invoice,error}=await supabase.from('sales_invoices').insert(invoiceRow(input,defaultDueDays)).select('id').single();if(error)throw error;const rows=lineRows(invoice.id,input.lines).filter(row=>row.description);if(rows.length){const {error:lineError}=await supabase.from('sales_invoice_lines').insert(rows);if(lineError){await supabase.from('sales_invoices').delete().eq('id',invoice.id);throw lineError;}}return invoice.id as string;}
