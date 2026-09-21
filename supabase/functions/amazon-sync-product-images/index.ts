@@ -25,7 +25,10 @@ Deno.serve(async(req:Request)=>{
     const credentials=readAmazonSpApiCredentials();
     const body=await req.json().catch(()=>({}));
     const limit=Math.min(30,Math.max(1,Number(body?.limit)||10));
-    const {data:account,error:accountError}=await admin.from('amazon_accounts').select('id,owner_id').limit(1).maybeSingle();
+    const ownerId=String(body?.ownerId||'').trim();
+    let accountQuery=admin.from('amazon_accounts').select('id,owner_id').neq('status','disabled').order('updated_at',{ascending:false}).limit(1);
+    if(ownerId)accountQuery=accountQuery.eq('owner_id',ownerId);
+    const {data:account,error:accountError}=await accountQuery.maybeSingle();
     if(accountError)throw accountError;if(!account)throw new Error('No hay cuenta Amazon configurada.');
 
     const {data:markets,error:marketError}=await admin.from('amazon_marketplaces').select('marketplace_id,country_code').eq('amazon_account_id',account.id).eq('owner_id',account.owner_id).eq('active',true).order('country_code');
