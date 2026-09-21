@@ -111,9 +111,9 @@ export async function listFulfillmentOrders():Promise<FulfillmentOrder[]>{
   return (data||[]).map(mapRow);
 }
 export function getSendcloudStatus(){return invokeSendcloud<SendcloudStatus>({action:'status'});}
-export async function syncSendcloudOrders(history=false){
+export async function syncSendcloudOrders(history=false,retryTracking=true){
   const result=await invokeSendcloud<{ok:true;synced:number;enriched?:number;history?:boolean;integrations:SendcloudIntegration[]}>({action:'sync',history});
-  try{await invokeAmazonTracking({action:'retry_pending',limit:10})}catch{/* Amazon tracking is retried on the next Sendcloud sync. */}
+  if(retryTracking){try{await invokeAmazonTracking({action:'retry_pending',limit:10})}catch{/* Amazon tracking is retried on the next enabled Sendcloud sync. */}}
   return result;
 }
 export function createManualOrder(order:ManualOrderInput){return invokeSendcloud<{ok:true;id:string;sendcloudId:string;orderNumber:string}>({action:'create_manual_order',order});}
@@ -123,9 +123,9 @@ export async function getShippingOptions(orderId:string){
 }
 export function updateFulfillmentOrder(orderId:string,order:OrderUpdateInput){return invokeOrderTools<{ok:true;weightKg:number}>({action:'update_order',orderId,order});}
 export function validateOrderAddress(orderId:string,carrierCode='mrw'){return invokeOrderTools<OrderAddressValidation>({action:'validate_address',orderId,carrierCode});}
-export async function createOrderLabel(orderId:string,option?:ShippingOption|null){
+export async function createOrderLabel(orderId:string,option?:ShippingOption|null,pushTracking=true){
   const result=await invokeSendcloud<LabelResult>({action:'create_label',orderId,shippingOption:option?{code:option.code,contractId:option.contractId,carrierName:option.carrierName,name:option.name,price:option.price,currency:option.currency}:null});
-  try{await invokeAmazonTracking({action:'confirm_order_tracking',orderId})}catch{/* Amazon tracking is retried on the next Sendcloud sync. */}
+  if(pushTracking){try{await invokeAmazonTracking({action:'confirm_order_tracking',orderId})}catch{/* Tracking can be retried later when enabled. */}}
   return result;
 }
 export function fetchOrderLabel(orderId:string){return invokeSendcloud<LabelResult>({action:'fetch_label',orderId});}
