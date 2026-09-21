@@ -20,7 +20,6 @@ const items = [
   ['products','Productos','Productos',Package],
   ['suppliers','Proveedores','Proveedores',Building2],
   ['amazon','Amazon','Amazon',Store],
-  ['settings','Configuración','Ajustes',Settings2],
 ] as const;
 
 function initials(fullName: string, email: string) {
@@ -33,10 +32,11 @@ function initials(fullName: string, email: string) {
 export function Sidebar({page,onChange,onLogout,theme,onToggleTheme,allowedPages,isAdmin,user}:{page:Page;onChange:(p:Page)=>void;onLogout:()=>void;theme:ThemeMode;onToggleTheme:()=>void;allowedPages:Page[];isAdmin:boolean;user:SidebarUser}) {
   const [mobileOpen,setMobileOpen]=useState(false);
   const visibleItems = items.filter(([id]) => allowedPages.includes(id));
+  const canOpenSettings = allowedPages.includes('settings');
   const canOpenAdmin = isAdmin && allowedPages.includes('admin');
   const displayName = user.fullName.trim() || user.email.split('@')[0] || 'Usuario';
   const roleLabel = user.role === 'admin' ? 'Administrador' : 'Usuario';
-  const activeLabel=page==='admin'?'Administración':items.find(([id])=>id===page)?.[1]||'Menú';
+  const activeLabel=page==='settings'?'Configuración':page==='admin'?'Administración':items.find(([id])=>id===page)?.[1]||'Menú';
 
   useEffect(()=>{
     setMobileOpen(false);
@@ -63,7 +63,7 @@ export function Sidebar({page,onChange,onLogout,theme,onToggleTheme,allowedPages
       <div className="brandProductLockup"><span className="brandProductDot"/><div className="brandProductText"><strong>Gestión</strong><span>Gestión empresarial</span></div></div>
       <button className="mobileMenuClose" type="button" onClick={()=>setMobileOpen(false)} aria-label="Cerrar menú"><X size={20}/></button>
     </div>
-    <nav className={isAdmin?'hasAdmin':''}>{visibleItems.map(([id,label,mobileLabel,Icon]) => <button key={id} className={page===id?'active':''} onClick={()=>navigate(id)} title={label} aria-label={label}><Icon size={18}/><span className="navLabelDesktop">{label}</span><span className="navLabelMobile">{mobileLabel}</span></button>)}{canOpenAdmin&&<button className={page==='admin'?'active adminNavMobile':'adminNavMobile'} onClick={()=>navigate('admin')} title="Administración" aria-label="Administración"><ShieldCheck size={18}/><span className="navLabelDesktop">Administración</span><span className="navLabelMobile">Admin</span></button>}</nav>
+    <nav className={isAdmin?'hasAdmin':''}>{visibleItems.map(([id,label,mobileLabel,Icon]) => <button key={id} className={page===id?'active':''} onClick={()=>navigate(id)} title={label} aria-label={label}><Icon size={18}/><span className="navLabelDesktop">{label}</span><span className="navLabelMobile">{mobileLabel}</span></button>)}</nav>
     <div className="sidebarBottom">
       <div className="sidebarUserCard" title={`${displayName} · ${user.email}`}>
         <div className="sidebarUserAvatar" aria-hidden="true">{initials(displayName, user.email)}</div>
@@ -73,6 +73,7 @@ export function Sidebar({page,onChange,onLogout,theme,onToggleTheme,allowedPages
           <span className="sidebarUserEmail">{user.email}</span>
         </div>
       </div>
+      {canOpenSettings&&<button className={page==='settings'?'settingsSidebarButton active':'settingsSidebarButton'} onClick={()=>navigate('settings')}><Settings2 size={18}/>Configuración</button>}
       {canOpenAdmin&&<button className={page==='admin'?'adminSidebarButton active':'adminSidebarButton'} onClick={()=>navigate('admin')}><ShieldCheck size={18}/>Administración</button>}
       <button className="themeSidebarButton" onClick={onToggleTheme}>{theme==='dark'?<Sun size={18}/>:<Moon size={18}/>} {theme==='dark'?'Modo claro':'Modo oscuro'}</button>
       <button onClick={onLogout}><LogOut size={18}/>Cerrar sesión</button>
