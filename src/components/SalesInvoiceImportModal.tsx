@@ -36,7 +36,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
 
   const prepareFile=async(item:Item)=>{
     try{
-      let candidate=await prepareSalesInvoiceImportCandidate(item.file,clients,settings.sales.defaultDueDays);
+      let candidate=await prepareSalesInvoiceImportCandidate(item.file,clients,settings.sales.defaultDueDays,settings.clients);
       const year=/^\d{4}-/.test(candidate.issueDate)?Number(candidate.issueDate.slice(0,4)):new Date().getFullYear();
       const allSeries=await ensureSalesSeries(year);
       const series=allSeries.filter(row=>row.kind==='standard'&&row.active);
@@ -79,7 +79,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
   };
 
   const updateLine=(index:number,change:Partial<SalesInvoiceImportCandidate['lines'][number]>)=>{if(!selected||!candidate)return;patchCandidate(selected.id,{lines:candidate.lines.map((line,i)=>i===index?{...line,...change}:line)});};
-  const addLine=()=>{if(!selected||!candidate)return;patchCandidate(selected.id,{lines:[...candidate.lines,{position:candidate.lines.length+1,description:'',quantity:1,unit:'ud',unitPrice:0,discountPercent:0,taxRate:21,productId:null}]});};
+  const addLine=()=>{if(!selected||!candidate)return;const selectedClient=clients.find(client=>client.id===candidate.clientId);const taxRate=selectedClient?.defaultVatRate??candidate.proposedClient?.defaultVatRate??settings.sales.defaultVatRate;patchCandidate(selected.id,{lines:[...candidate.lines,{position:candidate.lines.length+1,description:'',quantity:1,unit:'ud',unitPrice:0,discountPercent:0,taxRate,productId:null}]});};
   const removeLine=(index:number)=>{if(!selected||!candidate)return;patchCandidate(selected.id,{lines:candidate.lines.filter((_,i)=>i!==index).map((line,i)=>({...line,position:i+1}))});};
 
   const validationError=(item:Item)=>{
@@ -87,6 +87,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
     if(!current)return 'No se ha podido analizar la factura.';
     const selectedSeries=item.series.find(series=>series.id===current.seriesId);
     if(!current.clientId&&!current.proposedClient?.name)return 'Selecciona el cliente o revisa el cliente detectado.';
+    if(!current.clientId&&current.proposedClient?.name&&!settings.clients.autoCreate)return 'La creación automática de clientes está desactivada. Selecciona un cliente existente o crea el cliente manualmente.';
     if(!current.issueDate)return 'Indica la fecha de factura.';
     if(!current.dueDate)return 'Indica la fecha de vencimiento.';
     if(current.dueDate<current.issueDate)return 'El vencimiento no puede ser anterior a la fecha de factura.';
@@ -148,7 +149,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
     try{
       for(const item of ready){
         patch(item.id,{status:'importing'});
-        try{await createSalesInvoiceDraftFromCandidate(item.candidate!,settings.sales.defaultDueDays);patch(item.id,{status:'imported',candidate:{...item.candidate!,status:'imported'}});}
+        try{await createSalesInvoiceDraftFromCandidate(item.candidate!,settings.sales.defaultDueDays,settings.clients);patch(item.id,{status:'imported',candidate:{...item.candidate!,status:'imported'}});}
         catch(error){patch(item.id,{status:'error',error:friendlySalesImportError(error)});}
       }
       await onFinished();
@@ -183,7 +184,7 @@ export function SalesInvoiceImportModal({open,onClose,clients,existingInvoices,o
         <label>Serie *<SearchableSelect value={candidate.seriesId} options={seriesOptions} onChange={value=>patchCandidate(selected.id,{seriesId:value})} placeholder="Selecciona serie" searchPlaceholder="Buscar serie…" ariaLabel="Serie importada"/></label>
         <label>Número de factura *<input value={candidate.invoiceNumber} disabled={Boolean(candidate.existingInvoiceId)} onChange={event=>patchCandidate(selected.id,{invoiceNumber:event.target.value})}/>{candidate.existingInvoiceId&&<small className="salesImportedClientHint">Se actualizará el borrador existente, conservando este número.</small>}</label>
         <label>Fecha factura *<input type="date" value={candidate.issueDate} onChange={event=>void changeDate(event.target.value)}/></label>
-        <label>Vencimiento *<input type="date" min={candidate.issueDate||undefined} value={candidate.dueDate} onChange={event=>patchCandidate(selected.id,{dueDate:event.target.value})}/><small className="salesImportedClientHint">Por defecto, 30 días después de la fecha de factura.</small></label>
+        <label>Vencimiento *<input type="date" min={candidate.issueDate||undefined} value={candidate.dueDate} onChange={event=>patchCandidate(selected.id,{dueDate:event.target.value})}/><small className="salesImportedClientHint">Por defecto, {settings.sales.defaultDueDays} días después de la fecha de factura.</small></label>
       </div>
       {candidate.proposedClient&&<section className="salesImportedClientEditor">
         <div className="salesImportedClientEditorHead"><div><strong>Datos fiscales detectados del cliente</strong><span>Se guardarán al crear el cliente o completarán los datos que falten.</span></div></div>
