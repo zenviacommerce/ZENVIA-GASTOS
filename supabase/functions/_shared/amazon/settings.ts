@@ -1,4 +1,5 @@
 export type AmazonAutomaticSyncSettings={
+  automaticEnabled:boolean;
   activeMarketplaceIds:string[];
   enabledSources:Array<'orders'|'finances'|'inventory'>;
   autoSyncImages:boolean;
@@ -21,19 +22,20 @@ export async function loadAmazonAutomaticSyncSettings(admin:any,ownerId:string):
     .maybeSingle();
   if(error)throw error;
 
-  const amazon=(data?.config&&typeof data.config==='object'&&!Array.isArray(data.config))
-    ?(data.config as any).amazon
-    :null;
+  const root=(data?.config&&typeof data.config==='object'&&!Array.isArray(data.config))?(data.config as any):{};
+  const amazon=root.amazon;
   const raw=amazon&&typeof amazon==='object'&&!Array.isArray(amazon)?amazon:{};
   const enabledSources:Array<'orders'|'finances'|'inventory'>=[];
   if(bool(raw.autoSyncOrders,true))enabledSources.push('orders');
   if(bool(raw.autoSyncFinance,true))enabledSources.push('finances');
   if(bool(raw.autoSyncInventory,true))enabledSources.push('inventory');
 
+  const automaticEnabled=bool(root?.integrations?.amazonEnabled,true);
   return {
+    automaticEnabled,
     activeMarketplaceIds:strings(raw.activeMarketplaceIds),
-    enabledSources,
-    autoSyncImages:bool(raw.autoSyncImages,true),
+    enabledSources:automaticEnabled?enabledSources:[],
+    autoSyncImages:automaticEnabled&&bool(raw.autoSyncImages,true),
   };
 }
 
