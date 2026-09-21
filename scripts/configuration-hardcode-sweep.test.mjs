@@ -77,6 +77,11 @@ test('configuration is grouped with administration and uses shared application b
   assert.match(settings,/className="secondary/);
 });
 
+test('tablet drawer keeps configuration and administration visible together',async()=>{
+  const theme=await read('src/theme-consistency.css');
+  assert.match(theme,/\.sidebarBottom \.settingsSidebarButton,[\s\S]*\.sidebarBottom \.adminSidebarButton[\s\S]*display:flex!important/);
+});
+
 test('final theme consistency stylesheet is loaded after settings and alerts',async()=>{
   const main=await read('src/main.tsx');
   const settingsPos=main.indexOf("import './settings.css';");
