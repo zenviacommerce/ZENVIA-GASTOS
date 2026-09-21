@@ -49,6 +49,7 @@ import './layout-polish.css';
 import './action-dialog.css';
 import './settings.css';
 import './alerts.css';
+import './theme-consistency.css';
 
 const favicon=document.querySelector<HTMLLinkElement>("link[rel~='icon']")||document.createElement('link');
 favicon.rel='icon';
