@@ -64,3 +64,29 @@ test('Amazon settings editor exposes marketplaces, analytics fallbacks and autom
   ]) assert.match(page,new RegExp(label,'i'),label);
   assert.match(page,/updateSection\('amazon'/);
 });
+
+
+test('Amazon currency and VAT fallbacks are enforced by the analytics runtime migration',async()=>{
+  const sql=await read('supabase/migrations/20260921101500_amazon_configuration_runtime.sql');
+  assert.match(sql,/amazon_rate_to_consolidated/);
+  assert.match(sql,/consolidatedCurrency/);
+  assert.match(sql,/fxMissingRatePolicy/);
+  assert.match(sql,/r\.rate_date=p_event_date/);
+  assert.match(sql,/r\.rate_date<=p_event_date/);
+  assert.match(sql,/amazon_effective_vat_amount/);
+  assert.match(sql,/if p_explicit_vat is not null then return p_explicit_vat/);
+  assert.match(sql,/defaultVatRate/);
+  assert.match(sql,/amazon_analytics_summary/);
+  assert.match(sql,/amazon_analytics_series/);
+  assert.match(sql,/amazon_analytics_products/);
+  assert.match(sql,/amazon_analytics_orders/);
+});
+
+test('automatic image sync is controlled by settings and scoped to the workspace',async()=>{
+  const orchestrator=await read('supabase/functions/amazon-sync-orchestrator/index.ts');
+  const images=await read('supabase/functions/amazon-sync-product-images/index.ts');
+  assert.match(orchestrator,/automaticSettings\.autoSyncImages/);
+  assert.match(orchestrator,/ownerId,limit:10/);
+  assert.match(images,/const ownerId=String\(body\?\.ownerId/);
+  assert.match(images,/accountQuery=accountQuery\.eq\('owner_id',ownerId\)/);
+});
