@@ -39,7 +39,7 @@ test('bulk invoice list uses polished card hierarchy, status badges and responsi
   assert.match(main,/import ['"]\.\/bulk-invoice-import\.css['"]/);
   assert.match(css,/\.bulkInvoiceModal\{/);
   assert.match(css,/\.bulkInvoiceRow\{/);
-  assert.match(css,/\.bulkInvoiceFile\s+span\{/);
+  assert.match(css,/\.bulkInvoiceFile>div span\{/);
   assert.match(css,/\.bulkInvoiceMeta\{/);
   assert.match(css,/\.bulkInvoiceActions\{/);
   assert.match(css,/\.bulkInvoiceRow\.duplicate/);
