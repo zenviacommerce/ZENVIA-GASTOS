@@ -14,6 +14,7 @@ import { isCancelledOrder, isPendingOrder, orderStatusCode } from '../services/o
 import { readViewCache, writeViewCache } from '../services/viewCache';
 import { useSettings } from '../context/SettingsContext';
 import { DASHBOARD_KPI_DEFAULTS, persistRememberedFilter, rememberedFilter, selectedPreferenceKeys } from '../services/uiPreferences';
+import { formatAppMoney } from '../services/formatting';
 
 const colors = ['#0f766e','#2563eb','#7c3aed','#d97706','#64748b','#dc2626','#0891b2'];
 const DASHBOARD_SALES_CACHE='dashboard:sales';
