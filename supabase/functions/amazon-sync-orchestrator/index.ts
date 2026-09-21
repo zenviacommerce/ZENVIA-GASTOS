@@ -1,6 +1,7 @@
 import { createAdminClient, requireInternalSecret } from '../_shared/amazon/supabase.ts';
 import { ensureAmazonAccountAndMarketplaces } from '../_shared/amazon/marketplaces.ts';
 import { enqueueHourlySync, enqueueInitialBackfill } from '../_shared/amazon/sync.ts';
+import { filterAutomaticMarketplaces, loadAmazonAutomaticSyncSettings } from '../_shared/amazon/settings.ts';
 
 const jsonHeaders={'Content-Type':'application/json'};
 function response(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:jsonHeaders});}
@@ -21,7 +22,9 @@ Deno.serve(async(req:Request)=>{
     for(const ownerId of ownerIds){
       const bootstrap=await ensureAmazonAccountAndMarketplaces(admin,ownerId);
       const account=bootstrap.account;
-      const marketplaces=bootstrap.marketplaces;
+      const automaticSettings=await loadAmazonAutomaticSyncSettings(admin,ownerId);
+      const marketplaces=filterAutomaticMarketplaces(bootstrap.marketplaces,automaticSettings.activeMarketplaceIds);
+      const enabledSources=automaticSettings.enabledSources;
       processedAccounts+=1;
       const started=new Date().toISOString();
       const {data:run,error:runError}=await admin.from('amazon_sync_runs').insert({owner_id:account.owner_id,amazon_account_id:account.id,source:'orchestrator',mode,status:'running',started_at:started}).select('id').single();
@@ -29,7 +32,7 @@ Deno.serve(async(req:Request)=>{
       try{
         let created:any[]=[];
         if(mode==='initial'){
-          created=await enqueueInitialBackfill(admin,account,marketplaces);
+          created=await enqueueInitialBackfill(admin,account,marketplaces,new Date(),enabledSources);
         }else if(mode==='hourly'){
           const {data:stateRows,error:stateError}=await admin.from('amazon_sync_state')
             .select('id')
@@ -38,13 +41,13 @@ Deno.serve(async(req:Request)=>{
             .limit(1);
           if(stateError)throw stateError;
           if(!(stateRows||[]).length){
-            const historical=await enqueueInitialBackfill(admin,account,marketplaces);
+            const historical=await enqueueInitialBackfill(admin,account,marketplaces,new Date(),enabledSources);
             created.push(...historical);
           }
-          const incremental=await enqueueHourlySync(admin,account,marketplaces,'hourly');
+          const incremental=await enqueueHourlySync(admin,account,marketplaces,'hourly',new Date(),enabledSources);
           created.push(...incremental);
         }else{
-          created=await enqueueHourlySync(admin,account,marketplaces,'reconcile');
+          created=await enqueueHourlySync(admin,account,marketplaces,'reconcile',new Date(),enabledSources);
         }
         jobs+=created.length;
         await admin.from('amazon_sync_runs').update({status:'success',finished_at:new Date().toISOString(),rows_processed:created.length,checkpoint:{queued_jobs:created.length},updated_at:new Date().toISOString()}).eq('id',run.id);
