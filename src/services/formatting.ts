@@ -95,13 +95,20 @@ export function formatAppDateTime(value:string|Date|null|undefined,settings:Form
 
 export function formatAppMoney(value:number,currency:string|null|undefined,settings:FormattingSettings,options:{minimumFractionDigits?:number;maximumFractionDigits?:number}={}){
   const code=(currency||settings.currencyCode||'EUR').trim().toUpperCase();
+  const rawMin=Number.isFinite(options.minimumFractionDigits)?Math.max(0,Math.min(20,Number(options.minimumFractionDigits))):undefined;
+  const rawMax=Number.isFinite(options.maximumFractionDigits)?Math.max(0,Math.min(20,Number(options.maximumFractionDigits))):undefined;
+  const minimumFractionDigits=rawMin==null?undefined:(rawMax==null?rawMin:Math.min(rawMin,rawMax));
+  const maximumFractionDigits=rawMax==null?undefined:(rawMin==null?rawMax:Math.max(rawMin,rawMax));
   const format=(safeCode:string)=>new Intl.NumberFormat(localeForLanguage(settings.documentLanguage),{
     style:'currency',currency:safeCode,
-    minimumFractionDigits:options.minimumFractionDigits,
-    maximumFractionDigits:options.maximumFractionDigits,
+    minimumFractionDigits,
+    maximumFractionDigits,
   }).format(value);
   try{return format(code);}
-  catch{return format('EUR');}
+  catch{
+    try{return format('EUR');}
+    catch{return Number(value||0).toFixed(maximumFractionDigits??2)+' €';}
+  }
 }
 
 export function invoiceDocumentLabels(language:DocumentLanguage){
