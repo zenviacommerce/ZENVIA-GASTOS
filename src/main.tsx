@@ -7,6 +7,7 @@ import { OrderLabelDefaults } from './components/OrderLabelDefaults';
 import { PendingOrdersKpiHighlight } from './components/PendingOrdersKpiHighlight';
 import { UnifiedListExperience } from './components/UnifiedListExperience';
 import { ActionDialogHost } from './components/ActionDialogHost';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { SettingsProvider } from './context/SettingsContext';
 import './styles.css';
 import './enhancements.css';
@@ -57,4 +58,4 @@ favicon.type='image/webp';
 favicon.href=ZENVIA_LOGO;
 if(!favicon.parentNode)document.head.appendChild(favicon);
 
-ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><SettingsProvider><App/><ActionDialogHost/><AutoPagination/><OrderLabelDefaults/><PendingOrdersKpiHighlight/><UnifiedListExperience/></SettingsProvider></React.StrictMode>);
+ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorBoundary><SettingsProvider><App/><ActionDialogHost/><AutoPagination/><OrderLabelDefaults/><PendingOrdersKpiHighlight/><UnifiedListExperience/></SettingsProvider></AppErrorBoundary></React.StrictMode>);
