@@ -15,7 +15,6 @@ import { defaultDateFilter, periodLabel } from '../services/filters';
 import { useSettings } from '../context/SettingsContext';
 import '../sales.css';
 
-const PAGE_SIZE=20;
 const emptyClient = (settings:{defaultCountryCode:string;defaultPaymentTermsDays:number;defaultVatRate:number;defaultPaymentMethod:string}): ClientInput => ({
   name:'',taxId:'',email:'',phone:'',addressLine1:'',addressLine2:'',postalCode:'',city:'',province:'',
   countryCode:settings.defaultCountryCode,paymentTermsDays:settings.defaultPaymentTermsDays,
@@ -129,11 +128,13 @@ function ClientDrawer({client,metric,period,onClose,onEdit,onDelete,busy}:{clien
 }
 
 export function Clients(){
+  const {preferences}=useSettings();
+  const pageSize=preferences.pageSize;
   const [clients,setClients]=useState<Client[]>([]);
   const [invoices,setInvoices]=useState<SalesInvoice[]>([]);
   const [loading,setLoading]=useState(true);
   const [query,setQuery]=useState('');
-  const [dateFilter,setDateFilter]=useState(defaultDateFilter);
+  const [dateFilter,setDateFilter]=useState(()=>defaultDateFilter(preferences.defaultPeriod));
   const [balanceFilter,setBalanceFilter]=useState<ClientBalanceFilter>('all');
   const [countryFilter,setCountryFilter]=useState('all');
   const [editing,setEditing]=useState<Client|null>(null);
@@ -182,8 +183,8 @@ export function Clients(){
   const allFilteredSelected=filtered.length>0&&filtered.every(client=>checkedIds.has(client.id));
   const toggleClient=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
   const toggleAllClients=(checked:boolean)=>setCheckedIds(checked?new Set(filtered.map(client=>client.id)):new Set());
-  const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
-  const paged=useMemo(()=>filtered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[filtered,page]);
+  const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
+  const paged=useMemo(()=>filtered.slice((page-1)*pageSize,page*pageSize),[filtered,page]);
   useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,balanceFilter,countryFilter,dateFilter]);
   useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
 
@@ -246,7 +247,7 @@ export function Clients(){
     {error&&<div className="errorBox">{error}</div>}
     <section className="card tableCard masterTableCard">{loading?<div className="emptyState large">Cargando clientes…</div>:filtered.length?<table className="masterTable"><thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllClients} label={allFilteredSelected?'Deseleccionar clientes visibles':'Seleccionar clientes visibles'}/></th><th>Cliente</th><th>CIF/NIF</th><th>País</th><th>Contacto</th><th className="right">Facturado</th><th className="right">Pendiente</th><th>Última factura</th><th></th></tr></thead><tbody>{paged.map(client=>{const metric=metrics.get(client.id)!;return <tr key={client.id} className={`clickableRow ${checkedIds.has(client.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(client)}><td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(client.id)} onChange={checked=>toggleClient(client.id,checked)} label={`Seleccionar ${client.name}`}/></td><td><div className="masterEntityCell"><div className="masterAvatar"><UserRound size={17}/></div><div><strong>{client.name}</strong><small>{client.city||'Sin ciudad'}</small></div></div></td><td>{client.taxId||<span className="muted">Pendiente</span>}</td><td><span className="masterCountry">{client.countryCode&&client.countryCode!=='XX'?client.countryCode:'Pendiente'}</span></td><td><div className="masterContactCell"><span>{client.email||'—'}</span><small>{client.phone||''}</small></div></td><td className="right"><strong>{money(metric.invoiced)}</strong></td><td className="right"><strong className={metric.pending>0.005?'masterPending':''}>{money(metric.pending)}</strong></td><td>{dateLabel(metric.lastDate)}</td><td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay clientes para los filtros seleccionados.</div>}</section>
     {!loading&&filtered.length>0&&<div className="masterMobileList">{paged.map(client=>{const metric=metrics.get(client.id)!;return <div className={`bulkMobileSelectableRow ${checkedIds.has(client.id)?'selected':''}`} key={client.id}><BulkSelectCheckbox checked={checkedIds.has(client.id)} onChange={checked=>toggleClient(client.id,checked)} label={`Seleccionar ${client.name}`}/><button className="card masterMobileRow" onClick={()=>setSelected(client)}><div className="masterEntityCell"><div className="masterAvatar"><UserRound size={17}/></div><div><strong>{client.name}</strong><small>{client.taxId||'CIF/NIF pendiente'} · {client.countryCode&&client.countryCode!=='XX'?client.countryCode:'Pendiente'}</small></div></div><div className="masterMobileAmounts"><span>Facturado <strong>{money(metric.invoiced)}</strong></span><span>Pendiente <strong className={metric.pending>0.005?'masterPending':''}>{money(metric.pending)}</strong></span></div><ChevronRight size={18}/></button></div>})}</div>}
-    {!loading&&filtered.length>0&&<Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
+    {!loading&&filtered.length>0&&<Pagination page={page} totalItems={filtered.length} pageSize={pageSize} onPageChange={setPage}/>}
     <ClientModal open={modal} client={editing} onClose={()=>{setModal(false);setEditing(null)}} onSaved={refresh}/>
     {selected&&<ClientDrawer client={selected} metric={metrics.get(selected.id)||{invoiced:0,pending:0,count:0,lastDate:null,recent:[]}} period={selectedPeriod} onClose={()=>setSelected(null)} onEdit={()=>openEdit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>} 
   </div>;
