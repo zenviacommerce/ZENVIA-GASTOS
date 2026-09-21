@@ -10,8 +10,8 @@ import { SelectField } from '../components/forms/SelectField';
 import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
 import { defaultDateFilter, periodLabel } from '../services/filters';
 import '../supplier-actions.css';
+import { useSettings } from '../context/SettingsContext';
 
-const PAGE_SIZE=20;
 const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
 const normalize=(value:string)=>value.trim().toLowerCase().replace(/\s+/g,' ');
@@ -49,6 +49,8 @@ function SupplierDrawer({supplier,metric,period,onClose,onEdit,onDelete,busy}:{s
 }
 
 export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[];onAdd:()=>void;onEdit:(supplier:Supplier)=>void;onDelete:(supplier:Supplier)=>Promise<void>}){
+ const {preferences}=useSettings();
+ const pageSize=preferences.pageSize;
  const [busyId,setBusyId]=useState<string|null>(null);
  const [error,setError]=useState('');
  const [query,setQuery]=useState('');
@@ -60,7 +62,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  const [bulkBusy,setBulkBusy]=useState(false);
  const [invoices,setInvoices]=useState<Invoice[]>([]);
  const [categories,setCategories]=useState<ExpenseCategory[]>([]);
- const [dateFilter,setDateFilter]=useState(defaultDateFilter);
+ const [dateFilter,setDateFilter]=useState(()=>defaultDateFilter(preferences.defaultPeriod));
  const [page,setPage]=useState(1);
 
  useEffect(()=>{let cancelled=false;loadAppData().then(data=>{if(!cancelled){setInvoices(data.invoices);setCategories(data.categories)}}).catch(()=>{});return()=>{cancelled=true}},[suppliers]);
@@ -98,8 +100,8 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  const allFilteredSelected=filtered.length>0&&filtered.every(supplier=>checkedIds.has(supplier.id));
  const toggleSupplier=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
  const toggleAllSuppliers=(checked:boolean)=>setCheckedIds(checked?new Set(filtered.map(supplier=>supplier.id)):new Set());
- const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
- const paged=useMemo(()=>filtered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[filtered,page]);
+ const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
+ const paged=useMemo(()=>filtered.slice((page-1)*pageSize,page*pageSize),[filtered,page]);
  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,typeFilter,categoryFilter,activityFilter,dateFilter]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  const totals=useMemo(()=>({spent:filtered.reduce((sum,s)=>sum+(metrics.get(s.id)?.total||0),0),invoices:filtered.reduce((sum,s)=>sum+(metrics.get(s.id)?.count||0),0),active:filtered.filter(s=>(metrics.get(s.id)?.count||0)>0).length}),[filtered,metrics]);
@@ -198,7 +200,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
       </div>
     )}
 
-    {filtered.length>0&&<Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
+    {filtered.length>0&&<Pagination page={page} totalItems={filtered.length} pageSize={pageSize} onPageChange={setPage}/>}
     {!suppliers.length&&<div className="card emptyState large">Los proveedores también se crearán automáticamente al registrar facturas nuevas.</div>}
     {selected&&<SupplierDrawer supplier={selected} metric={metrics.get(selected.id)||{count:0,total:0,lastDate:null,recent:[]}} period={selectedPeriod} onClose={()=>setSelected(null)} onEdit={()=>edit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>}
   </div>;
