@@ -37,6 +37,7 @@ Deno.serve(async(req:Request)=>{
       const bootstrap=await ensureAmazonAccountAndMarketplaces(admin,ownerId);
       const account=bootstrap.account;
       const automaticSettings=await loadAmazonAutomaticSyncSettings(admin,ownerId);
+      if(!automaticSettings.automaticEnabled)continue;
       const marketplaces=filterAutomaticMarketplaces(bootstrap.marketplaces,automaticSettings.activeMarketplaceIds);
       const enabledSources=automaticSettings.enabledSources;
       processedAccounts+=1;
