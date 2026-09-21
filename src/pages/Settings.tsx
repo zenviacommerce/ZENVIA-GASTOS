@@ -12,6 +12,8 @@ import {
   ShieldCheck,
   ShoppingBag,
   SlidersHorizontal,
+  Plus,
+  Trash2,
   Truck,
   UserRound,
   Users,
@@ -19,9 +21,10 @@ import {
 import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { showError, showSuccess } from '../services/toast';
-import type { UserPreferences } from '../services/settingsSchema';
+import type { SalesSettings, UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
+import { loadManagedSalesSeries, loadTaxRegistrations, type ManagedSalesSeries, type TaxRegistration } from '../services/salesConfig';
 
 type SettingsSectionId =
   | 'general'
@@ -226,6 +229,149 @@ function GeneralSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   </section>;
 }
 
+
+function SalesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {settings,updateSection,resetSection}=useSettings();
+  const [draft,setDraft]=useState<SalesSettings>(settings.sales);
+  const [series,setSeries]=useState<ManagedSalesSeries[]>([]);
+  const [taxRegistrations,setTaxRegistrations]=useState<TaxRegistration[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{
+    setDraft(settings.sales);
+    onDirtyChange(false);
+  },[settings.sales,onDirtyChange]);
+
+  useEffect(()=>{
+    let active=true;
+    setLoading(true);
+    Promise.all([loadManagedSalesSeries(),loadTaxRegistrations()])
+      .then(([nextSeries,nextTax])=>{if(active){setSeries(nextSeries);setTaxRegistrations(nextTax);}})
+      .catch(e=>showError(e instanceof Error?e.message:'No se pudo cargar la configuración de facturación.'))
+      .finally(()=>{if(active)setLoading(false)});
+    return()=>{active=false};
+  },[]);
+
+  const update=<K extends keyof SalesSettings>(key:K,value:SalesSettings[K])=>{
+    setDraft(current=>({...current,[key]:value}));
+    onDirtyChange(true);
+  };
+
+  const updateMethod=(index:number,patch:Partial<SalesSettings['paymentMethods'][number]>)=>{
+    setDraft(current=>({...current,paymentMethods:current.paymentMethods.map((item,i)=>i===index?{...item,...patch}:item)}));
+    onDirtyChange(true);
+  };
+
+  const addMethod=()=>{
+    const id=`method_${Date.now()}`;
+    setDraft(current=>({...current,paymentMethods:[...current.paymentMethods,{id,label:'Nuevo método',active:true}]}));
+    onDirtyChange(true);
+  };
+
+  const removeMethod=(index:number)=>{
+    setDraft(current=>{
+      const next=current.paymentMethods.filter((_,i)=>i!==index);
+      const active=next.find(item=>item.active);
+      const defaultPaymentMethod=next.some(item=>item.id===current.defaultPaymentMethod&&item.active)
+        ?current.defaultPaymentMethod
+        :(active?.id||'');
+      return {...current,paymentMethods:next,defaultPaymentMethod};
+    });
+    onDirtyChange(true);
+  };
+
+  const save=async()=>{
+    const ids=new Set<string>();
+    for(const method of draft.paymentMethods){
+      const id=method.id.trim();
+      const label=method.label.trim();
+      if(!id||!label){showError('Todos los métodos de pago necesitan identificador y nombre.');return;}
+      if(ids.has(id)){showError('Los identificadores de métodos de pago no pueden repetirse.');return;}
+      ids.add(id);
+    }
+    if(draft.paymentMethods.length&&!draft.paymentMethods.some(item=>item.active)){showError('Debe existir al menos un método de pago activo.');return;}
+    const activeDefault=draft.paymentMethods.find(item=>item.id===draft.defaultPaymentMethod&&item.active);
+    if(draft.paymentMethods.length&&!activeDefault){showError('Selecciona un método de pago por defecto que esté activo.');return;}
+    setSaving(true);
+    try{
+      await updateSection('sales',{...draft,paymentMethods:draft.paymentMethods.map(item=>({...item,id:item.id.trim(),label:item.label.trim()}))});
+      onDirtyChange(false);
+      showSuccess('Configuración de facturación guardada.');
+    }catch(e){
+      showError(e instanceof Error?e.message:'No se pudo guardar la configuración de facturación.');
+    }finally{setSaving(false);}
+  };
+
+  const restore=async()=>{
+    if(!window.confirm('Se restaurarán los valores predeterminados de Facturación. ¿Continuar?'))return;
+    setSaving(true);
+    try{await resetSection('sales');onDirtyChange(false);showSuccess('Valores predeterminados de Facturación restaurados.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
+    finally{setSaving(false);}
+  };
+
+  const activeMethods=draft.paymentMethods.filter(item=>item.active).map(item=>({value:item.id,label:item.label}));
+  const seriesOptions=series.filter(item=>item.active&&item.kind==='standard').map(item=>({value:item.id,label:`${item.name} · ${item.prefix}`}));
+  const taxOptions=taxRegistrations.filter(item=>item.active).map(item=>({value:item.id,label:`${item.label} · ${item.vatNumber}`}));
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero">
+      <div className="settingsSectionIcon"><ReceiptText size={22}/></div>
+      <div><h2>Configuración de facturación</h2><p>Defaults de nuevas facturas, cobros y presentación del PDF. Los cambios no reescriben facturas históricas.</p></div>
+    </div>
+    {loading?<div className="settingsInlineLoading">Cargando series y registros IVA…</div>:<>
+      <div className="settingsSubsection">
+        <h3>Nuevas facturas</h3>
+        <div className="settingsFormGrid">
+          <label className="settingsField"><span>Vencimiento por defecto</span><div className="settingsNumberWithSuffix"><input type="number" min="0" max="365" value={draft.defaultDueDays} onChange={e=>update('defaultDueDays',Number(e.target.value))}/><em>días</em></div></label>
+          <label className="settingsField"><span>IVA por defecto</span><div className="settingsNumberWithSuffix"><input type="number" min="0" max="100" step="0.01" value={draft.defaultVatRate} onChange={e=>update('defaultVatRate',Number(e.target.value))}/><em>%</em></div></label>
+          <label className="settingsField"><span>Método de pago por defecto</span><SelectField ariaLabel="Método de pago por defecto" value={draft.defaultPaymentMethod} options={activeMethods} onChange={value=>update('defaultPaymentMethod',value)}/></label>
+          <label className="settingsField"><span>Serie por defecto</span><SelectField ariaLabel="Serie por defecto" allowEmpty emptyLabel="Automática según el año" value={draft.defaultSeriesId||''} options={seriesOptions} onChange={value=>update('defaultSeriesId',value||null)}/></label>
+          <label className="settingsField"><span>Registro IVA por defecto</span><SelectField ariaLabel="Registro IVA por defecto" allowEmpty emptyLabel="Usar registro marcado como predeterminado" value={draft.defaultTaxRegistrationId||''} options={taxOptions} onChange={value=>update('defaultTaxRegistrationId',value||null)}/></label>
+          <label className="settingsField settingsFieldWide"><span>Notas por defecto</span><textarea rows={3} value={draft.defaultNotes} onChange={e=>update('defaultNotes',e.target.value)} placeholder="Solo se aplican a nuevas facturas"/></label>
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <div className="settingsSubsectionHead"><div><h3>Métodos de pago disponibles</h3><p>Se reutilizan en facturas y cobros.</p></div><button type="button" className="secondaryButton" onClick={addMethod}><Plus size={15}/> Añadir método</button></div>
+        <div className="settingsRepeater">
+          {draft.paymentMethods.map((method,index)=><div className="settingsRepeaterRow" key={`${method.id}-${index}`}>
+            <input aria-label="Identificador del método" value={method.id} onChange={e=>updateMethod(index,{id:e.target.value.replace(/\s+/g,'_').toLowerCase()})} placeholder="bank_transfer"/>
+            <input aria-label="Nombre del método" value={method.label} onChange={e=>updateMethod(index,{label:e.target.value})} placeholder="Transferencia bancaria"/>
+            <label className="settingsInlineCheck"><input type="checkbox" checked={method.active} onChange={e=>updateMethod(index,{active:e.target.checked})}/> Activo</label>
+            <button type="button" className="iconBtn dangerIcon" aria-label="Eliminar método" onClick={()=>removeMethod(index)}><Trash2 size={15}/></button>
+          </div>)}
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <h3>Contenido del PDF</h3>
+        <div className="settingsToggleGrid">
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.showIbanOnPdf} onChange={e=>update('showIbanOnPdf',e.target.checked)}/><span><strong>Mostrar IBAN</strong><small>Incluye la cuenta bancaria en el pie de factura.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.showFiscalDataOnPdf} onChange={e=>update('showFiscalDataOnPdf',e.target.checked)}/><span><strong>Mostrar datos fiscales</strong><small>Muestra NIF/CIF o VAT del emisor y cliente.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.showDueDateOnPdf} onChange={e=>update('showDueDateOnPdf',e.target.checked)}/><span><strong>Mostrar vencimiento</strong><small>Muestra la fecha límite de pago.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.showPaymentMethodOnPdf} onChange={e=>update('showPaymentMethodOnPdf',e.target.checked)}/><span><strong>Mostrar método de pago</strong><small>Muestra la forma de pago elegida.</small></span></label>
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <h3>Cobros y edición</h3>
+        <div className="settingsToggleGrid">
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.allowPartialPayments} onChange={e=>update('allowPartialPayments',e.target.checked)}/><span><strong>Permitir cobros parciales</strong><small>Si se desactiva, solo se podrá registrar el importe pendiente completo.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.autoMarkPaid} onChange={e=>update('autoMarkPaid',e.target.checked)}/><span><strong>Marcar automáticamente como cobrada</strong><small>Al alcanzar el total cobrado, cambia el estado a Cobrada.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.allowEditIssuedInvoices} onChange={e=>update('allowEditIssuedInvoices',e.target.checked)}/><span><strong>Permitir editar facturas emitidas</strong><small>Solo se podrán reabrir emitidas sin envío ni cobros.</small></span></label>
+        </div>
+      </div>
+
+      <div className="settingsSectionActions">
+        <button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
+        <button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
+      </div>
+    </>}
+  </section>;
+}
+
 const themeOptions=[
   {value:'system',label:'Sistema'},
   {value:'light',label:'Claro'},
@@ -362,7 +508,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
