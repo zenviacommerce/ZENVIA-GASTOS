@@ -18,7 +18,16 @@ Deno.serve(async(req:Request)=>{
     if(action==='confirm_order_tracking'){
       const orderId=String(body?.orderId||'').trim();if(!orderId)return response({error:'Falta el pedido.'},400);
       const {data:order,error}=await admin.from('fulfillment_orders').select('*').eq('id',orderId).eq('owner_id',caller.data_owner_id).maybeSingle();if(error)throw error;if(!order)return response({error:'Pedido no encontrado.'},404);
-      const result=await syncAmazonTracking(admin,order);return response({ok:true,...result});
+      const rawOverride=body?.trackingOverride&&typeof body.trackingOverride==='object'?body.trackingOverride:null;
+      const trackingOverride=rawOverride?{
+        trackingNumber:rawOverride.trackingNumber==null?null:String(rawOverride.trackingNumber),
+        trackingUrl:rawOverride.trackingUrl==null?null:String(rawOverride.trackingUrl),
+        parcelId:rawOverride.parcelId??null,
+        carrierCode:rawOverride.carrierCode==null?null:String(rawOverride.carrierCode),
+        carrierName:rawOverride.carrierName==null?null:String(rawOverride.carrierName),
+        shippingServiceName:rawOverride.shippingServiceName==null?null:String(rawOverride.shippingServiceName),
+      }:undefined;
+      const result=await syncAmazonTracking(admin,order,trackingOverride);return response({ok:true,...result});
     }
     if(action==='retry_pending'){
       const result=await retryPendingAmazonTracking(admin,caller.data_owner_id,Number(body?.limit)||5,Boolean(body?.force));return response({ok:true,...result});
