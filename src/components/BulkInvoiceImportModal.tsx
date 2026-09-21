@@ -3,6 +3,8 @@ import { AlertCircle, CheckCircle2, FileText, LoaderCircle, Upload, X } from 'lu
 import { classifyInvoiceCandidate, invoiceCandidateToInput, prepareInvoiceCandidate } from '../services/invoiceImportPipeline';
 import type { ExpenseCategory, Invoice, InvoiceImportCandidate, NewInvoiceInput } from '../types';
 import { InvoiceCandidateForm } from './InvoiceCandidateForm';
+import { useSettings } from '../context/SettingsContext';
+import { expenseImportPolicyFromSettings } from '../services/expenseImportPolicy';
 
 export const ANALYSIS_CONCURRENCY=2;
 
@@ -28,6 +30,8 @@ const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:
 const statusLabel:Record<InvoiceImportCandidate['status'],string>={analyzing:'Analizando',ready:'Lista',needs_review:'Requiere revisión',duplicate:'Duplicada',error:'Error',importing:'Importando',imported:'Importada'};
 
 export function BulkInvoiceImportModal({open,onClose,categories,existingInvoices,onSave,onFinished}:Props){
+  const {settings}=useSettings();
+  const policy=expenseImportPolicyFromSettings(settings.expenses);
   const inputRef=useRef<HTMLInputElement>(null);
   const [items,setItems]=useState<BulkItem[]>([]);
   const [selectedId,setSelectedId]=useState<string|null>(null);
@@ -49,8 +53,8 @@ export function BulkInvoiceImportModal({open,onClose,categories,existingInvoices
         if(index>=initial.length)return;
         const item=initial[index];
         try{
-          const prepared=await prepareInvoiceCandidate(item.file,categories);
-          const candidate=classifyInvoiceCandidate(prepared,existingInvoices);
+          const prepared=await prepareInvoiceCandidate(item.file,categories,undefined,item.file,policy);
+          const candidate=classifyInvoiceCandidate(prepared,existingInvoices,policy);
           patch(item.id,{candidate,status:candidate.status,error:undefined});
         }catch(error){
           patch(item.id,{status:'error',error:error instanceof Error?error.message:'No se pudo analizar la factura.'});
