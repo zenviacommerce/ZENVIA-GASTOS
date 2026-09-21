@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ExternalLink, LoaderCircle, Megaphone, RefreshCw, ShoppingBag, WifiOff } from 'lucide-react';
-import { AMAZON_CONNECTIVITY_EVENT, amazonQuickRange, isAmazonConnectivityError, loadAmazonStatus, requestAmazonSync, type AmazonAnalyticsFilters, type AmazonStatus, type AmazonSummary as AmazonSummaryData } from '../services/amazon';
+import { AMAZON_CONNECTIVITY_EVENT, amazonInitialRange, isAmazonConnectivityError, loadAmazonStatus, requestAmazonSync, resolveAmazonMarketplaceSelection, resolveAmazonVisibleKpis, type AmazonAnalyticsFilters, type AmazonStatus, type AmazonSummary as AmazonSummaryData } from '../services/amazon';
 import { errorMessage, showError, showSuccess } from '../services/toast';
 import { AmazonFilters } from '../components/amazon/AmazonFilters';
 import { AmazonSummary } from '../components/amazon/AmazonSummary';
@@ -10,6 +10,7 @@ import { AmazonOrders } from '../components/amazon/AmazonOrders';
 import { AmazonInventory } from '../components/amazon/AmazonInventory';
 import { AmazonUnmapped } from '../components/amazon/AmazonUnmapped';
 import { readViewCache, writeViewCache } from '../services/viewCache';
+import { useSettings } from '../context/SettingsContext';
 
 const externalLinks=[{label:'Seller Central',href:'https://sellercentral.amazon.es/',Icon:ShoppingBag},{label:'Sellerboard',href:'https://sellerboard.com/',Icon:Megaphone}] as const;
 const tabs=[['summary','Resumen'],['products','Productos'],['marketplaces','Marketplaces'],['orders','Pedidos'],['inventory','Inventario'],['unmapped','Sin vincular']] as const;
@@ -19,9 +20,11 @@ const AMAZON_STATUS_CACHE='amazon:status';
 function statusLabel(status:AmazonStatus|null,loading:boolean){if(loading&&!status)return 'Comprobando';if(!status?.configured)return 'Pendiente de configurar';if(status.connected)return 'Conectado';if(status.status==='error')return 'Error';return 'Configurado';}
 
 export function AmazonPage({isAdmin}:{isAdmin:boolean}){
+  const {settings}=useSettings();
+  const amazonSettings=settings.amazon;
   const [status,setStatus]=useState<AmazonStatus|null>(()=>readViewCache<AmazonStatus>(AMAZON_STATUS_CACHE));const [loading,setLoading]=useState(()=>!readViewCache<AmazonStatus>(AMAZON_STATUS_CACHE));const [syncing,setSyncing]=useState(false);const [error,setError]=useState('');
   const [activeTab,setActiveTab]=useState<AmazonTab>('summary');
-  const [filters,setFilters]=useState<AmazonAnalyticsFilters>(()=>({...amazonQuickRange('current_month',new Date()),marketplaceIds:[]}));
+  const [filters,setFilters]=useState<AmazonAnalyticsFilters>(()=>({...amazonInitialRange(amazonSettings,new Date()),marketplaceIds:amazonSettings.primaryMarketplaceId?[amazonSettings.primaryMarketplaceId]:[]}));
   const [summaryMeta,setSummaryMeta]=useState<AmazonSummaryData|null>(null);
   const [analyticsRefresh,setAnalyticsRefresh]=useState(0);
   const [refreshingAnalytics,setRefreshingAnalytics]=useState(false);
@@ -70,7 +73,22 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
     window.setTimeout(()=>setRefreshingAnalytics(false),1200);
   };
 
-  const connected=Boolean(status?.connected);const marketplaces=(status?.marketplaces||[]).filter(item=>item.active);const jobs=status?.sync.jobCounts;
+  const connected=Boolean(status?.connected);
+  const marketplaceSelection=resolveAmazonMarketplaceSelection(status?.marketplaces||[],amazonSettings);
+  const marketplaces=marketplaceSelection.marketplaces;
+  const visibleKpis=resolveAmazonVisibleKpis(amazonSettings);
+  const defaultPreset=amazonSettings.defaultPeriod==='all'?'custom':amazonSettings.defaultPeriod;
+  const jobs=status?.sync.jobCounts;
+
+  useEffect(()=>{
+    if(!connected||!marketplaces.length)return;
+    setFilters(current=>{
+      const valid=current.marketplaceIds.filter(id=>marketplaces.some(item=>item.id===id));
+      if(valid.length===current.marketplaceIds.length&&valid.length)return current;
+      const fallback=marketplaceSelection.primaryMarketplaceId?[marketplaceSelection.primaryMarketplaceId]:[];
+      return {...current,marketplaceIds:fallback};
+    });
+  },[connected,marketplaceSelection.primaryMarketplaceId,marketplaces.map(item=>item.id).join(',')]);
   return <div className="page amazonPage">
     <header className="pageHead amazonPageHead"><div><div className="eyebrow">AMAZON ANALYTICS</div><h1>Amazon</h1><p>Ventas, costes, rentabilidad e inventario de tus marketplaces europeos.</p></div><div className="actions amazonExternalLinks">{externalLinks.map(({label,href,Icon})=><a key={label} className="secondary amazonExternalLink" href={href} target="_blank" rel="noopener noreferrer"><Icon size={17}/><span>{label}</span><ExternalLink size={14}/></a>)}{connected&&<button className="secondary amazonRefreshView" onClick={refreshAnalytics} disabled={refreshingAnalytics}>{<RefreshCw size={17} className={refreshingAnalytics?'spin':''}/>}<span>{refreshingAnalytics?'Actualizando…':'Actualizar datos'}</span></button>}{isAdmin&&<button className="primary amazonSyncButton" onClick={()=>void syncNow()} disabled={syncing||loading||!status?.configured}>{syncing?<LoaderCircle size={17} className="spin"/>:<RefreshCw size={17}/>}<span>{syncing?'Sincronizando…':'Sincronizar ahora'}</span></button>}</div></header>
 
@@ -79,14 +97,14 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
     {error&&<div className="amazonQueryError card"><span>{error}</span><button className="secondary" onClick={()=>void refresh()}><RefreshCw size={15}/> Reintentar</button></div>}
 
     {connected?<>
-      <AmazonFilters filters={filters} marketplaces={marketplaces} onChange={setFilters}/>
+      <AmazonFilters filters={filters} marketplaces={marketplaces} initialPreset={defaultPreset} onChange={setFilters}/>
       <nav className="amazonTabs" aria-label="Secciones de Amazon Analytics">{tabs.map(([key,label])=><button key={key} className={activeTab===key?'isActive':''} onClick={()=>setActiveTab(key)}>{label}{key==='unmapped'&&summaryMeta?.unmappedSkuCount? <span>{summaryMeta.unmappedSkuCount}</span>:null}</button>)}</nav>
-      {activeTab==='summary'&&<AmazonSummary filters={filters} onLoaded={handleSummary} refreshToken={analyticsRefresh}/>} 
+      {activeTab==='summary'&&<AmazonSummary filters={filters} onLoaded={handleSummary} refreshToken={analyticsRefresh} visibleKpis={visibleKpis}/>} 
       {activeTab==='products'&&<AmazonProducts filters={filters} refreshToken={analyticsRefresh}/>} 
       {activeTab==='marketplaces'&&<AmazonMarketplaces filters={filters} refreshToken={analyticsRefresh}/>} 
       {activeTab==='orders'&&<AmazonOrders filters={filters} marketplaces={marketplaces} refreshToken={analyticsRefresh}/>} 
       {activeTab==='inventory'&&<AmazonInventory filters={filters} marketplaces={marketplaces} refreshToken={analyticsRefresh}/>} 
-      {activeTab==='unmapped'&&<AmazonUnmapped onChanged={()=>setSummaryMeta(null)} refreshToken={analyticsRefresh}/>} 
+      {activeTab==='unmapped'&&<AmazonUnmapped onChanged={()=>setSummaryMeta(null)} refreshToken={analyticsRefresh} defaultConsumptionFactor={amazonSettings.defaultConsumptionFactor}/>} 
     </>:<section className="card amazonDisconnected"><strong>Amazon Analytics todavía no está disponible.</strong><p>{loading?'Comprobando la conexión segura con Amazon SP-API…':status?.configured?'Las credenciales están configuradas, pero la conexión no está operativa.':isAdmin?'Completa la configuración segura de Amazon SP-API en el backend.':'El administrador debe completar la conexión con Amazon.'}</p></section>}
   </div>;
 }
