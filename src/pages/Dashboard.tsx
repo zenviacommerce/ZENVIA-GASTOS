@@ -13,6 +13,7 @@ import { listFulfillmentOrders, syncSendcloudOrders, type FulfillmentOrder } fro
 import { isCancelledOrder, isPendingOrder, orderStatusCode } from '../services/orderStatus';
 import { readViewCache, writeViewCache } from '../services/viewCache';
 import { useSettings } from '../context/SettingsContext';
+import { persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
 
 const colors = ['#0f766e','#2563eb','#7c3aed','#d97706','#64748b','#dc2626','#0891b2'];
 const money=(value:number)=>`${value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €`;
@@ -26,10 +27,15 @@ function isShippedOrder(order:FulfillmentOrder){
 }
 
 export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{invoices:Invoice[];products:Product[];suppliers:Supplier[];onUpload?:()=>void;onProducts?:()=>void}){
-  const {settings,preferences}=useSettings();
-  const [filter,setFilter]=useState(()=>defaultDateFilter(preferences.defaultPeriod));
+  const {settings,preferences,updatePreferences}=useSettings();
+  const [filter,setFilter]=useState(()=>rememberedFilter(preferences,'dashboard.period',defaultDateFilter(preferences.defaultPeriod)));
   const [sales,setSales]=useState<SalesInvoice[]>(()=>readViewCache<SalesInvoice[]>(DASHBOARD_SALES_CACHE)||[]);
   const [orders,setOrders]=useState<FulfillmentOrder[]>(()=>readViewCache<FulfillmentOrder[]>(DASHBOARD_ORDERS_CACHE)||[]);
+
+  useEffect(()=>{
+    const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'dashboard.period',filter)},350);
+    return()=>window.clearTimeout(timer);
+  },[filter,preferences.rememberFilters]);
 
   useEffect(()=>{
     loadSalesInvoices().then(next=>{setSales(next);writeViewCache(DASHBOARD_SALES_CACHE,next);}).catch(()=>{/* conserva el último valor cacheado */});
