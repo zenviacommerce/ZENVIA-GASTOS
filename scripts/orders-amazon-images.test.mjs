@@ -13,9 +13,11 @@ test('Amazon order lists render product thumbnails from order item data with cac
   assert.match(source,/ordersMobileProductRow/);
 });
 
-test('order label downloads use the centralized order-number filename',async()=>{
+test('order label downloads use centralized configurable filenames',async()=>{
   const source=await read('src/pages/Orders.tsx');
-  assert.match(source,/downloadLabel\(blob,labelPdfFilename\(fresh\)\)/);
-  assert.match(source,/downloadLabel\(blob,labelPdfFilename\(order\)\)/);
+  assert.match(source,/labelFilenameOptions/);
+  assert.match(source,/settings\.orders\.labelFilenameStrategy/);
+  assert.match(source,/labelPdfFilename\(fresh,labelFilenameOptions\)/);
+  assert.match(source,/labelPdfFilename\(order,labelFilenameOptions\)/);
   assert.doesNotMatch(source,/labelPdfBaseName\(/);
 });
