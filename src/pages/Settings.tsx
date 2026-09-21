@@ -21,7 +21,7 @@ import {
 import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { showError, showSuccess } from '../services/toast';
-import type { SalesSettings, UserPreferences } from '../services/settingsSchema';
+import type { ClientsSettings, SalesSettings, UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 import { loadManagedSalesSeries, loadTaxRegistrations, type ManagedSalesSeries, type TaxRegistration } from '../services/salesConfig';
@@ -372,6 +372,91 @@ function SalesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   </section>;
 }
 
+
+function ClientsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {settings,updateSection,resetSection}=useSettings();
+  const [draft,setDraft]=useState<ClientsSettings>(settings.clients);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{setDraft(settings.clients);onDirtyChange(false)},[settings.clients,onDirtyChange]);
+
+  const update=<K extends keyof ClientsSettings>(key:K,value:ClientsSettings[K])=>{
+    setDraft(current=>({...current,[key]:value}));
+    onDirtyChange(true);
+  };
+
+  const toggleIdentity=(key:'tax_id'|'email'|'name',checked:boolean)=>{
+    setDraft(current=>{
+      const next=checked
+        ? [...new Set([...current.duplicateIdentity,key])]
+        : current.duplicateIdentity.filter(item=>item!==key);
+      return {...current,duplicateIdentity:next};
+    });
+    onDirtyChange(true);
+  };
+
+  const save=async()=>{
+    if(!draft.duplicateIdentity.length){showError('Selecciona al menos un criterio de identidad para detectar clientes duplicados.');return;}
+    setSaving(true);
+    try{await updateSection('clients',draft);onDirtyChange(false);showSuccess('Configuración de clientes guardada.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración de clientes.');}
+    finally{setSaving(false);}
+  };
+
+  const restore=async()=>{
+    if(!window.confirm('Se restaurarán los valores predeterminados de Clientes. ¿Continuar?'))return;
+    setSaving(true);
+    try{await resetSection('clients');onDirtyChange(false);showSuccess('Valores predeterminados de Clientes restaurados.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
+    finally{setSaving(false);}
+  };
+
+  const methodOptions=settings.sales.paymentMethods.filter(item=>item.active).map(item=>({value:item.id,label:item.label}));
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero">
+      <div className="settingsSectionIcon"><Users size={22}/></div>
+      <div><h2>Configuración de clientes</h2><p>Defaults comerciales, creación automática, enriquecimiento e identidad de clientes.</p></div>
+    </div>
+
+    <div className="settingsSubsection">
+      <h3>Valores por defecto</h3>
+      <div className="settingsFormGrid">
+        <label className="settingsField"><span>País por defecto</span><input maxLength={2} value={draft.defaultCountryCode} onChange={e=>update('defaultCountryCode',e.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,2))}/></label>
+        <label className="settingsField"><span>IVA por defecto</span><div className="settingsNumberWithSuffix"><input type="number" min="0" max="100" step="0.01" value={draft.defaultVatRate} onChange={e=>update('defaultVatRate',Number(e.target.value))}/><em>%</em></div></label>
+        <label className="settingsField"><span>Días de pago por defecto</span><div className="settingsNumberWithSuffix"><input type="number" min="0" max="365" value={draft.defaultPaymentTermsDays} onChange={e=>update('defaultPaymentTermsDays',Number(e.target.value))}/><em>días</em></div></label>
+        <label className="settingsField"><span>Método de pago por defecto</span><SelectField ariaLabel="Método de pago por defecto del cliente" value={draft.defaultPaymentMethod} options={methodOptions} onChange={value=>update('defaultPaymentMethod',value)}/></label>
+      </div>
+    </div>
+
+    <div className="settingsSubsection">
+      <h3>Creación y enriquecimiento</h3>
+      <div className="settingsToggleGrid">
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.autoCreate} onChange={e=>update('autoCreate',e.target.checked)}/><span><strong>Crear clientes automáticamente</strong><small>Permite que el importador cree un cliente cuando no encuentre una coincidencia segura.</small></span></label>
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.fillTaxId} onChange={e=>update('fillTaxId',e.target.checked)}/><span><strong>Completar CIF/NIF</strong><small>Rellena el identificador fiscal detectado cuando corresponda.</small></span></label>
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.fillAddress} onChange={e=>update('fillAddress',e.target.checked)}/><span><strong>Completar dirección</strong><small>Rellena dirección, código postal, ciudad y provincia detectados.</small></span></label>
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.fillCountry} onChange={e=>update('fillCountry',e.target.checked)}/><span><strong>Completar país</strong><small>Actualiza el país cuando el PDF aporta un dato más fiable.</small></span></label>
+        <label className="settingsToggleField"><input type="checkbox" checked={!draft.overwriteReviewed} onChange={e=>update('overwriteReviewed',!e.target.checked)}/><span><strong>No sobrescribir datos revisados</strong><small>Solo completa huecos y conserva los datos que ya existen en el cliente.</small></span></label>
+      </div>
+    </div>
+
+    <div className="settingsSubsection">
+      <h3>Criterios de identidad</h3>
+      <p className="settingsHelpText">El importador utilizará estos campos para decidir si un cliente detectado ya existe.</p>
+      <div className="settingsToggleGrid">
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.duplicateIdentity.includes('tax_id')} onChange={e=>toggleIdentity('tax_id',e.target.checked)}/><span><strong>CIF/NIF/VAT</strong><small>Coincidencia fiscal exacta normalizada.</small></span></label>
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.duplicateIdentity.includes('email')} onChange={e=>toggleIdentity('email',e.target.checked)}/><span><strong>Email</strong><small>Coincidencia exacta de correo electrónico.</small></span></label>
+        <label className="settingsToggleField"><input type="checkbox" checked={draft.duplicateIdentity.includes('name')} onChange={e=>toggleIdentity('name',e.target.checked)}/><span><strong>Nombre</strong><small>Coincidencia exacta tras normalizar razón social.</small></span></label>
+      </div>
+    </div>
+
+    <div className="settingsSectionActions">
+      <button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
+      <button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
+    </div>
+  </section>;
+}
+
 const themeOptions=[
   {value:'system',label:'Sistema'},
   {value:'light',label:'Claro'},
@@ -508,7 +593,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
