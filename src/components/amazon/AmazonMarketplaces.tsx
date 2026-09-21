@@ -3,9 +3,11 @@ import { RefreshCw } from 'lucide-react';
 import { isAmazonConnectivityError, loadAmazonMarketplaces, type AmazonAnalyticsFilters, type AmazonMarketplaceAnalytics } from '../../services/amazon';
 import { errorMessage } from '../../services/toast';
 import { readViewCache, stableCacheKey, writeViewCache } from '../../services/viewCache';
+import { useSettings } from '../../context/SettingsContext';
 
-const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'});
 export function AmazonMarketplaces({filters,refreshToken=0}:{filters:AmazonAnalyticsFilters;refreshToken?:number}){
+  const {settings}=useSettings();
+  const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:settings.amazon.consolidatedCurrency});
   const initialKey=stableCacheKey('amazon:marketplaces',filters);
   const [items,setItems]=useState<AmazonMarketplaceAnalytics[]>(()=>readViewCache<AmazonMarketplaceAnalytics[]>(initialKey)||[]);const [error,setError]=useState('');
   const refresh=()=>{const key=stableCacheKey('amazon:marketplaces',filters);const cached=readViewCache<AmazonMarketplaceAnalytics[]>(key);if(cached)setItems(cached);setError('');return loadAmazonMarketplaces(filters).then(result=>{setItems(result.items);writeViewCache(key,result.items);}).catch(e=>{if(!isAmazonConnectivityError(e))setError(errorMessage(e,'No se pudieron cargar los marketplaces.'));});};
