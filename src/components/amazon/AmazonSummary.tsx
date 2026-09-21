@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight, RefreshCw, X } from 'lucide-react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { isAmazonConnectivityError, loadAmazonDetail, loadAmazonSeries, loadAmazonSummary, type AmazonAnalyticsFilters, type AmazonDetail, type AmazonSummary as AmazonSummaryData } from '../../services/amazon';
+import { isAmazonConnectivityError, loadAmazonDetail, loadAmazonSeries, loadAmazonSummary, type AmazonAnalyticsFilters, type AmazonDetail, type AmazonKpiKey, type AmazonSummary as AmazonSummaryData } from '../../services/amazon';
 import { errorMessage } from '../../services/toast';
 import { AmazonCompleteness } from './AmazonCompleteness';
 import { AmazonProducts } from './AmazonProducts';
@@ -13,7 +13,7 @@ function spanDays(filters:AmazonAnalyticsFilters){return Math.max(1,Math.round((
 function dateRangeLabel(filters:AmazonAnalyticsFilters){const fmt=(value:string)=>new Date(value+'T12:00:00').toLocaleDateString('es-ES');return fmt(filters.from)+' – '+fmt(filters.to);}
 function DetailRow({label,value,note}:{label:string;value:string;note?:string}){return <div className="amazonDetailsRow"><div><span>{label}</span>{note&&<small>{note}</small>}</div><strong>{value}</strong></div>;}
 
-export function AmazonSummary({filters,onLoaded,refreshToken=0}:{filters:AmazonAnalyticsFilters;onLoaded?:(summary:AmazonSummaryData)=>void;refreshToken?:number}){
+export function AmazonSummary({filters,onLoaded,refreshToken=0,visibleKpis}:{filters:AmazonAnalyticsFilters;onLoaded?:(summary:AmazonSummaryData)=>void;refreshToken?:number;visibleKpis?:AmazonKpiKey[]}){
   const summaryCacheKey=stableCacheKey('amazon:summary',filters);
   const detailCacheKey=stableCacheKey('amazon:detail',filters);
   const seriesCacheKey=stableCacheKey('amazon:series',{...filters,grain:spanDays(filters)>93?'month':'day'});
@@ -69,21 +69,23 @@ export function AmazonSummary({filters,onLoaded,refreshToken=0}:{filters:AmazonA
   if(error&&!summary)return <div className="card amazonQueryError"><span>{error}</span><button className="secondary" onClick={()=>setRetryToken(value=>value+1)}><RefreshCw size={15}/> Reintentar</button></div>;
   if(!summary)return null;
 
+  const visibleKpiSet=new Set<AmazonKpiKey>(visibleKpis||[]);
+  const showAllKpis=!visibleKpis?.length;
   const cards=[
-    {label:'Ventas',value:money.format(summary.grossSales)},
-    {label:'IVA ventas',value:money.format(summary.salesVat)},
-    {label:'Ventas sin IVA',value:money.format(summary.netSales)},
-    {label:'Pedidos',value:integer.format(summary.orders)},
-    {label:'Pedidos B2B',value:integer.format(summary.businessOrders||0)},
-    {label:'Unidades vendidas',value:integer.format(summary.units)},
-    {label:'Tarifas Amazon sin IVA',value:money.format(summary.amazonFees)},
-    {label:'Publicidad',value:money.format(summary.adsCost)},
-    {label:'Reembolsos',value:money.format(summary.refunds),note:detail?integer.format(detail.refundTransactions)+' operaciones · '+integer.format(detail.refundOrders)+' pedidos':undefined},
-    {label:'Coste producto',value:money.format(summary.productCost)},
-    {label:'Coste envíos FBM',value:money.format(summary.fbmShippingCost)},
-    {label:'Ganancia neta',value:money.format(summary.netProfit??0),note:!summary.profitComplete?'Provisional':undefined},
-    {label:'Margen neto',value:summary.marginPct==null?'—':summary.marginPct.toFixed(1)+' %',note:!summary.profitComplete?'Provisional':undefined},
-  ];
+    {kpiKey:'grossSales' as const,label:'Ventas',value:money.format(summary.grossSales)},
+    {kpiKey:'salesVat' as const,label:'IVA ventas',value:money.format(summary.salesVat)},
+    {kpiKey:'netSales' as const,label:'Ventas sin IVA',value:money.format(summary.netSales)},
+    {kpiKey:'orders' as const,label:'Pedidos',value:integer.format(summary.orders)},
+    {kpiKey:'businessOrders' as const,label:'Pedidos B2B',value:integer.format(summary.businessOrders||0)},
+    {kpiKey:'units' as const,label:'Unidades vendidas',value:integer.format(summary.units)},
+    {kpiKey:'amazonFees' as const,label:'Tarifas Amazon sin IVA',value:money.format(summary.amazonFees)},
+    {kpiKey:'adsCost' as const,label:'Publicidad',value:money.format(summary.adsCost)},
+    {kpiKey:'refunds' as const,label:'Reembolsos',value:money.format(summary.refunds),note:detail?integer.format(detail.refundTransactions)+' operaciones · '+integer.format(detail.refundOrders)+' pedidos':undefined},
+    {kpiKey:'productCost' as const,label:'Coste producto',value:money.format(summary.productCost)},
+    {kpiKey:'fbmShippingCost' as const,label:'Coste envíos FBM',value:money.format(summary.fbmShippingCost)},
+    {kpiKey:'netProfit' as const,label:'Ganancia neta',value:money.format(summary.netProfit??0),note:!summary.profitComplete?'Provisional':undefined},
+    {kpiKey:'marginPct' as const,label:'Margen neto',value:summary.marginPct==null?'—':summary.marginPct.toFixed(1)+' %',note:!summary.profitComplete?'Provisional':undefined},
+  ].filter(card=>showAllKpis||visibleKpiSet.has(card.kpiKey));
 
   return <div className="amazonSummary">
     {error&&<div className="card amazonQueryError"><span>{error}</span><button className="secondary" onClick={()=>setRetryToken(value=>value+1)}><RefreshCw size={15}/> Reintentar</button></div>}
