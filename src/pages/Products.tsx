@@ -14,7 +14,6 @@ import { confirmAction, openActionProcess } from '../services/actionDialog';
 import { useSettings } from '../context/SettingsContext';
 import '../supplier-actions.css';
 
-const PAGE_SIZE=20;
 const money=(value:number|null,decimals=2,maxDecimals=Math.max(decimals,4))=>value==null?'—':`${value.toLocaleString('es-ES',{minimumFractionDigits:decimals,maximumFractionDigits:maxDecimals})} €`;
 const dateLabel=(value?:string|null)=>value?new Date(`${value.slice(0,10)}T12:00:00`).toLocaleDateString('es-ES'):'—';
 
@@ -52,12 +51,13 @@ function ProductDrawer({product,extra,onClose,onEdit,onDelete,busy}:{product:Pro
 }
 
 export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];onAdd:()=>void;onEdit:(product:Product)=>void;onDelete:(product:Product)=>Promise<void>}){
- const {settings}=useSettings();
+ const {settings,preferences}=useSettings();
+ const pageSize=preferences.pageSize;
  const marginAlertThreshold=Math.max(settings.products.minimumMarginPct,settings.products.marginAlertPct);
  const costIncreaseThreshold=settings.products.costIncreaseAlertPct;
  const costMoney=(value:number|null)=>money(value,Math.min(settings.products.costDecimals,8),Math.min(settings.products.costDecimals,8));
  const [query,setQuery]=useState('');
- const [dateFilter,setDateFilter]=useState(()=>dateFilterForPreset('all'));
+ const [dateFilter,setDateFilter]=useState(()=>dateFilterForPreset(preferences.defaultPeriod));
  const [categoryFilter,setCategoryFilter]=useState('all');
  const [supplierFilter,setSupplierFilter]=useState('all');
  const [scope,setScope]=useState<ProductScope>('all');
@@ -117,8 +117,8 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
  const allShownSelected=shown.length>0&&shown.every(product=>checkedIds.has(product.id));
  const toggleProduct=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
  const toggleAllProducts=(checked:boolean)=>setCheckedIds(checked?new Set(shown.map(product=>product.id)):new Set());
- const totalPages=Math.max(1,Math.ceil(shown.length/PAGE_SIZE));
- const paged=useMemo(()=>shown.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE),[shown,page]);
+ const totalPages=Math.max(1,Math.ceil(shown.length/pageSize));
+ const paged=useMemo(()=>shown.slice((page-1)*pageSize,page*pageSize),[shown,page]);
  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,dateFilter,categoryFilter,supplierFilter,taxFilter,scope]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  useEffect(()=>{if(selected&&!products.some(product=>product.id===selected.id))setSelected(null)},[products,selected]);
@@ -244,7 +244,7 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
         </div>
       )}
 
-      {shown.length>0&&<Pagination page={page} totalItems={shown.length} pageSize={PAGE_SIZE} onPageChange={setPage}/>}
+      {shown.length>0&&<Pagination page={page} totalItems={shown.length} pageSize={pageSize} onPageChange={setPage}/>}
       {!products.length&&<div className="card emptyState large">Crea el primer producto. El mismo catálogo servirá para compras, costes y facturación de ventas.</div>}
       {selected&&<ProductDrawer product={selected} extra={salesMap.get(selected.id)} onClose={()=>setSelected(null)} onEdit={()=>edit(selected)} onDelete={()=>remove(selected)} busy={busyId===selected.id}/>}
     </div>
