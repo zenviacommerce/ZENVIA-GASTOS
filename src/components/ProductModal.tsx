@@ -7,6 +7,7 @@ import { showSuccess } from '../services/toast';
 import { FormGrid, FormModal, FormSection } from './forms/FormPrimitives';
 import { SearchableSelect } from './forms/SearchableSelect';
 import { SelectField } from './forms/SelectField';
+import { useSettings } from '../context/SettingsContext';
 
 function parsePrice(value:string){
  const clean=value.trim().replace(',','.');
@@ -14,14 +15,19 @@ function parsePrice(value:string){
  const parsed=Number(clean);
  return Number.isFinite(parsed)&&parsed>=0?parsed:NaN;
 }
-function defaultSalePrice(value:string){
+function roundToStep(value:number,step:number){
+ if(!Number.isFinite(step)||step<=0)return value;
+ return Math.round((value+Number.EPSILON)/step)*step;
+}
+function defaultSalePrice(value:string,targetMarginPct:number,priceRounding:number){
  const cost=parsePrice(value);
  if(cost==null||Number.isNaN(cost))return '';
- return (cost*1.25).toFixed(4).replace(/0+$/,'').replace(/\.$/,'');
+ const calculated=cost*(1+targetMarginPct/100);
+ return roundToStep(calculated,priceRounding).toFixed(4).replace(/0+$/,'').replace(/\.$/,'');
 }
-function followsDefault(cost:number|null|undefined,sale:number|null|undefined){
+function followsDefault(cost:number|null|undefined,sale:number|null|undefined,targetMarginPct:number,priceRounding:number){
  if(cost==null||sale==null)return sale==null;
- return Math.abs(sale-cost*1.25)<0.00011;
+ return Math.abs(sale-roundToStep(cost*(1+targetMarginPct/100),priceRounding))<0.00011;
 }
 
 const VAT_OPTIONS=[
@@ -32,16 +38,17 @@ const VAT_OPTIONS=[
 ];
 
 export function ProductModal({open,product,suppliers,onClose,onSave}:{open:boolean;product?:Product|null;suppliers:Supplier[];onClose:()=>void;onSave:(v:ProductInput)=>Promise<void>}){
+ const {settings}=useSettings();
  const [name,setName]=useState('');
  const [sku,setSku]=useState('');
  const [ean,setEan]=useState('');
  const [category,setCategory]=useState('');
- const [unit,setUnit]=useState('ud');
+ const [unit,setUnit]=useState(settings.products.defaultUnit);
  const [supplierId,setSupplierId]=useState('');
  const [price,setPrice]=useState('');
  const [salePrice,setSalePrice]=useState('');
  const [autoSalePrice,setAutoSalePrice]=useState(true);
- const [salesTaxRate,setSalesTaxRate]=useState('21');
+ const [salesTaxRate,setSalesTaxRate]=useState(String(settings.products.defaultVatRate));
  const [invoiceDescription,setInvoiceDescription]=useState('');
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
@@ -53,26 +60,26 @@ export function ProductModal({open,product,suppliers,onClose,onSave}:{open:boole
    setName(product?.name??'');
    setSku(product?.sku??'');
    setEan(product?.ean??'');
-   setCategory(product?.category??'');
-   setUnit(product?.unit??'ud');
-   setSupplierId(product?.supplierId??'');
+   setCategory(product?.category??settings.products.defaultCategoryId??'');
+   setUnit(product?.unit??settings.products.defaultUnit);
+   setSupplierId(product?.supplierId??settings.products.defaultSupplierId??'');
    setPrice(initialCost!=null?String(initialCost):'');
-   setSalePrice(initialSale!=null?String(initialSale):(initialCost!=null?String(initialCost*1.25):''));
-   setAutoSalePrice(!product||followsDefault(initialCost,initialSale));
-   setSalesTaxRate(product?.salesTaxRate!=null?String(product.salesTaxRate):'21');
+   setSalePrice(initialSale!=null?String(initialSale):(initialCost!=null?defaultSalePrice(String(initialCost),settings.products.targetMarginPct,settings.products.priceRounding):''));
+   setAutoSalePrice(!product||followsDefault(initialCost,initialSale,settings.products.targetMarginPct,settings.products.priceRounding));
+   setSalesTaxRate(product?.salesTaxRate!=null?String(product.salesTaxRate):String(settings.products.defaultVatRate));
    setInvoiceDescription(product?.invoiceDescription??'');
    setError('');
    if(product?.id){
      getProductSalesDetails(product.id).then(details=>{
-       const automatic=followsDefault(product.lastPrice,details.salePrice);
-       setSalePrice(details.salePrice!=null?String(details.salePrice):defaultSalePrice(String(product.lastPrice??'')));
+       const automatic=followsDefault(product.lastPrice,details.salePrice,settings.products.targetMarginPct,settings.products.priceRounding);
+       setSalePrice(details.salePrice!=null?String(details.salePrice):defaultSalePrice(String(product.lastPrice??''),settings.products.targetMarginPct,settings.products.priceRounding));
        setAutoSalePrice(automatic);
        setSalesTaxRate(String(details.salesTaxRate));
        setInvoiceDescription(details.invoiceDescription);
        setEan(details.ean);
      }).catch(()=>undefined);
    }
- },[open,product]);
+ },[open,product,settings.products.defaultCategoryId,settings.products.defaultSupplierId,settings.products.defaultUnit,settings.products.defaultVatRate,settings.products.targetMarginPct,settings.products.priceRounding]);
 
  const supplierOptions=useMemo(()=>suppliers.map(supplier=>({value:supplier.id,label:supplier.name,searchText:`${supplier.name} ${supplier.taxId||''}`,description:supplier.taxId||undefined})),[suppliers]);
  if(!open)return null;
@@ -107,13 +114,13 @@ export function ProductModal({open,product,suppliers,onClose,onSave}:{open:boole
    <FormSection icon={<ShoppingCart size={18}/>} title="Compra y proveedor" subtitle="Corrige el proveedor actual sin alterar facturas ni histórico de compra">
      <FormGrid>
        <label>Proveedor<SearchableSelect value={supplierId} options={supplierOptions} onChange={setSupplierId} allowEmpty emptyLabel="Sin proveedor" placeholder="Sin proveedor" searchPlaceholder="Buscar proveedor…" ariaLabel="Proveedor del producto"/><span className="fieldHint">Cambiarlo aquí no crea una compra ni una variación de coste. Una compra real posterior podrá actualizarlo.</span></label>
-       <label>Coste actual (€ / {unit.trim()||'ud'})<input value={price} onChange={e=>{const next=e.target.value;setPrice(next);if(autoSalePrice)setSalePrice(defaultSalePrice(next))}} inputMode="decimal" placeholder="0,00"/></label>
+       <label>Coste actual (€ / {unit.trim()||'ud'})<input value={price} onChange={e=>{const next=e.target.value;setPrice(next);if(autoSalePrice)setSalePrice(defaultSalePrice(next,settings.products.targetMarginPct,settings.products.priceRounding))}} inputMode="decimal" placeholder="0,00"/></label>
      </FormGrid>
    </FormSection>
 
    <FormSection icon={<Store size={18}/>} title="Venta" subtitle="Precio comercial e impuestos aplicables al facturar">
      <FormGrid>
-       <label>Precio de venta (€ / {unit.trim()||'ud'})<input value={salePrice} onChange={e=>{setSalePrice(e.target.value);setAutoSalePrice(false)}} inputMode="decimal" placeholder="Coste + 25 %"/><span className="fieldHint">Por defecto se calcula como coste + 25 %. Si lo modificas manualmente, se respeta tu precio.</span></label>
+       <label>Precio de venta (€ / {unit.trim()||'ud'})<input value={salePrice} onChange={e=>{setSalePrice(e.target.value);setAutoSalePrice(false)}} inputMode="decimal" placeholder={`Coste + ${settings.products.targetMarginPct} %`}/><span className="fieldHint">Por defecto se calcula con el margen objetivo configurado ({settings.products.targetMarginPct} %) y redondeo de {settings.products.priceRounding}. Si lo modificas manualmente, se respeta tu precio.</span></label>
        <label>IVA de venta<SelectField value={salesTaxRate} options={VAT_OPTIONS} onChange={setSalesTaxRate} ariaLabel="IVA de venta"/></label>
        {metrics.margin!=null&&<div className="formSpan2 aiNote"><div><strong>Margen unitario</strong><span>{metrics.margin.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €{metrics.marginPct!=null?` · ${metrics.marginPct.toLocaleString('es-ES',{minimumFractionDigits:1,maximumFractionDigits:1})} % sobre coste`:''}.</span></div></div>}
      </FormGrid>
