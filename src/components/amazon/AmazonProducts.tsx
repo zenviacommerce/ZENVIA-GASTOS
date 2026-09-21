@@ -4,8 +4,8 @@ import { isAmazonConnectivityError, loadAmazonProductImages, loadAmazonProducts,
 import { errorMessage } from '../../services/toast';
 import { AmazonMappingModal } from './AmazonMappingModal';
 import { readViewCache, stableCacheKey, writeViewCache } from '../../services/viewCache';
+import { useSettings } from '../../context/SettingsContext';
 
-const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'});
 const integer=new Intl.NumberFormat('es-ES',{maximumFractionDigits:0});
 type SortableHeader={key:AmazonProductSort;label:string};
 
@@ -28,6 +28,8 @@ function SortIcon({active,direction}:{active:boolean;direction:AmazonSortDirecti
 }
 
 export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:AmazonAnalyticsFilters;embedded?:boolean;refreshToken?:number}){
+  const {settings}=useSettings();
+  const money=new Intl.NumberFormat('es-ES',{style:'currency',currency:settings.amazon.consolidatedCurrency});
   const [search,setSearch]=useState('');
   const [page,setPage]=useState(1);
   const initialProductsKey=stableCacheKey('amazon:products',{filters,search:'',page:1,pageSize:50,sortBy:'profit_before_ads',sortDir:'desc'});
