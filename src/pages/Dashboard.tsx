@@ -26,8 +26,8 @@ function isShippedOrder(order:FulfillmentOrder){
 }
 
 export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{invoices:Invoice[];products:Product[];suppliers:Supplier[];onUpload?:()=>void;onProducts?:()=>void}){
-  const {settings}=useSettings();
-  const [filter,setFilter]=useState(defaultDateFilter);
+  const {settings,preferences}=useSettings();
+  const [filter,setFilter]=useState(()=>defaultDateFilter(preferences.defaultPeriod));
   const [sales,setSales]=useState<SalesInvoice[]>(()=>readViewCache<SalesInvoice[]>(DASHBOARD_SALES_CACHE)||[]);
   const [orders,setOrders]=useState<FulfillmentOrder[]>(()=>readViewCache<FulfillmentOrder[]>(DASHBOARD_ORDERS_CACHE)||[]);
 
