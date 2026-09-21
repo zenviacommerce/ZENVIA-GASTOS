@@ -44,3 +44,21 @@
 .settingsFileButton{position:relative;overflow:hidden;cursor:pointer}.settingsFileButton input{position:absolute;inset:0;opacity:0;cursor:pointer}
 @media(max-width:1100px){.settingsFormGridWide{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.settingsFormGrid,.settingsFormGridWide{grid-template-columns:1fr;padding:16px}.settingsFieldWide{grid-column:auto}.settingsSubsection{padding:16px}.settingsSectionActions{padding:14px 16px}.settingsLogoRow{align-items:flex-start;flex-direction:column}.settingsLogoPreview{width:100%;max-width:240px}}
+
+
+.settingsToggleGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+.settingsInlineActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.settingsInlineActions button{padding:7px 9px;font-size:10.5px}
+.settingsHelpText{margin:8px 0 0;color:var(--muted,#64748b);font-size:11px;line-height:1.5}
+.settingsNumberWithSuffix{display:flex;align-items:center;border:1px solid var(--border,#dbe2ea);border-radius:10px;background:var(--surface,#fff);overflow:hidden}
+.settingsNumberWithSuffix input{border:0!important;border-radius:0!important;box-shadow:none!important}
+.settingsNumberWithSuffix em{padding:0 11px;color:var(--muted,#64748b);font-size:11px;font-style:normal;font-weight:700;white-space:nowrap}
+.settingsAlertGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:15px}
+.settingsAlertCard{display:grid;gap:11px;padding:13px;border:1px solid var(--border,#dbe2ea);border-radius:12px;background:var(--surface-soft,#f8fafc)}
+.settingsAlertCardHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.settingsAlertCardHead>div{min-width:0}.settingsAlertCardHead strong,.settingsAlertCardHead small{display:block}.settingsAlertCardHead strong{font-size:12px;color:var(--text,#172033)}.settingsAlertCardHead small{margin-top:3px;color:var(--muted,#64748b);font-size:10.5px;line-height:1.45}
+.settingsMiniToggle{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:800;color:var(--muted,#64748b);white-space:nowrap}.settingsMiniToggle input{margin:0}
+.settingsAlertThreshold{margin-top:1px}.settingsAlertThreshold>span{font-size:9.5px}
+[data-theme='dark'] .settingsAlertCard,.settingsToggleField{border-color:var(--border,#334155)}
+@media(max-width:900px){.settingsToggleGrid,.settingsAlertGrid{grid-template-columns:1fr}}
+@media(max-width:760px){.settingsInlineActions{display:grid;grid-template-columns:1fr 1fr}.settingsInlineActions button{width:100%}}
