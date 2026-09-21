@@ -44,13 +44,49 @@ function cleanPermissions(value: unknown): MenuPermission[] {
     : [];
 }
 
-export async function loadAccessProfile(userId: string): Promise<AccessProfile | null> {
-  const { data, error } = await supabase
+async function fetchAccessProfileRow(userId:string){
+  return supabase
     .from('app_users')
     .select('user_id,email,full_name,role,active,data_owner_id,permissions')
     .eq('user_id', userId)
     .maybeSingle();
-  if (error) throw error;
+}
+
+function accessErrorMessage(error:unknown){
+  if(error&&typeof error==='object'){
+    const value=error as {message?:unknown;code?:unknown;details?:unknown;hint?:unknown};
+    const parts=[
+      typeof value.message==='string'?value.message:'',
+      typeof value.code==='string'&&value.code?('Código '+value.code):'',
+      typeof value.details==='string'?value.details:'',
+      typeof value.hint==='string'?value.hint:'',
+    ].filter(Boolean);
+    if(parts.length)return parts.join(' · ');
+  }
+  return error instanceof Error&&error.message?error.message:'No se pudo comprobar tu acceso.';
+}
+
+export async function loadAccessProfile(userId: string): Promise<AccessProfile | null> {
+  let result=await fetchAccessProfileRow(userId);
+
+  if(result.error){
+    const {data:sessionData}=await supabase.auth.getSession();
+    const session=sessionData.session;
+    if(!session||session.user.id!==userId){
+      const refreshed=await supabase.auth.refreshSession();
+      if(refreshed.error)throw new Error(accessErrorMessage(refreshed.error));
+    }else{
+      const expiresAt=(session.expires_at||0)*1000;
+      if(expiresAt&&expiresAt-Date.now()<60_000){
+        const refreshed=await supabase.auth.refreshSession();
+        if(refreshed.error)throw new Error(accessErrorMessage(refreshed.error));
+      }
+    }
+    result=await fetchAccessProfileRow(userId);
+  }
+
+  if(result.error)throw new Error(accessErrorMessage(result.error));
+  const data=result.data;
   if (!data) return null;
   return {
     userId: data.user_id,
