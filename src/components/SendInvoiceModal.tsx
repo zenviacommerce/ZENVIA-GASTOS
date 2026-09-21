@@ -5,8 +5,11 @@ import { markSalesInvoiceSent } from '../services/sales';
 import { createSalesInvoicePdfBlob, salesInvoicePdfFilename, type InvoicePdfBranding } from '../services/salesInvoicePdf';
 import { sendInvoiceViaGmail } from '../services/gmailSender';
 import { errorMessage } from '../services/toast';
+import { useSettings } from '../context/SettingsContext';
+import { formatAppMoney } from '../services/formatting';
 
 export function SendInvoiceModal({invoice,settings,branding,onClose,onSent}:{invoice:SalesInvoice|null;settings:BusinessSettings;branding?:InvoicePdfBranding|null;onClose:()=>void;onSent:()=>Promise<void>}){
+  const {settings:appSettings}=useSettings();
   const [to,setTo]=useState('');
   const [subject,setSubject]=useState('');
   const [body,setBody]=useState('');
@@ -18,9 +21,9 @@ export function SendInvoiceModal({invoice,settings,branding,onClose,onSent}:{inv
     const number=invoice.invoiceNumber||'factura';
     setTo(invoice.clientEmail||'');
     setSubject(`Factura ${number} - ZENVIA COMMERCE`);
-    setBody(`Hola,\n\nAdjuntamos la factura ${number} por importe de ${invoice.totalAmount.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €.\n\nGracias.\nZENVIA COMMERCE`);
+    setBody(`Hola,\n\nAdjuntamos la factura ${number} por importe de ${formatAppMoney(invoice.totalAmount,invoice.currency,appSettings.general,{minimumFractionDigits:2,maximumFractionDigits:2})}.\n\nGracias.\nZENVIA COMMERCE`);
     setError('');
-  },[invoice]);
+  },[invoice,appSettings.general]);
 
   if(!invoice)return null;
   const send=async()=>{
@@ -28,7 +31,7 @@ export function SendInvoiceModal({invoice,settings,branding,onClose,onSent}:{inv
     if(!subject.trim()){setError('Indica un asunto.');return;}
     setBusy(true);setError('');
     try{
-      const pdf=createSalesInvoicePdfBlob(invoice,settings,branding);
+      const pdf=createSalesInvoicePdfBlob(invoice,settings,branding,appSettings.sales,appSettings.general);
       await sendInvoiceViaGmail({to:to.trim(),subject:subject.trim(),body:body.trim(),pdf,filename:salesInvoicePdfFilename(invoice)});
       await markSalesInvoiceSent(invoice.id);
       await onSent();
