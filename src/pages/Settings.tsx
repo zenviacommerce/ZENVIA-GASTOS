@@ -772,6 +772,8 @@ function AmazonSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   const effectiveMarketplaceIds=draft.activeMarketplaceIds.length
     ?draft.activeMarketplaceIds
     :marketplaces.map(item=>item.id);
+  const currencyOptions=Array.from(new Set(['EUR',draft.consolidatedCurrency,...marketplaces.map(item=>item.currencyCode).filter(Boolean)]))
+    .map(value=>({value,label:value}));
 
   const toggleMarketplace=(id:string,checked:boolean)=>{
     const current=new Set(effectiveMarketplaceIds);
@@ -832,7 +834,7 @@ function AmazonSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
         </div>
         <div className="settingsFormGrid">
           <label className="settingsField"><span>Marketplace principal</span><SelectField ariaLabel="Marketplace principal" allowEmpty emptyLabel="Primero activo" value={draft.primaryMarketplaceId||''} options={marketplaces.filter(item=>effectiveMarketplaceIds.includes(item.id)).map(item=>({value:item.id,label:`${item.countryCode} · ${item.name}`}))} onChange={value=>update('primaryMarketplaceId',value||null)}/></label>
-          <label className="settingsField"><span>Moneda consolidada</span><SelectField ariaLabel="Moneda consolidada" value={draft.consolidatedCurrency} options={[{value:'EUR',label:'EUR · Euro'},{value:'GBP',label:'GBP · Libra esterlina'},{value:'USD',label:'USD · Dólar estadounidense'}]} onChange={value=>update('consolidatedCurrency',value)}/></label>
+          <label className="settingsField"><span>Moneda consolidada</span><SelectField ariaLabel="Moneda consolidada" value={draft.consolidatedCurrency} options={currencyOptions} onChange={value=>update('consolidatedCurrency',value)}/></label>
           <label className="settingsField"><span>Periodo inicial</span><SelectField ariaLabel="Periodo inicial Amazon" value={draft.defaultPeriod} options={periodOptionsAmazon} onChange={value=>update('defaultPeriod',value as AmazonSettings['defaultPeriod'])}/></label>
           <label className="settingsField"><span>Histórico</span><div className="settingsNumberWithSuffix"><input type="number" min="1" max="3650" value={draft.historyDays} onChange={e=>update('historyDays',Number(e.target.value))}/><em>días</em></div></label>
         </div>
