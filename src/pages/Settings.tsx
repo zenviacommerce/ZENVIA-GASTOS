@@ -21,10 +21,12 @@ import {
 import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { showError, showSuccess } from '../services/toast';
-import type { ClientsSettings, SalesSettings, UserPreferences } from '../services/settingsSchema';
+import type { ClientsSettings, ExpensesSettings, SalesSettings, UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
 import { loadManagedSalesSeries, loadTaxRegistrations, type ManagedSalesSeries, type TaxRegistration } from '../services/salesConfig';
+import { loadExpenseCategories } from '../services/expenseCategories';
+import type { ExpenseCategory } from '../types';
 
 type SettingsSectionId =
   | 'general'
@@ -373,6 +375,122 @@ function SalesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
 }
 
 
+
+function ExpensesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
+  const {settings,updateSection,resetSection}=useSettings();
+  const [draft,setDraft]=useState<ExpensesSettings>(settings.expenses);
+  const [categories,setCategories]=useState<ExpenseCategory[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{setDraft(settings.expenses);onDirtyChange(false)},[settings.expenses,onDirtyChange]);
+  useEffect(()=>{
+    let active=true;
+    setLoading(true);
+    loadExpenseCategories()
+      .then(rows=>{if(active)setCategories(rows)})
+      .catch(e=>showError(e instanceof Error?e.message:'No se pudieron cargar las categorías de gasto.'))
+      .finally(()=>{if(active)setLoading(false)});
+    return()=>{active=false};
+  },[]);
+
+  const update=<K extends keyof ExpensesSettings>(key:K,value:ExpensesSettings[K])=>{
+    setDraft(current=>({...current,[key]:value}));
+    onDirtyChange(true);
+  };
+  const toggleRequired=(field:string,checked:boolean)=>{
+    setDraft(current=>({...current,requiredReviewFields:checked
+      ?[...new Set([...current.requiredReviewFields,field])]
+      :current.requiredReviewFields.filter(item=>item!==field)}));
+    onDirtyChange(true);
+  };
+
+  const save=async()=>{
+    setSaving(true);
+    try{await updateSection('expenses',draft);onDirtyChange(false);showSuccess('Configuración de gastos e importación guardada.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración de gastos.');}
+    finally{setSaving(false);}
+  };
+
+  const restore=async()=>{
+    if(!window.confirm('Se restaurarán los valores predeterminados de Gastos e importación. ¿Continuar?'))return;
+    setSaving(true);
+    try{await resetSection('expenses');onDirtyChange(false);showSuccess('Valores predeterminados de Gastos restaurados.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
+    finally{setSaving(false);}
+  };
+
+  const statusOptions=[
+    {value:'pending',label:'Pendiente'},
+    {value:'reviewed',label:'Revisada'},
+    {value:'accounted',label:'Contabilizada'},
+  ];
+  const supplierTypeOptions=[
+    {value:'goods',label:'Mercancía'},
+    {value:'service',label:'Servicios'},
+    {value:'both',label:'Mercancía y servicios'},
+  ];
+
+  return <section className="settingsSectionCard">
+    <div className="settingsSectionHero">
+      <div className="settingsSectionIcon"><FileInput size={22}/></div>
+      <div><h2>Gastos e importación</h2><p>Controla cómo se interpretan, validan y guardan las facturas recibidas.</p></div>
+    </div>
+    {loading?<div className="settingsInlineLoading">Cargando categorías…</div>:<>
+      <div className="settingsSubsection">
+        <h3>Alta y clasificación</h3>
+        <div className="settingsFormGrid">
+          <label className="settingsField"><span>Estado inicial</span><SelectField ariaLabel="Estado inicial del gasto" value={draft.initialStatus} options={statusOptions} onChange={value=>update('initialStatus',value as ExpensesSettings['initialStatus'])}/></label>
+          <label className="settingsField"><span>Categoría por defecto</span><SelectField ariaLabel="Categoría por defecto" allowEmpty emptyLabel="Sin categoría automática" value={draft.defaultCategoryId||''} options={categories.map(item=>({value:item.id,label:item.name}))} onChange={value=>update('defaultCategoryId',value||null)}/></label>
+          <label className="settingsField"><span>Tipo de proveedor por defecto</span><SelectField ariaLabel="Tipo de proveedor por defecto" allowEmpty emptyLabel="Sin clasificar" value={draft.defaultSupplierType||''} options={supplierTypeOptions} onChange={value=>update('defaultSupplierType',(value||null) as ExpensesSettings['defaultSupplierType'])}/></label>
+          <label className="settingsField"><span>Umbral de confianza</span><div className="settingsNumberWithSuffix"><input type="number" min="0" max="100" step="1" value={Math.round(draft.confidenceThreshold*100)} onChange={e=>update('confidenceThreshold',Math.min(1,Math.max(0,Number(e.target.value)/100)))}/><em>%</em></div></label>
+        </div>
+        <div className="settingsToggleGrid">
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.autoCreateSuppliers} onChange={e=>update('autoCreateSuppliers',e.target.checked)}/><span><strong>Crear proveedores automáticamente</strong><small>Solo cuando no exista coincidencia fiscal, alias o identidad segura.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.autoCreateProducts} onChange={e=>update('autoCreateProducts',e.target.checked)}/><span><strong>Crear productos automáticamente</strong><small>Crea productos desde líneas válidas cuando el flujo lo permita.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.fillMissingSupplierData} onChange={e=>update('fillMissingSupplierData',e.target.checked)}/><span><strong>Completar datos vacíos del proveedor</strong><small>Añade datos fiscales y de contacto sin pisar información existente.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.updateProductCosts} onChange={e=>update('updateProductCosts',e.target.checked)}/><span><strong>Actualizar costes automáticamente</strong><small>Actualiza el coste efectivo con compras confirmadas.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.createSupplierProductRelation} onChange={e=>update('createSupplierProductRelation',e.target.checked)}/><span><strong>Crear relación producto-proveedor</strong><small>Vincula las descripciones del proveedor con el producto interno.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.updatePriceHistory} onChange={e=>update('updatePriceHistory',e.target.checked)}/><span><strong>Actualizar histórico de precios</strong><small>Guarda el precio confirmado en el historial de compra.</small></span></label>
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <h3>Duplicados y revisión</h3>
+        <div className="settingsToggleGrid">
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.detectDuplicates} onChange={e=>update('detectDuplicates',e.target.checked)}/><span><strong>Detectar duplicados</strong><small>Comprueba hash, proveedor y número de factura.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.blockHighConfidenceDuplicates} onChange={e=>update('blockHighConfidenceDuplicates',e.target.checked)}/><span><strong>Bloquear duplicados seguros</strong><small>Impide guardar cuando la coincidencia es inequívoca.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.warnAmbiguousMatches} onChange={e=>update('warnAmbiguousMatches',e.target.checked)}/><span><strong>Avisar coincidencias dudosas</strong><small>Obliga a revisión cuando la identidad no es concluyente.</small></span></label>
+        </div>
+        <div className="settingsFieldGroup">
+          <strong>Campos que obligan a revisión</strong>
+          <div className="settingsInlineChecks">
+            {[['invoiceNumber','Número'],['issueDate','Fecha'],['supplier','Proveedor'],['total','Total']].map(([key,label])=>
+              <label key={key}><input type="checkbox" checked={draft.requiredReviewFields.includes(key)} onChange={e=>toggleRequired(key,e.target.checked)}/>{label}</label>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="settingsSubsection">
+        <h3>Gmail y reprocesado</h3>
+        <div className="settingsFormGrid">
+          <label className="settingsField"><span>Tamaño máximo de adjunto</span><div className="settingsNumberWithSuffix"><input type="number" min="1" max="100" value={draft.maxAttachmentMb} onChange={e=>update('maxAttachmentMb',Number(e.target.value))}/><em>MB</em></div></label>
+        </div>
+        <div className="settingsToggleGrid">
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.gmailPdfOnly} onChange={e=>update('gmailPdfOnly',e.target.checked)}/><span><strong>Importar solo PDF desde Gmail</strong><small>Ignora otros adjuntos en la bandeja automática.</small></span></label>
+          <label className="settingsToggleField"><input type="checkbox" checked={draft.allowReimportDeleted} onChange={e=>update('allowReimportDeleted',e.target.checked)}/><span><strong>Reprocesar facturas eliminadas</strong><small>Permite volver a importar un adjunto cuyo gasto fue eliminado.</small></span></label>
+        </div>
+      </div>
+
+      <div className="settingsSectionActions">
+        <button type="button" className="secondaryButton" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button>
+        <button type="button" className="primaryButton" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button>
+      </div>
+    </>}
+  </section>;
+}
+
 function ClientsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   const {settings,updateSection,resetSection}=useSettings();
   const [draft,setDraft]=useState<ClientsSettings>(settings.clients);
@@ -593,7 +711,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
