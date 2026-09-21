@@ -15,7 +15,7 @@ test('ClientModal uses shared form and postal address controls',async()=>{
 
 test('ClientModal preserves existing client values and save normalization',async()=>{
   const source=await read('../src/pages/Clients.tsx');
-  assert.match(source,/countryCode:client\.countryCode\|\|'ES'/);
+  assert.match(source,/countryCode:client\.countryCode\|\|settings\.clients\.defaultCountryCode/);
   assert.match(source,/postalCode:client\.postalCode\|\|''/);
   assert.match(source,/city:client\.city\|\|''/);
   assert.match(source,/province:client\.province\|\|''/);
