@@ -11,10 +11,11 @@ import { loadProductSalesMap } from '../services/productEditor';
 import { productMarginMetrics } from '../services/productMetrics';
 import { showError, showSuccess } from '../services/toast';
 import { confirmAction, openActionProcess } from '../services/actionDialog';
+import { useSettings } from '../context/SettingsContext';
 import '../supplier-actions.css';
 
 const PAGE_SIZE=20;
-const money=(value:number|null,decimals=2)=>value==null?'—':`${value.toLocaleString('es-ES',{minimumFractionDigits:decimals,maximumFractionDigits:4})} €`;
+const money=(value:number|null,decimals=2,maxDecimals=Math.max(decimals,4))=>value==null?'—':`${value.toLocaleString('es-ES',{minimumFractionDigits:decimals,maximumFractionDigits:maxDecimals})} €`;
 const dateLabel=(value?:string|null)=>value?new Date(`${value.slice(0,10)}T12:00:00`).toLocaleDateString('es-ES'):'—';
 
 type ProductSalesInfo={salePrice:number|null;salesTaxRate:number;invoiceDescription:string;ean:string};
@@ -51,6 +52,10 @@ function ProductDrawer({product,extra,onClose,onEdit,onDelete,busy}:{product:Pro
 }
 
 export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];onAdd:()=>void;onEdit:(product:Product)=>void;onDelete:(product:Product)=>Promise<void>}){
+ const {settings}=useSettings();
+ const marginAlertThreshold=Math.max(settings.products.minimumMarginPct,settings.products.marginAlertPct);
+ const costIncreaseThreshold=settings.products.costIncreaseAlertPct;
+ const costMoney=(value:number|null)=>money(value,Math.min(settings.products.costDecimals,8),Math.min(settings.products.costDecimals,8));
  const [query,setQuery]=useState('');
  const [dateFilter,setDateFilter]=useState(()=>dateFilterForPreset('all'));
  const [categoryFilter,setCategoryFilter]=useState('all');
@@ -101,13 +106,13 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
      if(scope==='with_sale'&&extra?.salePrice==null)return false;
      if(scope==='without_sale'&&extra?.salePrice!=null)return false;
      if(scope==='missing_cost'&&metric.cost!=null)return false;
-     if(scope==='negative_margin'&&!(metric.margin!=null&&metric.margin<0))return false;
-     if(scope==='cost_up'&&!(metric.delta!=null&&metric.delta>0))return false;
+     if(scope==='negative_margin'&&!(metric.marginPct!=null&&metric.marginPct<marginAlertThreshold))return false;
+     if(scope==='cost_up'&&!(metric.delta!=null&&metric.delta>=costIncreaseThreshold))return false;
      if(scope==='cost_down'&&!(metric.delta!=null&&metric.delta<0))return false;
      if(q&&![product.name,product.sku??'',extra?.ean??'',product.supplier,product.category??''].some(value=>value.toLowerCase().includes(q)))return false;
      return true;
    });
- },[periodProducts,query,salesMap,categoryFilter,supplierFilter,taxFilter,scope]);
+ },[periodProducts,query,salesMap,categoryFilter,supplierFilter,taxFilter,scope,marginAlertThreshold,costIncreaseThreshold]);
  const selectedProducts=shown.filter(product=>checkedIds.has(product.id));
  const allShownSelected=shown.length>0&&shown.every(product=>checkedIds.has(product.id));
  const toggleProduct=(id:string,checked:boolean)=>setCheckedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});
@@ -121,15 +126,17 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
    const withSale=shown.filter(product=>salesMap.get(product.id)?.salePrice!=null).length;
    const margins=shown.map(product=>productMetrics(product,salesMap.get(product.id)).marginPct).filter((value):value is number=>value!=null);
    const costs=shown.map(product=>product.lastPrice).filter((value):value is number=>value!=null);
-   const costUp=shown.filter(product=>{const delta=productMetrics(product,salesMap.get(product.id)).delta;return delta!=null&&delta>0}).length;
+   const costUp=shown.filter(product=>{const delta=productMetrics(product,salesMap.get(product.id)).delta;return delta!=null&&delta>=costIncreaseThreshold}).length;
+   const lowMargin=shown.filter(product=>{const margin=productMetrics(product,salesMap.get(product.id)).marginPct;return margin!=null&&margin<marginAlertThreshold}).length;
    return {
      count:shown.length,
      withSale,
      avgMargin:margins.length?margins.reduce((a,b)=>a+b,0)/margins.length:null,
      avgCost:costs.length?costs.reduce((a,b)=>a+b,0)/costs.length:null,
      costUp,
+     lowMargin,
    };
- },[shown,salesMap]);
+ },[shown,salesMap,costIncreaseThreshold,marginAlertThreshold]);
  const remove=async(product:Product)=>{
    const confirmed=await confirmAction({title:'Eliminar producto',message:`Se eliminará “${product.name}”.`,confirmLabel:'Eliminar',tone:'danger',details:['Las facturas existentes no se borrarán; sus líneas quedarán sin producto asociado.']});
    if(!confirmed)return;
@@ -178,8 +185,9 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
         <StatCard label="Productos visibles" value={String(totals.count)} sub={selectedPeriod} icon={<Package/>}/>
         <StatCard label="Con precio de venta" value={String(totals.withSale)} sub={`de ${totals.count} visibles`} icon={<Euro/>}/>
         <StatCard label="Margen medio" value={totals.avgMargin==null?'—':`${totals.avgMargin.toLocaleString('es-ES',{minimumFractionDigits:1,maximumFractionDigits:1})} %`} sub="Sobre coste" icon={<Percent/>}/>
-        <StatCard label="Coste medio" value={money(totals.avgCost)} sub={selectedPeriod} icon={<Calculator/>}/>
-        <StatCard label="Subidas de coste" value={String(totals.costUp)} sub="Frente al coste anterior" icon={<TrendingUp/>}/>
+        <StatCard label="Coste medio" value={costMoney(totals.avgCost)} sub={selectedPeriod} icon={<Calculator/>}/>
+        <StatCard label="Margen bajo" value={String(totals.lowMargin)} sub={`Por debajo de ${marginAlertThreshold.toLocaleString('es-ES')} %`} icon={<Percent/>}/>
+        <StatCard label="Subidas de coste" value={String(totals.costUp)} sub={`Desde +${costIncreaseThreshold.toLocaleString('es-ES')} %`} icon={<TrendingUp/>}/>
       </div>
 
       {error&&<div className="errorBox supplierPageError">{error}</div>}
@@ -190,7 +198,7 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
           <label className="filterField"><span>Categoría</span><SelectField value={categoryFilter} onChange={setCategoryFilter} ariaLabel="Filtrar por categoría" options={[{value:'all',label:'Todas las categorías'},...categoryOptions]}/></label>
           <label className="filterField"><span>Proveedor</span><SelectField value={supplierFilter} onChange={setSupplierFilter} ariaLabel="Filtrar por proveedor" options={[{value:'all',label:'Todos los proveedores'},...supplierOptions]}/></label>
           <label className="filterField"><span>IVA venta</span><SelectField value={taxFilter} onChange={setTaxFilter} ariaLabel="Filtrar por IVA de venta" options={[{value:'all',label:'Todos los tipos'},...taxOptions]}/></label>
-          <label className="filterField"><span>Situación</span><SelectField value={scope} onChange={value=>setScope(value as ProductScope)} ariaLabel="Filtrar productos" options={[{value:'all',label:'Todos los productos'},{value:'with_sale',label:'Con precio de venta'},{value:'without_sale',label:'Sin precio de venta'},{value:'missing_cost',label:'Sin coste de compra'},{value:'negative_margin',label:'Margen negativo'},{value:'cost_up',label:'Coste al alza'},{value:'cost_down',label:'Coste a la baja'}]}/></label>
+          <label className="filterField"><span>Situación</span><SelectField value={scope} onChange={value=>setScope(value as ProductScope)} ariaLabel="Filtrar productos" options={[{value:'all',label:'Todos los productos'},{value:'with_sale',label:'Con precio de venta'},{value:'without_sale',label:'Sin precio de venta'},{value:'missing_cost',label:'Sin coste de compra'},{value:'negative_margin',label:`Margen bajo (< ${marginAlertThreshold.toLocaleString('es-ES')} %)`},{value:'cost_up',label:`Subida coste (≥ ${costIncreaseThreshold.toLocaleString('es-ES')} %)`},{value:'cost_down',label:'Coste a la baja'}]}/></label>
         </div>
         <span className="filterResultCount">{shown.length} producto{shown.length===1?'':'s'} · {selectedPeriod}</span>
       </div>
@@ -213,10 +221,10 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
                 <td><span className="mono">{p.sku||'—'}</span>{extra?.ean&&<div className="muted mono">{extra.ean}</div>}</td>
                 <td>{p.supplier&&p.supplier!=='—'?p.supplier:<span className="muted">Sin proveedor</span>}</td>
                 <td>{dateLabel(p.lastPurchaseDate)}</td>
-                <td className="right"><strong>{money(metric.cost,metric.cost!=null&&metric.cost<1?3:2)}</strong></td>
+                <td className="right"><strong>{metric.cost==null?'—':costMoney(metric.cost)}</strong></td>
                 <td className="right"><strong>{money(metric.sale)}</strong></td>
-                <td className="right">{metric.margin==null?<span className="muted">—</span>:<><strong>{money(metric.margin)}</strong>{metric.marginPct!=null&&<div className="muted">{metric.marginPct.toFixed(1)} %</div>}</>}</td>
-                <td className="right">{metric.delta==null?<span className="muted">Sin histórico</span>:<span className={metric.delta>0?'delta up':'delta down'}>{metric.delta>0?<TrendingUp size={15}/>:<TrendingDown size={15}/>} {metric.delta>0?'+':''}{metric.delta.toFixed(1)}%</span>}</td>
+                <td className="right">{metric.margin==null?<span className="muted">—</span>:<><strong className={metric.marginPct!=null&&metric.marginPct<marginAlertThreshold?'warnText':undefined}>{money(metric.margin)}</strong>{metric.marginPct!=null&&<div className={metric.marginPct<settings.products.minimumMarginPct?'warnText':'muted'}>{metric.marginPct.toFixed(1)} %</div>}</>}</td>
+                <td className="right">{metric.delta==null?<span className="muted">Sin histórico</span>:<span className={metric.delta>=costIncreaseThreshold?'delta up':metric.delta>0?'delta up':'delta down'}>{metric.delta>0?<TrendingUp size={15}/>:<TrendingDown size={15}/>} {metric.delta>0?'+':''}{metric.delta.toFixed(1)}%</span>}</td>
                 <td className="right"><ChevronRight size={17}/></td>
               </tr>})}</tbody>
           </table>
