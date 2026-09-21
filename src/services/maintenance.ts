@@ -329,15 +329,15 @@ export async function previewExpenseInvoiceReprocess(invoiceId:string):Promise<E
     recipientTaxId:candidate.recipientTaxId||null,
     recipientName:candidate.recipientName||null,
     text:candidate.text,
-    lines:candidate.lines as Array<Record<string,unknown>>,
+    lines:candidate.lines.map(line=>({...line})) as unknown as Array<Record<string,unknown>>,
   };
   const changes:string[]=[];
-  differenceLabel(current.invoiceNumber,parsed.invoiceNumber,'Número');
-  differenceLabel(current.invoiceDate,parsed.invoiceDate,'Fecha');
-  differenceLabel(current.subtotal,parsed.subtotal,'Base');
-  differenceLabel(current.vat,parsed.vat,'IVA');
-  differenceLabel(current.total,parsed.total,'Total');
-  differenceLabel(current.categoryId,parsed.categoryId,'Categoría');
+  differenceLabel(current.invoiceNumber,parsed.invoiceNumber,'Número',changes);
+  differenceLabel(current.invoiceDate,parsed.invoiceDate,'Fecha',changes);
+  differenceLabel(current.subtotal,parsed.subtotal,'Base',changes);
+  differenceLabel(current.vat,parsed.vat,'IVA',changes);
+  differenceLabel(current.total,parsed.total,'Total',changes);
+  differenceLabel(current.categoryId,parsed.categoryId,'Categoría',changes);
 
   return {
     invoiceId:String(invoice.id),
