@@ -12,7 +12,7 @@ import { productMarginMetrics } from '../services/productMetrics';
 import { showError, showSuccess } from '../services/toast';
 import { confirmAction, openActionProcess } from '../services/actionDialog';
 import { useSettings } from '../context/SettingsContext';
-import { persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
+import { hiddenTableColumns, persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
 import '../supplier-actions.css';
 
 const money=(value:number|null,decimals=2,maxDecimals=Math.max(decimals,4))=>value==null?'—':`${value.toLocaleString('es-ES',{minimumFractionDigits:decimals,maximumFractionDigits:maxDecimals})} €`;
@@ -54,6 +54,7 @@ function ProductDrawer({product,extra,onClose,onEdit,onDelete,busy}:{product:Pro
 export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];onAdd:()=>void;onEdit:(product:Product)=>void;onDelete:(product:Product)=>Promise<void>}){
  const {settings,preferences,updatePreferences}=useSettings();
  const pageSize=preferences.pageSize;
+ const hiddenColumns=hiddenTableColumns(preferences,'products');
  const marginAlertThreshold=Math.max(settings.products.minimumMarginPct,settings.products.marginAlertPct);
  const costIncreaseThreshold=settings.products.costIncreaseAlertPct;
  const costMoney=(value:number|null)=>money(value,Math.min(settings.products.costDecimals,8),Math.min(settings.products.costDecimals,8));
@@ -216,7 +217,7 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
 
       <section className="card tableCard masterTableCard">
         {shown.length?(
-          <table className="masterTable">
+          <table className="masterTable" data-preference-table="products" data-hidden-columns={hiddenColumns}>
             <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allShownSelected} onChange={toggleAllProducts} label={allShownSelected?'Deseleccionar productos visibles':'Seleccionar productos visibles'}/></th><th>Producto</th><th>SKU / EAN</th><th>Proveedor</th><th>Última compra</th><th className="right">Coste</th><th className="right">P. venta</th><th className="right">Margen</th><th className="right">Var. coste</th><th></th></tr></thead>
             <tbody>{paged.map(p=>{const extra=salesMap.get(p.id);const metric=productMetrics(p,extra);return <tr key={p.id} className={`clickableRow ${checkedIds.has(p.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(p)}>
                 <td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(p.id)} onChange={checked=>toggleProduct(p.id,checked)} label={`Seleccionar ${p.name}`}/></td>
