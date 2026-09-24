@@ -36,6 +36,7 @@ import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './typ
 
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
 const THEME_KEY = 'zenvia-gestion-theme';
+const THEME_PREFERENCE_KEY = 'zenvia-gestion-theme-preference';
 const regularPages: MenuPermission[] = ['dashboard','sales','orders','invoices','clients','products','suppliers','amazon'];
 
 function withTimeout<T>(promise:Promise<T>,ms:number,message:string):Promise<T>{
@@ -46,6 +47,12 @@ function withTimeout<T>(promise:Promise<T>,ms:number,message:string):Promise<T>{
 }
 
 function initialTheme(): ThemeMode {
+  const preference=safeStorageGet('local',THEME_PREFERENCE_KEY);
+  if(preference==='dark'||preference==='light')return preference;
+  if(preference==='system'){
+    try{return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';}
+    catch{return 'light';}
+  }
   const stored=safeStorageGet('local',THEME_KEY) || safeStorageGet('local','zenvia-gastos-theme');
   if(stored==='dark'||stored==='light') return stored;
   try{return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';}
@@ -106,6 +113,10 @@ export default function App(){
    document.documentElement.style.colorScheme=theme;
    safeStorageSet('local',THEME_KEY,theme);
  },[theme]);
+
+ useEffect(()=>{
+   safeStorageSet('local',THEME_PREFERENCE_KEY,preferences.theme);
+ },[preferences.theme]);
 
  useEffect(()=>{
    document.documentElement.dataset.density=preferences.density;
