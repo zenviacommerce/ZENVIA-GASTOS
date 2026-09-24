@@ -414,9 +414,6 @@ html[data-theme='dark'] .aiNote.done{
 .integrationAmazonSettings>.settingsSectionCard>.settingsSectionHero h2{
   font-size:15px;
 }
-.integrationAmazonSettings>.settingsSectionCard>.settingsSectionHero h2::before{
-  content:'Amazon · ';
-}
 .integrationAmazonSettings>.settingsSectionCard>.settingsSectionHero p{
   margin-top:3px;
 }
