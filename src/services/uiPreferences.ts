@@ -79,3 +79,15 @@ export function hiddenTableColumns(preferences:UserPreferences,table:PreferenceT
   const visible=new Set(visibleTableColumns(preferences,table));
   return TABLE_COLUMN_DEFAULTS[table].filter(key=>!visible.has(key)).join(' ');
 }
+
+
+export function orderedTableColumns(preferences:UserPreferences,table:PreferenceTableKey):string[]{
+  const defaults=[...TABLE_COLUMN_DEFAULTS[table]];
+  const allowed=new Set<string>(defaults);
+  const configured=Array.isArray(preferences.tableColumnOrder?.[table])
+    ?preferences.tableColumnOrder[table].filter(key=>allowed.has(key))
+    :[];
+  const order=[...new Set([...configured,...defaults])];
+  const visible=new Set(visibleTableColumns(preferences,table));
+  return order.filter(key=>visible.has(key));
+}
