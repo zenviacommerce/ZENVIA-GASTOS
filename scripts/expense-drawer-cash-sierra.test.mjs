@@ -27,7 +27,7 @@ Efectivo
 MANTEL ROLLO 1,20X7 MT. ROJO C/25 R-0985 MANTEL ROLLO 1,20X7 MT. BURDEOS C/25 R-3279
 BULTOS
 área de clientes de https://cashsierranevada.es`;
-  const lines=getCashSierraNevadaProductLines(text.split(/\\r?\\n/),text);
+  const lines=getCashSierraNevadaProductLines(text.split(/\r?\n/),text);
   assert.equal(lines.length,2);
   assert.deepEqual(lines.map(line=>line.description),[
     'MANTEL ROLLO 1,20X7 MT. ROJO C/25 R-0985',
@@ -51,7 +51,7 @@ FACTURA VENTA
 COPA CAVA 10uds. C/63 KONNY TENEDOR METALIZADO BOLSA 25U. C/20 MONDIS SERVILLETAS P.PUNTA 38X38 NATURAL 50UND C/24 KARME CARRO Nº 43
 BULTOS
 Cash Sierra Nevada, S.L.`;
-  const lines=getCashSierraNevadaProductLines(text.split(/\\r?\\n/),text);
+  const lines=getCashSierraNevadaProductLines(text.split(/\r?\n/),text);
   assert.equal(lines.length,3);
   assert.deepEqual(lines.map(line=>line.description),[
     'COPA CAVA 10uds. C/63 KONNY',
