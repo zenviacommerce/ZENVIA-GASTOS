@@ -131,7 +131,7 @@ function ClientDrawer({client,metric,period,onClose,onEdit,onDelete,busy}:{clien
 }
 
 export function Clients(){
-  const {settings,preferences,updatePreferences}=useSettings();
+  const {settings,preferences,patchPreferences}=useSettings();
   const money=(value:number)=>formatAppMoney(value,settings.general.currencyCode,settings.general,{minimumFractionDigits:2,maximumFractionDigits:2});
   const dateLabel=(value?:string|null)=>formatAppDate(value,settings.general,'—');
   const pageSize=preferences.pageSize;
@@ -193,7 +193,7 @@ export function Clients(){
   const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
   const paged=useMemo(()=>filtered.slice((page-1)*pageSize,page*pageSize),[filtered,page]);
   useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,balanceFilter,countryFilter,dateFilter]);
-  useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'clients.filters',{query,dateFilter,balanceFilter,countryFilter})},350);return()=>window.clearTimeout(timer)},[query,dateFilter,balanceFilter,countryFilter,preferences.rememberFilters]);
+  useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,patchPreferences,'clients.filters',{query,dateFilter,balanceFilter,countryFilter})},350);return()=>window.clearTimeout(timer)},[query,dateFilter,balanceFilter,countryFilter,preferences.rememberFilters]);
   useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
 
   const totals=useMemo(()=>{
