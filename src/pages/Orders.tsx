@@ -205,7 +205,7 @@ function ManualOrderModal({status,saving,defaultCountryCode,fallbackWeightKg,wei
 }
 
 export function Orders(){
-  const {settings,preferences,patchPreferences}=useSettings();
+  const {settings,preferences,patchPreferences,updateSection}=useSettings();
   const remembered=rememberedFilter<{
     query:string;state:OrderFilter;trackingFilter:TrackingFilter;countryFilter:string;carrierFilter:string;dateFilter:ReturnType<typeof defaultDateFilter>;
   }>(preferences,'orders.filters',{query:'',state:'pending',trackingFilter:'all',countryFilter:'all',carrierFilter:'all',dateFilter:defaultDateFilter(preferences.defaultPeriod)});
@@ -331,7 +331,7 @@ export function Orders(){
   const handleBlob=async(blob:Blob,order:FulfillmentOrder,mode:'print'|'download')=>{
     const prepared=await prepareLabelPdf(blob,settings.shipping);
     if(mode==='download'){downloadLabel(prepared,labelPdfFilename(order,labelFilenameOptions));return}
-    if(preferences.labelPrinterId){try{await printLabelWithClient(prepared,preferences.labelPrinterId);showSuccess('Etiqueta enviada a la impresora.');return}catch{/* PDF */}}
+    if(preferences.labelPrinterId){try{await printLabelWithClient(prepared,preferences.labelPrinterId,settings.shipping.labelSize);showSuccess('Etiqueta enviada a la impresora.');return}catch{/* PDF */}}
     openLabelForPrint(prepared);
   };
   const createLabel=async(option:ShippingOption|null,explicitOrder:FulfillmentOrder|null=labelOrder)=>{if(!explicitOrder)return;const order=explicitOrder;setBusyOrder(order.id);setLabelOrder(null);try{
@@ -374,11 +374,19 @@ export function Orders(){
   const generateConfiguredLabels=()=>generateLabels(configuredBulkTargets,settings.orders.bulkScope==='selected'?'seleccionadas':'pendientes');
   const generateSelectedLabels=()=>generateLabels(selectedOrders,'seleccionadas');
   const detectPrinters=async()=>{setPrinterChecking(true);try{const found=await listLocalPrinters();setPrinters(found);const chosen=preferences.labelPrinterId||found.find(item=>item.default)?.id||found[0]?.id||'';setPrinter(chosen);if(chosen)await patchPreferences({labelPrinterId:chosen});showSuccess(found.length?`${found.length} impresora${found.length===1?'':'s'} detectada${found.length===1?'':'s'} para impresión directa.`:'El agente de impresión está disponible, pero no ha devuelto ninguna impresora.')}catch{setPrinters([]);setPrinter('');await patchPreferences({labelPrinterId:null}).catch(()=>undefined);showInfo('La impresión directa requiere ZENVIA Print Agent instalado y abierto. Durante la transición también se admite el Print Client de Sendcloud. No afecta a la generación de etiquetas: puedes descargarlas e imprimirlas como PDF con normalidad.')}finally{setPrinterChecking(false)}};
+  const changeLabelSize=async(value:ShippingSettings['labelSize'])=>{
+    if(value===settings.shipping.labelSize)return;
+    try{
+      await updateSection('shipping',{...settings.shipping,labelSize:value});
+      const label=value==='AUTO'?'Automático / original':value==='10x15'?'10 × 15 cm':value;
+      showSuccess(`Formato de etiqueta: ${label}.`);
+    }catch(e){showError(errorMessage(e,'No se pudo guardar el formato de etiqueta.'))}
+  };
   const saveManual=async(value:any)=>{setManualSaving(true);try{const result=await createManualOrder(value);await refresh();setManualOpen(false);showSuccess(`Pedido ${result.orderNumber} creado en ZENVIA y Sendcloud.`)}catch(e){showError(errorMessage(e,'No se pudo crear el pedido manual.'))}finally{setManualSaving(false)}};
   const saveEdit=async(value:OrderUpdateInput)=>{if(!editOrder)return;setEditSaving(true);try{await updateFulfillmentOrder(editOrder.id,value);const freshOrders=await listFulfillmentOrders();setOrders(freshOrders);const fresh=freshOrders.find(item=>item.id===editOrder.id)||editOrder;setSelected(fresh);setEditValidationIssues([]);setEditOrder(null);showSuccess('Pedido actualizado en ZENVIA y Sendcloud.')}catch(e){showError(errorMessage(e,'No se pudo actualizar el pedido.'))}finally{setEditSaving(false)}};
 
   return <div className="page ordersPage">
-    <div className="pageHead"><div><div className="eyebrow">LOGÍSTICA</div><h1>Pedidos</h1><p>Amazon, Shopify y pedidos manuales, etiquetas y seguimiento desde un único sitio.</p></div><div className="actions"><button className="secondary" onClick={detectPrinters} disabled={printerChecking} title="Opcional: usa ZENVIA Print Agent para imprimir directamente en una impresora instalada en este equipo. No es necesario para generar ni descargar etiquetas.">{printerChecking?<LoaderCircle className="spin" size={16}/>:<Printer size={16}/>} Impresión directa</button><button className="secondary" onClick={()=>setManualOpen(true)} disabled={!status?.configured}><Plus size={16}/> Nuevo pedido</button><button className="secondary" onClick={generateConfiguredLabels} disabled={bulkGenerating||configuredBulkTargets.length===0}>{bulkGenerating?<LoaderCircle className="spin" size={16}/>:<Download size={16}/>} {bulkGenerating?`Generando ${bulkProgress}`:settings.orders.bulkScope==='selected'?`Generar etiquetas seleccionadas (${selectedOrders.length})`:`Generar etiquetas pendientes (${pending})`}</button><button className="primary" onClick={()=>sync(false,false)} disabled={syncing||bulkGenerating||!status?.configured}>{syncing?<LoaderCircle className="spin" size={16}/>:<RefreshCw size={16}/>} Actualizar pedidos</button></div></div>
+    <div className="pageHead"><div><div className="eyebrow">LOGÍSTICA</div><h1>Pedidos</h1><p>Amazon, Shopify y pedidos manuales, etiquetas y seguimiento desde un único sitio.</p></div><div className="actions"><button className="secondary" onClick={detectPrinters} disabled={printerChecking} title="Opcional: usa ZENVIA Print Agent para imprimir directamente en una impresora instalada en este equipo. No es necesario para generar ni descargar etiquetas.">{printerChecking?<LoaderCircle className="spin" size={16}/>:<Printer size={16}/>} Impresión directa</button><label className="ordersQuickLabelFormat"><span>Formato</span><SelectField value={settings.shipping.labelSize} onChange={value=>void changeLabelSize(value as ShippingSettings['labelSize'])} ariaLabel="Formato rápido de etiqueta" options={[{value:'AUTO',label:'Original'},{value:'A6',label:'A6'},{value:'10x15',label:'10 × 15'},{value:'A5',label:'A5'},{value:'A4',label:'A4'}]}/></label><button className="secondary" onClick={()=>setManualOpen(true)} disabled={!status?.configured}><Plus size={16}/> Nuevo pedido</button><button className="secondary" onClick={generateConfiguredLabels} disabled={bulkGenerating||configuredBulkTargets.length===0}>{bulkGenerating?<LoaderCircle className="spin" size={16}/>:<Download size={16}/>} {bulkGenerating?`Generando ${bulkProgress}`:settings.orders.bulkScope==='selected'?`Generar etiquetas seleccionadas (${selectedOrders.length})`:`Generar etiquetas pendientes (${pending})`}</button><button className="primary" onClick={()=>sync(false,false)} disabled={syncing||bulkGenerating||!status?.configured}>{syncing?<LoaderCircle className="spin" size={16}/>:<RefreshCw size={16}/>} Actualizar pedidos</button></div></div>
     {status?.configured&&<section className="ordersConnection"><CheckCircle2 size={16}/><span>Sendcloud conectado</span><small>{status.integrations.filter(item=>item.channel==='amazon'||item.channel==='shopify').map(item=>item.shopName||item.type).join(' · ')||'Integraciones disponibles'}</small></section>}
     {status&&!status.configured&&<section className="card ordersSetup"><AlertCircle/><div><h3>Falta conectar Sendcloud</h3><p>Configura las claves API para sincronizar pedidos y generar etiquetas.</p></div></section>}{error&&<div className="errorBox"><AlertCircle size={17}/>{error}</div>}
 
