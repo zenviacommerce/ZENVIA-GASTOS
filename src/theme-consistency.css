@@ -11,6 +11,12 @@
   --border:#e2e8f0;
   --border-soft:#edf1f5;
   --input-bg:#ffffff;
+  --ui-font-xs:12px;
+  --ui-font-sm:13px;
+  --ui-font-control:13.5px;
+  --ui-font-md:14px;
+  --ui-font-heading-sm:15px;
+  --ui-control-height:42px;
 }
 
 html[data-theme='dark']{
