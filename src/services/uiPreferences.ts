@@ -36,14 +36,14 @@ export function rememberedFilter<T>(
 
 export async function persistRememberedFilter(
   preferences:UserPreferences,
-  updatePreferences:(value:UserPreferences)=>Promise<void>,
+  patchPreferences:(patch:Partial<UserPreferences>)=>Promise<void>,
   key:string,
   value:unknown,
 ){
   if(!preferences.rememberFilters)return false;
   const current=preferences.filters[key];
   if(JSON.stringify(current??null)===JSON.stringify(value??null))return false;
-  await updatePreferences({...preferences,filters:{...preferences.filters,[key]:clone(value)}});
+  await patchPreferences({filters:{[key]:clone(value)}});
   return true;
 }
 
