@@ -204,10 +204,9 @@ function ManualOrderModal({status,saving,defaultCountryCode,fallbackWeightKg,wei
 
 export function Orders(){
   const {settings,preferences,updatePreferences}=useSettings();
-  const initialChannel=settings.orders.defaultChannel==='amazon'?'amazon':settings.orders.defaultChannel==='shopify'?'shopify':settings.orders.defaultChannel==='manual'||settings.orders.defaultChannel==='other'?'other':'all';
   const remembered=rememberedFilter<{
     query:string;channel:'all'|OrderChannel;state:OrderFilter;trackingFilter:TrackingFilter;countryFilter:string;carrierFilter:string;dateFilter:ReturnType<typeof defaultDateFilter>;
-  }>(preferences,'orders.filters',{query:'',channel:initialChannel,state:'pending',trackingFilter:'all',countryFilter:'all',carrierFilter:'all',dateFilter:defaultDateFilter(preferences.defaultPeriod)});
+  }>(preferences,'orders.filters',{query:'',channel:'all',state:'pending',trackingFilter:'all',countryFilter:'all',carrierFilter:'all',dateFilter:defaultDateFilter(preferences.defaultPeriod)});
   const [orders,setOrders]=useState<FulfillmentOrder[]>([]),[status,setStatus]=useState<SendcloudStatus|null>(null);
   const [loading,setLoading]=useState(true),[syncing,setSyncing]=useState(false),[error,setError]=useState('');
   const [query,setQuery]=useState(remembered.query),[channel,setChannel]=useState<'all'|OrderChannel>(remembered.channel),[state,setState]=useState<OrderFilter>(remembered.state),[trackingFilter,setTrackingFilter]=useState<TrackingFilter>(remembered.trackingFilter),[countryFilter,setCountryFilter]=useState(remembered.countryFilter),[carrierFilter,setCarrierFilter]=useState(remembered.carrierFilter);
