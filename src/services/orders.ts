@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { loadAutomationRule, type OrderLabelCreatedAutomationConfig } from './automationRules';
+import type { ShippingSettings } from './settingsSchema';
 
 export type OrderChannel = 'amazon' | 'shopify' | 'other';
 
@@ -217,7 +218,7 @@ export async function listLocalPrinters():Promise<LocalPrinter[]>{
   catch{throw new Error('No se detecta ZENVIA Print Agent ni el Print Client de Sendcloud.')}
 }
 
-export async function printLabelWithClient(blob:Blob,printerId:string){
+export async function printLabelWithClient(blob:Blob,printerId:string,labelSize:ShippingSettings['labelSize']='AUTO'){
   const [source,...parts]=printerId.split(':');
   const rawId=parts.join(':')||printerId;
   if(source==='zenvia'){
@@ -228,6 +229,7 @@ export async function printLabelWithClient(blob:Blob,printerId:string){
         'Content-Type':'application/pdf',
         'X-Zenvia-Client':'gestion-web',
         'X-Printer-Id':rawId,
+        'X-Label-Size':labelSize,
       },
       body:blob,
     });
