@@ -15,8 +15,8 @@ test('bulk label generation is not disabled by background sync or status health 
 test('direct printing is presented as optional Sendcloud Print Client functionality',async()=>{
   const source=await read('../src/pages/Orders.tsx');
   assert.match(source,/Impresión directa/);
-  assert.match(source,/Sendcloud Print Client instalado en este equipo/);
-  assert.match(source,/showInfo\('La impresión directa requiere Sendcloud Print Client/);
+  assert.match(source,/ZENVIA Print Agent para imprimir directamente/);
+  assert.match(source,/showInfo\('La impresión directa requiere ZENVIA Print Agent/);
 });
 
 test('toast system supports neutral informational messages',async()=>{
