@@ -1,4 +1,5 @@
 import { spApiRequest } from './sp-api.ts';
+import { loadAmazonSpApiCredentials } from './config.ts';
 
 const INCLUDED_DATA=['PROCEEDS','EXPENSE','PROMOTION','CANCELLATION','FULFILLMENT','TAX'];
 const SAFE_LAG_MS=2*60*1000;
@@ -112,11 +113,12 @@ export async function syncOrdersJob(admin:any,job:any){
     baseQuery.lastUpdatedAfter=job.window_from;
     baseQuery.lastUpdatedBefore=before;
   }
+  const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:job.amazon_account_id});
   let paginationToken:string|undefined;
   let processed=0;
   do{
     const query={...baseQuery,...(paginationToken?{paginationToken}:{})};
-    const data:any=await spApiRequest('/orders/2026-01-01/orders',{query});
+    const data:any=await spApiRequest('/orders/2026-01-01/orders',{query},credentials);
     const orders=Array.isArray(data?.orders)?data.orders:[];
     processed+=await upsertPage(admin,orders,job);
     paginationToken=data?.pagination?.nextToken||undefined;

@@ -1,4 +1,4 @@
-import { readAmazonSpApiCredentials } from './config.ts';
+import { readAmazonSpApiCredentials, type AmazonSpApiCredentials } from './config.ts';
 import { retryAfterMs, sanitizeAmazonError, sleep } from './http.ts';
 
 const LWA_URL='https://api.amazon.com/auth/o2/token';
@@ -6,17 +6,18 @@ export const SP_API_BASE='https://sellingpartnerapi-eu.amazon.com';
 export const MAX_ATTEMPTS=4;
 const USER_AGENT='ZENVIA-Gestion/1.0 (Language=TypeScript; Platform=Supabase-Edge)';
 
-type TokenCache={token:string;expiresAt:number}|null;
-let cachedToken:TokenCache=null;
+type TokenCache={token:string;expiresAt:number};
+const tokenCache=new Map<string,TokenCache>();
 
 function amazonDate(date=new Date()){
   return date.toISOString().replace(/[:-]|\.\d{3}/g,'');
 }
 
-export async function getLwaAccessToken(){
+export async function getLwaAccessToken(credentials:AmazonSpApiCredentials=readAmazonSpApiCredentials()){
   const now=Date.now();
+  const cacheKey=`${credentials.sellerId}:${credentials.clientId}:${credentials.refreshToken.slice(-12)}`;
+  const cachedToken=tokenCache.get(cacheKey);
   if(cachedToken&&cachedToken.expiresAt>now+60_000)return cachedToken.token;
-  const credentials=readAmazonSpApiCredentials();
   const body=new URLSearchParams();
   body.set('grant_type','refresh_token');
   body.set('refresh_token',credentials.refreshToken);
@@ -29,8 +30,9 @@ export async function getLwaAccessToken(){
     throw new Error(`Amazon LWA (${response.status}): ${sanitizeAmazonError(data?.error_description||data?.error||text)}`);
   }
   const expiresIn=Math.max(60,Number(data.expires_in)||3600);
-  cachedToken={token:String(data.access_token),expiresAt:now+(expiresIn*1000)};
-  return cachedToken.token;
+  const next={token:String(data.access_token),expiresAt:now+(expiresIn*1000)};
+  tokenCache.set(cacheKey,next);
+  return next.token;
 }
 
 export type SpApiRequestOptions={
@@ -51,10 +53,10 @@ function buildUrl(path:string,query?:SpApiRequestOptions['query']){
 
 function transient(status:number){return [429,500,502,503,504].includes(status);}
 
-export async function spApiRequest<T=any>(path:string,options:SpApiRequestOptions={}):Promise<T>{
+export async function spApiRequest<T=any>(path:string,options:SpApiRequestOptions={},credentials?:AmazonSpApiCredentials):Promise<T>{
   const url=buildUrl(path,options.query);
   for(let attempt=0;attempt<MAX_ATTEMPTS;attempt+=1){
-    const accessToken=await getLwaAccessToken();
+    const accessToken=await getLwaAccessToken(credentials);
     const headers=new Headers({
       Accept:'application/json',
       'user-agent':USER_AGENT,

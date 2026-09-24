@@ -6,14 +6,14 @@ import { filterAutomaticMarketplaces, loadAmazonAutomaticSyncSettings } from '..
 const jsonHeaders={'Content-Type':'application/json'};
 function response(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:jsonHeaders});}
 
-async function requestAutomaticImageSync(ownerId:string){
+async function requestAutomaticImageSync(ownerId:string,amazonAccountId:string){
   const url=(Deno.env.get('SUPABASE_URL')||'').trim();
   const key=getAdminKey();
   if(!url||!key)throw new Error('Configuración interna de Supabase no disponible para imágenes Amazon.');
   const result=await fetch(`${url.replace(/\/$/,'')}/functions/v1/amazon-sync-product-images`,{
     method:'POST',
     headers:{'Content-Type':'application/json','apikey':key},
-    body:JSON.stringify({ownerId,limit:10}),
+    body:JSON.stringify({ownerId,amazonAccountId,limit:10}),
   });
   const payload=await result.json().catch(()=>({}));
   if(!result.ok||payload?.error)throw new Error(String(payload?.error||`Error HTTP ${result.status} sincronizando imágenes Amazon.`));
@@ -28,15 +28,17 @@ Deno.serve(async(req:Request)=>{
     const body=await req.json().catch(()=>({}));
     const mode=String(body?.mode||'hourly');
     if(!['initial','hourly','reconcile'].includes(mode))return response({error:'Modo de sincronización no válido.'},400);
-    const {data:accounts,error:accountError}=await admin.from('amazon_accounts').select('owner_id').neq('status','disabled');
+    const {data:accounts,error:accountError}=await admin.from('amazon_accounts')
+      .select('id,owner_id,integration_account_id').neq('status','disabled').order('updated_at',{ascending:false});
     if(accountError)throw accountError;
-    const ownerIds=[...new Set((accounts||[]).map((item:any)=>String(item.owner_id)).filter(Boolean))];
     let jobs=0;
     let processedAccounts=0;
-    for(const ownerId of ownerIds){
-      const bootstrap=await ensureAmazonAccountAndMarketplaces(admin,ownerId);
+    for(const configuredAccount of accounts||[]){
+      const ownerId=String(configuredAccount.owner_id);
+      const integrationAccountId=configuredAccount.integration_account_id?String(configuredAccount.integration_account_id):null;
+      const bootstrap=await ensureAmazonAccountAndMarketplaces(admin,ownerId,integrationAccountId);
       const account=bootstrap.account;
-      const automaticSettings=await loadAmazonAutomaticSyncSettings(admin,ownerId);
+      const automaticSettings=await loadAmazonAutomaticSyncSettings(admin,ownerId,integrationAccountId);
       if(!automaticSettings.automaticEnabled)continue;
       const marketplaces=filterAutomaticMarketplaces(bootstrap.marketplaces,automaticSettings.activeMarketplaceIds);
       const enabledSources=automaticSettings.enabledSources;
@@ -68,7 +70,7 @@ Deno.serve(async(req:Request)=>{
         let imageSync:Record<string,unknown>|null=null;
         let imageSyncError:string|null=null;
         if(automaticSettings.autoSyncImages){
-          try{imageSync=await requestAutomaticImageSync(ownerId);}
+          try{imageSync=await requestAutomaticImageSync(ownerId,account.id);}
           catch(error){imageSyncError=error instanceof Error?error.message:'No se pudieron actualizar las imágenes Amazon.';}
         }
         await admin.from('amazon_sync_runs').update({

@@ -3,3 +3,54 @@
 .taxRegistrationManager{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.9fr);gap:16px;align-items:start}.configList{display:flex;flex-direction:column;gap:8px;min-width:0}.configRow{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--border,#e2e8f0);border-radius:12px;background:var(--surface-soft,#f8fafc);min-width:0}.configRow.isInactive{opacity:.62}.configRowIcon{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:var(--surface,#fff);flex:0 0 auto}.configRowMain{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}.configRowMain strong,.configRowMain span,.configRowMain small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.configRowMain span{font-size:12px;color:var(--text-secondary,#64748b)}.configRowMain small{font-size:11px;color:var(--text-secondary,#94a3b8)}.configRowActions{display:flex;gap:5px;flex:0 0 auto}.configEmpty{padding:18px;border:1px dashed var(--border,#cbd5e1);border-radius:12px;color:var(--text-secondary,#64748b);font-size:13px;line-height:1.45}.configEditor{padding:14px;border:1px solid var(--border,#e2e8f0);border-radius:14px;background:var(--surface-soft,#f8fafc)}.configEditorHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.configEditorHead .link{border:0;background:transparent;color:#0f766e;font-weight:700;cursor:pointer}.optionalLabel{font-weight:500;font-size:10px;color:var(--text-secondary,#94a3b8)}.configChecks{display:flex;flex-wrap:wrap;gap:14px;margin:12px 0}.configChecks label,.configCheckboxLabel{display:flex!important;flex-direction:row!important;align-items:center!important;gap:8px!important;font-size:12px!important;font-weight:650!important;color:var(--text-secondary,#64748b)!important}.configChecks input,.configCheckboxLabel input{width:16px!important;height:16px!important;min-height:0!important}.configSave{width:100%;justify-content:center}.seriesConfigList{display:grid;grid-template-columns:1fr 1fr;gap:9px}.configEditorActions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}.salesParties{display:grid;grid-template-columns:1fr 1fr;gap:18px}.salesParties>div{padding:12px;border-radius:12px;background:var(--surface-soft,#f8fafc)}
 @media(max-width:1150px){.salesInvoiceMetaTriple{grid-template-columns:1fr 1fr}.salesInvoiceMetaTriple label:first-child{grid-column:1/-1}.taxRegistrationManager{grid-template-columns:1fr}.seriesConfigList{grid-template-columns:1fr}}
 @media(max-width:760px){.salesInvoiceMetaTriple{grid-template-columns:1fr}.salesInvoiceMetaTriple label:first-child{grid-column:auto}.salesParties{grid-template-columns:1fr}.configEditorActions{display:grid;grid-template-columns:1fr}.configEditorActions button{width:100%;justify-content:center}.configRow{align-items:flex-start}.configRowActions{margin-left:auto}}
+
+
+/* Fiscal data is denser than the generic client modal: give VAT registration
+   management enough horizontal room without changing the rest of billing dialogs. */
+.modal.salesClientModal.fiscalDataModal{
+  width:min(1160px,calc(100vw - 40px));
+  max-width:1160px;
+}
+.fiscalDataModal .taxRegistrationManager{
+  grid-template-columns:minmax(300px,.82fr) minmax(480px,1.28fr);
+  gap:20px;
+}
+.fiscalDataModal .configEditor{
+  padding:18px;
+}
+.fiscalDataModal .configEditor .salesFormGrid{
+  grid-template-columns:minmax(0,1.15fr) minmax(180px,.85fr);
+  column-gap:16px;
+}
+.fiscalDataModal .configEditor .configChecks{
+  gap:16px 22px;
+}
+.fiscalDataModal .configEditor .configSave{
+  min-height:44px;
+}
+
+@media(max-width:980px){
+  .modal.salesClientModal.fiscalDataModal{
+    width:min(900px,calc(100vw - 28px));
+  }
+  .fiscalDataModal .taxRegistrationManager{
+    grid-template-columns:1fr;
+  }
+  .fiscalDataModal .configEditor .salesFormGrid{
+    grid-template-columns:minmax(0,1fr) minmax(180px,.72fr);
+  }
+}
+@media(max-width:640px){
+  .modal.salesClientModal.fiscalDataModal{
+    width:calc(100vw - 18px);
+  }
+  .fiscalDataModal .configEditor{
+    padding:14px;
+  }
+  .fiscalDataModal .configEditor .salesFormGrid{
+    grid-template-columns:1fr;
+  }
+  .fiscalDataModal .configEditor .salesSpan2{
+    grid-column:auto;
+  }
+}

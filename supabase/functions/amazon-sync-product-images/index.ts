@@ -1,6 +1,6 @@
 import { createAdminClient, requireInternalSecret } from '../_shared/amazon/supabase.ts';
 import { spApiRequest } from '../_shared/amazon/sp-api.ts';
-import { readAmazonSpApiCredentials } from '../_shared/amazon/config.ts';
+import { loadAmazonSpApiCredentials } from '../_shared/amazon/config.ts';
 
 function response(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});}
 function fromListing(data:any){
@@ -22,14 +22,18 @@ Deno.serve(async(req:Request)=>{
   try{
     requireInternalSecret(req);
     const admin=createAdminClient();
-    const credentials=readAmazonSpApiCredentials();
     const body=await req.json().catch(()=>({}));
     const limit=Math.min(30,Math.max(1,Number(body?.limit)||10));
     const ownerId=String(body?.ownerId||'').trim();
-    let accountQuery=admin.from('amazon_accounts').select('id,owner_id').neq('status','disabled').order('updated_at',{ascending:false}).limit(1);
+    const amazonAccountId=String(body?.amazonAccountId||'').trim();
+    const integrationAccountId=String(body?.integrationAccountId||'').trim();
+    let accountQuery=admin.from('amazon_accounts').select('id,owner_id,integration_account_id').neq('status','disabled').order('updated_at',{ascending:false}).limit(1);
     if(ownerId)accountQuery=accountQuery.eq('owner_id',ownerId);
+    if(amazonAccountId)accountQuery=accountQuery.eq('id',amazonAccountId);
+    if(integrationAccountId)accountQuery=accountQuery.eq('integration_account_id',integrationAccountId);
     const {data:account,error:accountError}=await accountQuery.maybeSingle();
     if(accountError)throw accountError;if(!account)throw new Error('No hay cuenta Amazon configurada.');
+    const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:account.id,integrationAccountId:account.integration_account_id});
 
     const {data:markets,error:marketError}=await admin.from('amazon_marketplaces').select('marketplace_id,country_code').eq('amazon_account_id',account.id).eq('owner_id',account.owner_id).eq('active',true).order('country_code');
     if(marketError)throw marketError;
@@ -49,7 +53,7 @@ Deno.serve(async(req:Request)=>{
       for(let offset=0;offset<20000&&products.length<limit;offset+=1000){
         const {data:items,error:itemError}=await admin.from('amazon_order_items')
           .select('asin,seller_sku,marketplace_id')
-          .eq('owner_id',account.owner_id)
+          .eq('owner_id',account.owner_id).eq('amazon_account_id',account.id)
           .not('asin','is',null).not('seller_sku','is',null)
           .range(offset,offset+999);
         if(itemError)throw itemError;
@@ -73,7 +77,7 @@ Deno.serve(async(req:Request)=>{
         try{
           const data:any=await spApiRequest(`/listings/2021-08-01/items/${encodeURIComponent(credentials.sellerId)}/${encodeURIComponent(product.sellerSku)}`,{
             query:{marketplaceIds:[marketplaceId],includedData:['attributes','summaries']}
-          });
+          },credentials);
           image=fromListing(data);usedMarketplace=marketplaceId;
           if(image)break;
         }catch(error){lastError=error instanceof Error?error.message:'Error';}

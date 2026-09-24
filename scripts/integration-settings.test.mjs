@@ -34,12 +34,30 @@ test('Gmail helpers test and sync without returning OAuth tokens',async()=>{
   assert.doesNotMatch(gmail,/testGmailConnection[\s\S]{0,1200}return\s+connection/);
 });
 
-test('Integrations settings editor exposes real health and actions',async()=>{
+test('Integrations settings editor supports multi-account credentials without exposing stored secrets',async()=>{
   const page=await read('src/pages/Settings.tsx');
+  const accounts=await read('src/services/integrationAccounts.ts');
   assert.match(page,/function IntegrationsSection/);
-  for(const label of ['Gmail','Amazon','Sendcloud','Shopify','Probar conexión','Sincronizar ahora','Último éxito','Último intento'])assert.match(page,new RegExp(label,'i'),label);
-  assert.match(page,/updateSection\('integrations'/);
-  assert.doesNotMatch(page,/API key|Secret key|Access token|Refresh token/i);
+  for(const label of ['Gmail','Amazon','Sendcloud','Shopify','Probar','Sincronizar','Añadir cuenta','Predeterminada'])assert.match(page,new RegExp(label,'i'),label);
+  assert.match(page,/type="password"/);
+  assert.match(page,/Refresh token/i);
+  assert.match(page,/Secret key/i);
+  assert.match(page,/Los secretos guardados nunca se vuelven a mostrar/i);
+  assert.doesNotMatch(accounts,/\.from\(['"]integration_secrets['"]\)/i);
+  assert.doesNotMatch(accounts,/secret_id/i);
+  assert.match(accounts,/supabase\.functions\.invoke\('integration-accounts'/);
+});
+
+test('multi-account service models account identity, default selection and legacy compatibility safely',async()=>{
+  const source=await read('src/services/integrationAccounts.ts');
+  for(const field of ['provider','externalAccountId','isDefault','credentialSource','credentialsConfigured','parentAccountId','linkedResourceId','legacy'])assert.match(source,new RegExp(field),field);
+  assert.match(source,/loadLegacyIntegrationAccounts/);
+  assert.match(source,/legacy-amazon-/);
+  assert.match(source,/legacy-sendcloud-current/);
+  assert.match(source,/legacy-shopify-/);
+  assert.match(source,/legacy-gmail-/);
+  assert.match(source,/setDefaultIntegrationAccount/);
+  assert.match(source,/disconnectIntegrationAccount/);
 });
 
 test('automatic Amazon sync honors the global integration enable switch',async()=>{
@@ -48,4 +66,20 @@ test('automatic Amazon sync honors the global integration enable switch',async()
   assert.match(helper,/automaticEnabled/);
   const orchestrator=await read('supabase/functions/amazon-sync-orchestrator/index.ts');
   assert.match(orchestrator,/automaticSettings\.automaticEnabled/);
+});
+
+
+test('Amazon configuration is consolidated inside Integrations instead of a separate navigation section',async()=>{
+  const page=await read('src/pages/Settings.tsx');
+  assert.doesNotMatch(page,/{id:'amazon',label:'Amazon'/);
+  assert.doesNotMatch(page,/active&&active\.id==='amazon'/);
+  assert.match(page,/integrationAmazonSettings/);
+  assert.match(page,/<AmazonSection onDirtyChange=\{onDirtyChange\}\/>/);
+});
+
+test('legacy compatibility no longer disables adding another integration account',async()=>{
+  const page=await read('src/pages/Settings.tsx');
+  assert.match(page,/Añadir cuenta/);
+  assert.doesNotMatch(page,/disabled=\{busy!==null\|\|compatibilityMode/);
+  assert.match(page,/backend multicuenta todavía no está activado/i);
 });

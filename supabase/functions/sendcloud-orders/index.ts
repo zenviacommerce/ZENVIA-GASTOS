@@ -10,6 +10,8 @@ const SENDCLOUD_BASE='https://panel.sendcloud.sc/api/v3';
 
 type Caller={user_id:string;data_owner_id:string;role:string;active:boolean;permissions:string[]|null};
 type Integration={id:number;shopName:string;type:string;shopUrl:string|null;channel:'amazon'|'shopify'|'other';isApi:boolean};
+type SendcloudCredentials={publicKey:string;secretKey:string};
+type SendcloudAccount={id:string|null;displayName:string;credentialSource:string;config:Record<string,unknown>;credentials:SendcloudCredentials};
 
 function response(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:jsonHeaders});}
 function fail(message:string,status=400){return response({error:message},status);}
@@ -18,22 +20,65 @@ function getAdminKey(){
   if(secretKeys){try{const parsed=JSON.parse(secretKeys);if(parsed?.default)return parsed.default as string}catch{/* fallback */}}
   return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'';
 }
-function sendcloudCredentials(){
-  const publicKey=Deno.env.get('SENDCLOUD_PUBLIC_KEY')||Deno.env.get('SENDCLOUD_API_KEY')||'';
-  const secretKey=Deno.env.get('SENDCLOUD_SECRET_KEY')||Deno.env.get('SENDCLOUD_API_SECRET')||'';
-  return {publicKey,secretKey,configured:Boolean(publicKey&&secretKey)};
+function envSendcloudCredentials():SendcloudCredentials|null{
+  const publicKey=clean(Deno.env.get('SENDCLOUD_PUBLIC_KEY')||Deno.env.get('SENDCLOUD_API_KEY'));
+  const secretKey=clean(Deno.env.get('SENDCLOUD_SECRET_KEY')||Deno.env.get('SENDCLOUD_API_SECRET'));
+  return publicKey&&secretKey?{publicKey,secretKey}:null;
 }
 function basicAuth(publicKey:string,secretKey:string){return `Basic ${btoa(`${publicKey}:${secretKey}`)}`;}
-
-async function sendcloudJson(path:string,init:RequestInit={}){
-  const {publicKey,secretKey,configured}=sendcloudCredentials();
-  if(!configured)throw new Error('Faltan las claves de la API de Sendcloud.');
+async function readIntegrationSecret(admin:any,secretId:string|null){
+  if(!secretId)return {};
+  const {data,error}=await admin.rpc('integration_read_secret',{p_secret_id:secretId});
+  if(error)throw error;
+  try{return JSON.parse(String(data||'{}'))}catch{throw new Error('Las credenciales cifradas de Sendcloud no tienen un formato válido.');}
+}
+async function loadSendcloudAccount(admin:any,ownerId:string,requestedId?:string|null):Promise<SendcloudAccount>{
+  let query=admin.from('integration_accounts')
+    .select('id,display_name,credential_source,secret_id,status,enabled,config')
+    .eq('owner_id',ownerId).eq('provider','sendcloud');
+  if(requestedId)query=query.eq('id',requestedId);
+  else query=query.neq('status','disabled').order('is_default',{ascending:false}).order('updated_at',{ascending:false}).limit(1);
+  const {data,error}=await query.maybeSingle();
+  if(error)throw error;
+  if(data){
+    if(data.status==='disabled'||data.enabled===false)throw new Error('La cuenta de Sendcloud está deshabilitada.');
+    const stored=await readIntegrationSecret(admin,data.secret_id||null);
+    const env=envSendcloudCredentials();
+    const publicKey=clean(stored?.publicKey||stored?.public_key||(data.credential_source==='environment'?env?.publicKey:''));
+    const secretKey=clean(stored?.secretKey||stored?.secret_key||(data.credential_source==='environment'?env?.secretKey:''));
+    if(!publicKey||!secretKey)throw new Error(`Faltan las claves de Sendcloud para ${data.display_name||'la cuenta seleccionada'}.`);
+    return {id:String(data.id),displayName:String(data.display_name||'Sendcloud'),credentialSource:String(data.credential_source||'vault'),config:(data.config&&typeof data.config==='object'&&!Array.isArray(data.config))?data.config:{},credentials:{publicKey,secretKey}};
+  }
+  const env=envSendcloudCredentials();
+  if(!env)throw new Error('Sendcloud todavía no está conectado.');
+  return {id:null,displayName:'Sendcloud',credentialSource:'environment',config:{syncOrders:true,shippingEnabled:true},credentials:env};
+}
+async function loadSendcloudAccounts(admin:any,ownerId:string,requestedId?:string|null):Promise<SendcloudAccount[]>{
+  if(requestedId)return [await loadSendcloudAccount(admin,ownerId,requestedId)];
+  const {data,error}=await admin.from('integration_accounts')
+    .select('id,display_name,credential_source,secret_id,status,enabled,config')
+    .eq('owner_id',ownerId).eq('provider','sendcloud').eq('enabled',true).neq('status','disabled')
+    .order('is_default',{ascending:false}).order('updated_at',{ascending:false});
+  if(error)throw error;
+  if(!(data||[]).length)return [await loadSendcloudAccount(admin,ownerId,null)];
+  const result:SendcloudAccount[]=[];
+  for(const row of data||[])result.push(await loadSendcloudAccount(admin,ownerId,String(row.id)));
+  return result;
+}
+function storedSendcloudId(account:SendcloudAccount,remoteId:string){
+  return account.id&&account.credentialSource!=='environment'?`${account.id}:${remoteId}`:remoteId;
+}
+function remoteSendcloudId(order:any){
+  const explicit=clean(order?.sendcloud_remote_id);if(explicit)return explicit;
+  const stored=clean(order?.sendcloud_id);return stored.includes(':')?stored.slice(stored.lastIndexOf(':')+1):stored;
+}
+async function sendcloudJson(credentials:SendcloudCredentials,path:string,init:RequestInit={}){
   const url=path.startsWith('http')?path:`${SENDCLOUD_BASE}${path.startsWith('/')?'':'/'}${path}`;
-  const headers=new Headers(init.headers||{});
-  headers.set('Authorization',basicAuth(publicKey,secretKey));
-  headers.set('Accept','application/json');
-  if(init.body&&!headers.has('Content-Type'))headers.set('Content-Type','application/json');
-  const res=await fetch(url,{...init,headers});
+  const requestHeaders=new Headers(init.headers||{});
+  requestHeaders.set('Authorization',basicAuth(credentials.publicKey,credentials.secretKey));
+  requestHeaders.set('Accept','application/json');
+  if(init.body&&!requestHeaders.has('Content-Type'))requestHeaders.set('Content-Type','application/json');
+  const res=await fetch(url,{...init,headers:requestHeaders});
   const body=await res.text();
   let data:any=null;try{data=body?JSON.parse(body):null}catch{data=body}
   if(!res.ok){
@@ -42,9 +87,8 @@ async function sendcloudJson(path:string,init:RequestInit={}){
   }
   return {data,headers:res.headers};
 }
-async function sendcloudBinary(path:string,accept='application/pdf'){
-  const {publicKey,secretKey,configured}=sendcloudCredentials();if(!configured)throw new Error('Faltan las claves de la API de Sendcloud.');
-  const res=await fetch(`${SENDCLOUD_BASE}${path}`,{headers:{Authorization:basicAuth(publicKey,secretKey),Accept:accept}});
+async function sendcloudBinary(credentials:SendcloudCredentials,path:string,accept='application/pdf'){
+  const res=await fetch(`${SENDCLOUD_BASE}${path}`,{headers:{Authorization:basicAuth(credentials.publicKey,credentials.secretKey),Accept:accept}});
   if(!res.ok){const body=await res.text();throw new Error(`Sendcloud (${res.status}): ${body.slice(0,500)}`)}
   const bytes=new Uint8Array(await res.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
   return {base64:btoa(binary),mimeType:res.headers.get('content-type')||accept};
@@ -113,19 +157,19 @@ function normalizeShippingOption(option:any){
   const priceValue=quote?.price?.value??quote?.total_price?.value??quote?.value??null;
   return {code,name,carrierCode:carrier,carrierName:String(option?.carrier?.name||option?.carrier_name||friendlyCarrier(carrier)||carrier||'Transportista'),contractId:contractValue==null?null:Number(contractValue),price:priceValue==null?null:Number(priceValue),currency:quote?.price?.currency||quote?.total_price?.currency||quote?.currency||null,raw:option};
 }
-async function integrations():Promise<Integration[]>{
-  const {data}=await sendcloudJson('/integrations');
+async function integrations(credentials:SendcloudCredentials):Promise<Integration[]>{
+  const {data}=await sendcloudJson(credentials,'/integrations');
   return (data?.data||[]).map((item:any)=>({id:Number(item.id),shopName:String(item.shop_name||item.type||`Integración ${item.id}`),type:String(item.type||''),shopUrl:item.shop_url||null,channel:channelFor(item),isApi:apiIntegration(item)}));
 }
 function daysAgo(days:number){const d=new Date();d.setUTCDate(d.getUTCDate()-days);return d.toISOString().slice(0,10);}
 function yearStart(){return `${new Date().getUTCFullYear()}-01-01`;}
-async function fetchPaged(path:string,maxPages:number){
+async function fetchPaged(credentials:SendcloudCredentials,path:string,maxPages:number){
   const rows:any[]=[];let url=path.startsWith('http')?path:`${SENDCLOUD_BASE}${path}`;
-  for(let page=0;page<maxPages&&url;page+=1){const result=await sendcloudJson(url);rows.push(...(result.data?.data||[]));const next=(result.headers.get('link')||'').split(',').map((p:string)=>p.trim()).find((p:string)=>/rel="next"/.test(p));url=next?.match(/<([^>]+)>/)?.[1]||'';}
+  for(let page=0;page<maxPages&&url;page+=1){const result=await sendcloudJson(credentials,url);rows.push(...(result.data?.data||[]));const next=(result.headers.get('link')||'').split(',').map((p:string)=>p.trim()).find((p:string)=>/rel="next"/.test(p));url=next?.match(/<([^>]+)>/)?.[1]||'';}
   return rows;
 }
-async function fetchOrders(history:boolean){const min=history?yearStart():daysAgo(7);return fetchPaged(`/orders?page_size=100&sort=-order_created_at&order_created_at_min=${encodeURIComponent(min)}`,history?70:16);}
-async function fetchShipments(history:boolean){const min=history?yearStart():daysAgo(30);return fetchPaged(`/shipments?page_size=100&updated_after=${encodeURIComponent(`${min}T00:00:00Z`)}`,history?70:24);}
+async function fetchOrders(credentials:SendcloudCredentials,history:boolean){const min=history?yearStart():daysAgo(7);return fetchPaged(credentials,`/orders?page_size=100&sort=-order_created_at&order_created_at_min=${encodeURIComponent(min)}`,history?70:16);}
+async function fetchShipments(credentials:SendcloudCredentials,history:boolean){const min=history?yearStart():daysAgo(30);return fetchPaged(credentials,`/shipments?page_size=100&updated_after=${encodeURIComponent(`${min}T00:00:00Z`)}`,history?70:24);}
 function shipmentMeta(s:any){
   const parcel=Array.isArray(s?.parcels)?s.parcels[0]:null;const option=s?.ship_with?.properties?.shipping_option_code||null;const code=carrierCode(option,parcel?.tracking_url);const trackingStatus=parcel?.status||{};
   return {sendcloud_parcel_id:parcel?.id==null?null:Number(parcel.id),sendcloud_shipment_id:s?.id==null?null:String(s.id),tracking_number:parcel?.tracking_number||null,tracking_url:parcel?.tracking_url||null,shipping_option_code:option,contract_id:s?.ship_with?.properties?.contract_id==null?null:Number(s.ship_with.properties.contract_id),carrier_code:code,carrier_name:friendlyCarrier(code),shipping_service_name:option,fulfilled_at:parcel?.announced_at||s?.updated_at||null,tracking_status_code:clean(trackingStatus?.code)||null,tracking_status_message:clean(trackingStatus?.message)||null,tracking_updated_at:s?.updated_at||parcel?.updated_at||null};
@@ -136,31 +180,76 @@ Deno.serve(async(req:Request)=>{
   const url=Deno.env.get('SUPABASE_URL')||'',adminKey=getAdminKey();if(!url||!adminKey)return fail('Configuración del backend no disponible.',500);
   const admin=createClient(url,adminKey,{auth:{persistSession:false,autoRefreshToken:false}});
   try{
-    const caller=await authenticate(req,admin),body=await req.json().catch(()=>({})),action=String(body?.action||'status'),credentials=sendcloudCredentials(),config=await workspaceConfig(admin,caller.data_owner_id),ordersConfig=config.orders,shippingConfig=config.shipping,integrationConfig=config.integrations;
+    const caller=await authenticate(req,admin),body=await req.json().catch(()=>({})),action=String(body?.action||'status'),config=await workspaceConfig(admin,caller.data_owner_id),ordersConfig=config.orders,shippingConfig=config.shipping,integrationConfig=config.integrations;
+    const requestedIntegrationAccountId=clean(body?.integrationAccountId)||null;
     if(action==='status'){
-      if(!credentials.configured)return response({configured:false,integrations:[],message:'Faltan SENDCLOUD_PUBLIC_KEY y SENDCLOUD_SECRET_KEY.'});
-      try{return response({configured:true,integrations:await integrations()})}catch(error){return response({configured:true,integrations:[],message:error instanceof Error?error.message:String(error)})}
+      try{
+        const accounts=await loadSendcloudAccounts(admin,caller.data_owner_id,requestedIntegrationAccountId);
+        const linked:any[]=[];
+        for(const account of accounts){
+          const items=await integrations(account.credentials);
+          linked.push(...items.map(item=>({...item,sendcloudAccountId:account.id,sendcloudAccountName:account.displayName})));
+        }
+        return response({
+          configured:accounts.length>0,
+          accountId:accounts.length===1?accounts[0].id:null,
+          displayName:accounts.length===1?accounts[0].displayName:null,
+          accounts:accounts.map(account=>({id:account.id,displayName:account.displayName})),
+          integrations:linked,
+        });
+      }catch(error){return response({configured:false,accounts:[],integrations:[],message:error instanceof Error?error.message:String(error)})}
     }
-    if(!credentials.configured)return fail('Sendcloud todavía no está conectado. Configura las claves Public y Secret de la integración Sendcloud API.',503);
 
     if(action==='sync'){
-      const history=Boolean(body?.history),automatic=Boolean(body?.automatic),linked=await integrations();
-      if(automatic&&integrationConfig.sendcloudEnabled===false)return response({ok:true,synced:0,enriched:0,history,integrations:linked,disabled:true});
+      const history=Boolean(body?.history),automatic=Boolean(body?.automatic);
+      if(automatic&&integrationConfig.sendcloudEnabled===false)return response({ok:true,synced:0,enriched:0,history,integrations:[],disabled:true});
+      const accounts=await loadSendcloudAccounts(admin,caller.data_owner_id,requestedIntegrationAccountId);
       const allowedChannels=new Set<string>(['other']);
       if(!automatic||integrationConfig.amazonEnabled!==false)allowedChannels.add('amazon');
       if(!automatic||integrationConfig.shopifyEnabled!==false)allowedChannels.add('shopify');
-      const integrationMap=new Map(linked.map(i=>[i.id,i])),orders=await fetchOrders(history),now=new Date().toISOString();
-      let shipments:any[]=[];try{shipments=await fetchShipments(history)}catch{/* sincronización base continúa */}
-      const shipmentMap=new Map<string,any>();for(const s of shipments){const key=clean(s?.order_number);if(key&&!shipmentMap.has(key))shipmentMap.set(key,s)}
-      const rows=orders.map((order:any)=>{const integrationId=Number(order?.order_details?.integration?.id||0),integration=integrationMap.get(integrationId),total=order?.payment_details?.total_price;return {owner_id:caller.data_owner_id,sendcloud_id:String(order.id),order_id:order.order_id==null?null:String(order.order_id),order_number:order.order_number==null?null:String(order.order_number),integration_id:integrationId,integration_name:integration?.shopName||null,integration_type:integration?.type||null,source_channel:integration?.channel||'other',source_status:order?.order_details?.status?.code||null,order_created_at:order?.order_details?.order_created_at||order?.created_at||null,order_updated_at:order?.order_details?.order_updated_at||order?.modified_at||null,customer_name:orderName(order),customer_email:orderEmail(order),customer_phone:orderPhone(order),shipping_address:order?.shipping_address||{},billing_address:order?.billing_address||{},items:Array.isArray(order?.order_details?.order_items)?order.order_details.order_items:[],total_amount:total?.value==null?null:Number(total.value),currency:total?.currency||null,raw_payload:order,last_synced_at:now};}).filter((r:any)=>r.integration_id&&r.sendcloud_id&&(!automatic||allowedChannels.has(r.source_channel)));
-      if(rows.length){const {error}=await admin.from('fulfillment_orders').upsert(rows,{onConflict:'owner_id,sendcloud_id'});if(error)throw error;}
-      const enriched=rows.map((r:any)=>{const s=shipmentMap.get(clean(r.order_number));return s?{...r,...shipmentMeta(s)}:null}).filter(Boolean);
-      if(enriched.length){const {error}=await admin.from('fulfillment_orders').upsert(enriched,{onConflict:'owner_id,sendcloud_id'});if(error)throw error;}
-      return response({ok:true,synced:rows.length,enriched:enriched.length,history,integrations:linked});
+      let totalSynced=0,totalEnriched=0;const allIntegrations:any[]=[];const accountResults:any[]=[];
+      const {data:amazonAccounts}=await admin.from('integration_accounts').select('id,config,is_default').eq('owner_id',caller.data_owner_id).eq('provider','amazon').eq('enabled',true).neq('status','disabled');
+      for(const account of accounts){
+        if(account.config?.syncOrders===false){accountResults.push({accountId:account.id,displayName:account.displayName,synced:0,enriched:0,disabled:true});continue;}
+        const linked=await integrations(account.credentials);
+        allIntegrations.push(...linked.map(item=>({...item,sendcloudAccountId:account.id,sendcloudAccountName:account.displayName})));
+        const integrationMap=new Map(linked.map(i=>[i.id,i]));
+        const {data:shopifyAccounts}=account.id?await admin.from('integration_accounts').select('id,external_account_id').eq('owner_id',caller.data_owner_id).eq('provider','shopify').eq('parent_account_id',account.id).neq('status','disabled'):{data:[]};
+        const shopifyMap=new Map((shopifyAccounts||[]).map((item:any)=>[String(item.external_account_id),String(item.id)]));
+        const amazonByRemote=new Map((amazonAccounts||[]).map((item:any)=>[String(item?.config?.sendcloudIntegrationId||''),String(item.id)]).filter(([key]:any)=>key));
+        const defaultAmazon=(amazonAccounts||[]).length===1?(amazonAccounts||[])[0]:null;
+        const orders=await fetchOrders(account.credentials,history),now=new Date().toISOString();
+        let shipments:any[]=[];try{shipments=await fetchShipments(account.credentials,history)}catch{/* sincronización base continúa */}
+        const shipmentMap=new Map<string,any>();for(const shipment of shipments){const key=clean(shipment?.order_number);if(key&&!shipmentMap.has(key))shipmentMap.set(key,shipment)}
+        const rows=orders.map((order:any)=>{
+          const integrationId=Number(order?.order_details?.integration?.id||0),integration=integrationMap.get(integrationId),total=order?.payment_details?.total_price,remoteId=String(order.id);
+          const sourceChannel=integration?.channel||'other';
+          const sourceIntegrationAccountId=sourceChannel==='shopify'?shopifyMap.get(String(integrationId))||null:sourceChannel==='amazon'?(amazonByRemote.get(String(integrationId))||defaultAmazon?.id||null):account.id;
+          return {
+            owner_id:caller.data_owner_id,
+            sendcloud_id:storedSendcloudId(account,remoteId),
+            sendcloud_remote_id:remoteId,
+            shipping_integration_account_id:account.id,
+            source_integration_account_id:sourceIntegrationAccountId,
+            order_id:order.order_id==null?null:String(order.order_id),order_number:order.order_number==null?null:String(order.order_number),
+            integration_id:integrationId,integration_name:integration?.shopName||null,integration_type:integration?.type||null,source_channel:sourceChannel,
+            source_status:order?.order_details?.status?.code||null,order_created_at:order?.order_details?.order_created_at||order?.created_at||null,
+            order_updated_at:order?.order_details?.order_updated_at||order?.modified_at||null,customer_name:orderName(order),customer_email:orderEmail(order),customer_phone:orderPhone(order),
+            shipping_address:order?.shipping_address||{},billing_address:order?.billing_address||{},items:Array.isArray(order?.order_details?.order_items)?order.order_details.order_items:[],
+            total_amount:total?.value==null?null:Number(total.value),currency:total?.currency||null,raw_payload:order,last_synced_at:now
+          };
+        }).filter((r:any)=>r.integration_id&&r.sendcloud_id&&(!automatic||allowedChannels.has(r.source_channel)));
+        if(rows.length){const {error}=await admin.from('fulfillment_orders').upsert(rows,{onConflict:'owner_id,sendcloud_id'});if(error)throw error;}
+        const enriched=rows.map((r:any)=>{const shipment=shipmentMap.get(clean(r.order_number));return shipment?{...r,...shipmentMeta(shipment)}:null}).filter(Boolean);
+        if(enriched.length){const {error}=await admin.from('fulfillment_orders').upsert(enriched,{onConflict:'owner_id,sendcloud_id'});if(error)throw error;}
+        totalSynced+=rows.length;totalEnriched+=enriched.length;
+        accountResults.push({accountId:account.id,displayName:account.displayName,synced:rows.length,enriched:enriched.length});
+      }
+      return response({ok:true,synced:totalSynced,enriched:totalEnriched,history,integrations:allIntegrations,accounts:accountResults});
     }
 
     if(action==='create_manual_order'){
-      const linked=await integrations(),manual=body?.order||{},integrationId=Number(manual.integrationId||0),integration=linked.find(i=>i.id===integrationId);
+      const manual=body?.order||{},account=await loadSendcloudAccount(admin,caller.data_owner_id,clean(body?.integrationAccountId||manual.shippingIntegrationAccountId)||null),linked=await integrations(account.credentials),integrationId=Number(manual.integrationId||0),integration=linked.find(i=>i.id===integrationId);
       if(!integration)return fail('Selecciona una integración API de Sendcloud válida.');if(integration.channel!=='other')return fail('Los pedidos manuales deben crearse en una integración API de Sendcloud, no en Amazon o Shopify.');
       const orderNumber=clean(manual.orderNumber)||`MAN-${Date.now()}`,customerName=clean(manual.customerName),address=clean(manual.address),postalCode=clean(manual.postalCode),city=clean(manual.city),countryCode=clean(manual.countryCode||ordersConfig.originCountryCode||'ES').toUpperCase();
       if(!customerName||!address||!postalCode||!city||countryCode.length!==2)return fail('Completa nombre, dirección, código postal, ciudad y país.');
@@ -168,20 +257,22 @@ Deno.serve(async(req:Request)=>{
       if(!items.length)return fail('Añade al menos un producto al pedido.');
       const total=Number(items.reduce((sum:number,item:any)=>sum+Number(item.total_price.value||0),0).toFixed(2)),weight=Math.max(0.01,positive(manual.weightKg,positive(shippingConfig.fallbackWeightKg,1)||1)),now=new Date().toISOString(),externalId=`manual-${crypto.randomUUID()}`,configuredStatus=clean(ordersConfig.defaultManualStatus||'pending')||'pending';
       const sendcloudOrder:any={order_id:externalId,order_number:orderNumber,order_details:{integration:{id:integrationId},status:{code:'unshipped',message:'Unshipped'},order_created_at:now,order_items:items},payment_details:{total_price:{value:total,currency:'EUR'},status:{code:'paid',message:'Paid'}},shipping_address:{name:customerName,address_line_1:address,house_number:clean(manual.houseNumber)||null,address_line_2:clean(manual.address2)||null,postal_code:postalCode,city,country_code:countryCode,email:clean(manual.email)||null,phone_number:clean(manual.phone)||null},shipping_details:{is_local_pickup:false,delivery_indicator:'Pedido manual ZENVIA Gestión',measurement:{weight:{value:weight,unit:'kg'}}}};
-      const {data}=await sendcloudJson('/orders',{method:'POST',body:JSON.stringify([sendcloudOrder])}),created=Array.isArray(data?.data)?data.data[0]:null;if(created?.id==null)throw new Error('Sendcloud no devolvió el identificador del pedido.');
-      const row={owner_id:caller.data_owner_id,sendcloud_id:String(created.id),order_id:externalId,order_number:orderNumber,integration_id:integrationId,integration_name:integration.shopName,integration_type:integration.type||'api',source_channel:'other',source_status:configuredStatus,order_created_at:now,order_updated_at:now,customer_name:customerName,customer_email:clean(manual.email)||null,customer_phone:clean(manual.phone)||null,shipping_address:sendcloudOrder.shipping_address,billing_address:{},items,total_amount:total,currency:'EUR',raw_payload:sendcloudOrder,last_synced_at:now};
+      const {data}=await sendcloudJson(account.credentials,'/orders',{method:'POST',body:JSON.stringify([sendcloudOrder])}),created=Array.isArray(data?.data)?data.data[0]:null;if(created?.id==null)throw new Error('Sendcloud no devolvió el identificador del pedido.');
+      const remoteId=String(created.id);const row={owner_id:caller.data_owner_id,sendcloud_id:storedSendcloudId(account,remoteId),sendcloud_remote_id:remoteId,shipping_integration_account_id:account.id,source_integration_account_id:account.id,order_id:externalId,order_number:orderNumber,integration_id:integrationId,integration_name:integration.shopName,integration_type:integration.type||'api',source_channel:'other',source_status:configuredStatus,order_created_at:now,order_updated_at:now,customer_name:customerName,customer_email:clean(manual.email)||null,customer_phone:clean(manual.phone)||null,shipping_address:sendcloudOrder.shipping_address,billing_address:{},items,total_amount:total,currency:'EUR',raw_payload:sendcloudOrder,last_synced_at:now};
       const {data:saved,error}=await admin.from('fulfillment_orders').upsert(row,{onConflict:'owner_id,sendcloud_id'}).select('id').single();if(error)throw error;
-      return response({ok:true,id:saved.id,sendcloudId:String(created.id),orderNumber});
+      return response({ok:true,id:saved.id,sendcloudId:remoteId,orderNumber,shippingIntegrationAccountId:account.id});
     }
 
     const orderId=String(body?.orderId||'');if(!orderId)return fail('Falta el pedido.');
     const {data:order,error:orderError}=await admin.from('fulfillment_orders').select('*').eq('id',orderId).eq('owner_id',caller.data_owner_id).maybeSingle();if(orderError)throw orderError;if(!order)return fail('Pedido no encontrado.',404);
+    const orderSendcloudAccount=await loadSendcloudAccount(admin,caller.data_owner_id,order.shipping_integration_account_id||null);
+    const orderCredentials=orderSendcloudAccount.credentials;
 
     if(action==='shipping_options'){
       if(nonActionable(order.source_status))return fail('Este pedido ya no admite preparación de etiqueta por su estado actual.',409);
       const address=order.shipping_address||{},requestBody:any={calculate_quotes:false};if(address.country_code||address.postal_code||address.city)requestBody.to_address={country_code:address.country_code||undefined,postal_code:address.postal_code||undefined,city:address.city||undefined,address_line_1:address.address_line_1||undefined,house_number:address.house_number||undefined};
       const weight=order?.raw_payload?.shipping_details?.measurement?.weight;if(weight?.value)requestBody.weight={value:Number(weight.value),unit:weight.unit||'kg'};
-      const {data}=await sendcloudJson('/shipping-options',{method:'POST',body:JSON.stringify(requestBody)});return response({options:(data?.data||[]).map(normalizeShippingOption).filter((i:any)=>i.code)});
+      const {data}=await sendcloudJson(orderCredentials,'/shipping-options',{method:'POST',body:JSON.stringify(requestBody)});return response({options:(data?.data||[]).map(normalizeShippingOption).filter((i:any)=>i.code)});
     }
 
     if(action==='create_label'){
@@ -192,7 +283,7 @@ Deno.serve(async(req:Request)=>{
       const payload:any={integration_id:Number(order.integration_id),label_details:{mime_type:'application/pdf',dpi:72},order:{apply_shipping_rules:!selected}};
       if(order.order_id)payload.order.order_id=order.order_id;else if(order.order_number)payload.order.order_number=order.order_number;else return fail('El pedido no tiene identificador de origen.');
       if(selected?.code){payload.ship_with={type:'shipping_option_code',properties:{shipping_option_code:String(selected.code)}};if(selected.contractId!=null)payload.ship_with.properties.contract_id=Number(selected.contractId)}
-      const {data}=await sendcloudJson('/orders/create-label-sync',{method:'POST',body:JSON.stringify(payload)}),created=Array.isArray(data?.data)?data.data[0]:null;if(!created?.parcel_id||!created?.label?.file)throw new Error('Sendcloud no devolvió la etiqueta creada.');
+      const {data}=await sendcloudJson(orderCredentials,'/orders/create-label-sync',{method:'POST',body:JSON.stringify(payload)}),created=Array.isArray(data?.data)?data.data[0]:null;if(!created?.parcel_id||!created?.label?.file)throw new Error('Sendcloud no devolvió la etiqueta creada.');
       const ship=created.ship_with?.properties||{},optionCode=ship.shipping_option_code||selected?.code||null,code=carrierCode(optionCode,created.tracking_url),now=new Date().toISOString();
       const selectedPrice=selected?.price==null?null:Number(selected.price),selectedCurrency=clean(selected?.currency).toUpperCase()||null;
       const automation=await orderLabelAutomation(admin,caller.data_owner_id);
@@ -209,7 +300,7 @@ Deno.serve(async(req:Request)=>{
     }
 
     if(action==='fetch_label'){
-      if(!order.sendcloud_parcel_id)return fail('Este pedido todavía no tiene etiqueta.',409);const file=await sendcloudBinary(`/parcels/${encodeURIComponent(String(order.sendcloud_parcel_id))}/documents/label?dpi=72`,'application/pdf');
+      if(!order.sendcloud_parcel_id)return fail('Este pedido todavía no tiene etiqueta.',409);const file=await sendcloudBinary(orderCredentials,`/parcels/${encodeURIComponent(String(order.sendcloud_parcel_id))}/documents/label?dpi=72`,'application/pdf');
       return response({parcelId:Number(order.sendcloud_parcel_id),shipmentId:order.sendcloud_shipment_id||null,trackingNumber:order.tracking_number||null,trackingUrl:order.tracking_url||null,shippingOptionCode:order.shipping_option_code||null,contractId:order.contract_id==null?null:Number(order.contract_id),carrierCode:order.carrier_code||null,carrierName:order.carrier_name||null,shippingServiceName:order.shipping_service_name||null,mimeType:file.mimeType,base64:file.base64});
     }
     return fail('Acción no válida.');

@@ -101,3 +101,248 @@
 .settingsColumnMoveActions{display:flex;gap:6px;flex:0 0 auto}
 .settingsColumnMoveActions .iconBtn{width:34px;height:34px}
 @media(max-width:760px){.settingsColumnPreferenceRow{align-items:flex-start}.settingsColumnMoveActions{margin-top:1px}}
+
+
+/* Multi-account integration manager */
+.integrationProviderGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:13px}
+.integrationProviderCard{min-width:0;border:1px solid var(--border,#dbe2ea);border-radius:14px;background:var(--surface-soft,#f8fafc);padding:14px}
+.integrationProviderHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.integrationProviderHead>div{min-width:0}.integrationProviderHead strong,.integrationProviderHead small{display:block}
+.integrationProviderHead strong{font-size:13px;color:var(--text,#172033)}
+.integrationProviderHead small{margin-top:4px;color:var(--muted,#64748b);font-size:10.5px;line-height:1.45}
+.integrationProviderHead>.secondary{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px}
+.integrationAccountList{display:grid;gap:8px;margin-top:12px}
+.integrationAccountRow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--border,#e2e8f0);border-radius:11px;background:var(--surface,#fff)}
+.integrationAccountRow.isDisabled{opacity:.7}
+.integrationAccountMain{display:flex;align-items:flex-start;gap:9px;min-width:0}
+.integrationAccountMain>div{min-width:0}.integrationAccountMain strong,.integrationAccountMain small{display:block}
+.integrationAccountMain strong{font-size:11.5px;color:var(--text,#172033)}
+.integrationAccountMain strong em{display:inline-block;margin-left:6px;padding:2px 6px;border-radius:999px;background:rgba(20,184,166,.10);color:#0f766e;font-size:8.5px;font-style:normal;font-weight:800;vertical-align:1px}
+.integrationAccountMain small{margin-top:2px;color:var(--muted,#64748b);font-size:9.5px;line-height:1.35;overflow-wrap:anywhere}
+.integrationAccountMain .integrationError{color:#b91c1c}
+.integrationStatusDot{width:8px;height:8px;margin-top:4px;border-radius:999px;background:#94a3b8;box-shadow:0 0 0 3px rgba(148,163,184,.12);flex:0 0 auto}
+.integrationStatusDot.status-connected{background:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.12)}
+.integrationStatusDot.status-error{background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.12)}
+.integrationStatusDot.status-pending{background:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.12)}
+.integrationStatusDot.status-disabled{background:#94a3b8}
+.integrationAccountActions{display:flex;gap:6px;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end}
+.integrationAccountActions button{padding:6px 8px;font-size:9.5px}
+.dangerText{color:#b91c1c!important}
+.integrationEditorBackdrop{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.48);backdrop-filter:blur(2px)}
+.integrationEditor{width:min(760px,100%);max-height:min(86vh,900px);display:flex;flex-direction:column;border:1px solid var(--border,#dbe2ea);border-radius:16px;background:var(--surface,#fff);box-shadow:0 24px 70px rgba(15,23,42,.26);overflow:hidden}
+.integrationEditorHead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:16px 18px;border-bottom:1px solid var(--border,#e2e8f0);background:var(--surface-soft,#f8fafc)}
+.integrationEditorHead>div{min-width:0}.integrationEditorHead strong,.integrationEditorHead small{display:block}
+.integrationEditorHead strong{font-size:14px;color:var(--text,#172033)}
+.integrationEditorHead small{margin-top:4px;color:var(--muted,#64748b);font-size:10.5px;line-height:1.45}
+.integrationEditorHead .iconBtn{font-size:21px;line-height:1}
+.integrationEditorBody{display:grid;gap:13px;padding:18px;overflow:auto}
+.integrationEditorActions{display:flex;justify-content:flex-end;gap:8px;padding:13px 18px;border-top:1px solid var(--border,#e2e8f0);background:var(--surface-soft,#f8fafc)}
+.integrationAccountConfigBlock{display:grid;gap:10px;padding:12px;border:1px solid var(--border,#e2e8f0);border-radius:11px;background:var(--surface-soft,#f8fafc)}
+.integrationAccountConfigBlock h4{margin:0;font-size:11.5px;color:var(--text,#334155)}
+[data-theme='dark'] .integrationAccountMain strong em{background:rgba(45,212,191,.13);color:#5eead4}
+[data-theme='dark'] .integrationAccountMain .integrationError{color:#fca5a5}
+@media(max-width:1050px){.integrationProviderGrid{grid-template-columns:1fr}.integrationAccountRow{align-items:flex-start}.integrationAccountActions{max-width:245px}}
+@media(max-width:760px){
+  .integrationProviderHead{display:block}.integrationProviderHead>.secondary{width:100%;justify-content:center;margin-top:10px}
+  .integrationAccountRow{display:block}.integrationAccountActions{display:grid;grid-template-columns:1fr 1fr;max-width:none;margin-top:10px}
+  .integrationAccountActions button{width:100%}
+  .integrationEditorBackdrop{padding:8px;align-items:flex-end}.integrationEditor{max-height:94vh;border-radius:15px 15px 0 0}
+  .integrationEditorActions{display:grid;grid-template-columns:1fr 1fr}.integrationEditorActions button{width:100%}
+}
+
+
+/* Configuration control normalization.
+   Raw inputs used by repeaters, aliases and maintenance rows must look like
+   the standard settings fields instead of falling back to browser defaults. */
+.settingsContent input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='color']),
+.settingsContent textarea,
+.settingsContent select{
+  min-width:0;
+  min-height:42px;
+  border:1px solid var(--border,#dbe2ea);
+  border-radius:10px;
+  background:var(--surface,#fff);
+  color:var(--text,#172033);
+  padding:9px 11px;
+  font:inherit;
+  font-size:12.5px;
+  line-height:1.35;
+  outline:none;
+  transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease;
+}
+.settingsContent textarea{resize:vertical}
+.settingsContent input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='color'])::placeholder,
+.settingsContent textarea::placeholder{color:var(--muted,#94a3b8);opacity:1}
+.settingsContent input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='color']):focus,
+.settingsContent textarea:focus,
+.settingsContent select:focus{
+  border-color:#14b8a6;
+  box-shadow:0 0 0 3px rgba(20,184,166,.12);
+}
+.settingsContent input:not([type='checkbox']):not([type='radio']):not([type='file']):disabled,
+.settingsContent textarea:disabled,
+.settingsContent select:disabled{
+  cursor:not-allowed;
+  opacity:.72;
+  background:var(--surface-soft,#f8fafc);
+}
+.settingsContent input[type='checkbox'],
+.settingsContent input[type='radio']{
+  accent-color:#0f766e;
+}
+
+.settingsSubsectionHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:12px;
+}
+.settingsSubsectionHead>div{min-width:0}
+.settingsSubsectionHead h3{margin:0}
+.settingsSubsectionHead p{
+  margin:4px 0 0;
+  color:var(--muted,#64748b);
+  font-size:11px;
+  line-height:1.5;
+}
+.settingsSubsectionHead>button{flex:0 0 auto}
+
+.settingsRepeater,
+.settingsAliasList{
+  display:grid;
+  gap:9px;
+  margin-top:12px;
+}
+.settingsRepeaterRow{
+  display:grid;
+  grid-template-columns:minmax(150px,.9fr) minmax(220px,1.35fr) auto 38px;
+  align-items:center;
+  gap:9px;
+  padding:10px;
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:12px;
+  background:var(--surface-soft,#f8fafc);
+}
+.settingsRepeaterRow>.iconBtn{
+  width:36px;
+  height:36px;
+  justify-self:end;
+}
+
+.settingsAliasCreate,
+.settingsAliasRow{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  padding:10px;
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:12px;
+  background:var(--surface-soft,#f8fafc);
+}
+.settingsAliasCreate{margin-top:12px}
+.settingsAliasCreate>input:not([type='checkbox']),
+.settingsAliasRow>input:not([type='checkbox']),
+.settingsAliasCreate>.searchableSelect,
+.settingsAliasRow>.searchableSelect{
+  flex:1 1 145px;
+  min-width:120px;
+}
+.settingsAliasCreate>input[type='number'],
+.settingsAliasRow>input[type='number']{
+  flex:0 1 100px;
+  max-width:120px;
+}
+.settingsAliasCreate>.secondary,
+.settingsAliasRow>.secondary,
+.settingsAliasRow>.iconBtn{flex:0 0 auto}
+.settingsAliasRow>.iconBtn{width:36px;height:36px}
+
+.settingsInlineCheck,
+.settingsInlineChecks label{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:34px;
+  color:var(--text,#334155);
+  font-size:11.5px;
+  font-weight:650;
+  white-space:nowrap;
+}
+.settingsInlineCheck input,
+.settingsInlineChecks input{
+  width:16px;
+  height:16px;
+  min-height:0;
+  margin:0;
+  flex:0 0 auto;
+}
+.settingsFieldGroup{
+  display:grid;
+  gap:9px;
+  margin-top:14px;
+  padding:12px;
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:11px;
+  background:var(--surface-soft,#f8fafc);
+}
+.settingsFieldGroup>strong{
+  font-size:11.5px;
+  color:var(--text,#334155);
+}
+.settingsInlineChecks{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 18px;
+}
+
+.settingsPreferenceColumns{
+  margin-top:14px;
+  padding:12px;
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:12px;
+  background:var(--surface-soft,#f8fafc);
+}
+.settingsPreferenceColumns>strong{
+  display:block;
+  margin-bottom:4px;
+  color:var(--text,#172033);
+  font-size:12px;
+}
+
+@media(max-width:820px){
+  .settingsRepeaterRow{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  }
+  .settingsRepeaterRow>.settingsInlineCheck{justify-self:start}
+  .settingsRepeaterRow>.iconBtn{justify-self:end}
+}
+@media(max-width:620px){
+  .settingsSubsectionHead{display:block}
+  .settingsSubsectionHead>button{width:100%;justify-content:center;margin-top:10px}
+  .settingsRepeaterRow{
+    grid-template-columns:1fr;
+  }
+  .settingsRepeaterRow>.iconBtn{justify-self:start}
+  .settingsAliasCreate,
+  .settingsAliasRow{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .settingsAliasCreate>input:not([type='checkbox']),
+  .settingsAliasRow>input:not([type='checkbox']),
+  .settingsAliasCreate>.searchableSelect,
+  .settingsAliasRow>.searchableSelect,
+  .settingsAliasCreate>input[type='number'],
+  .settingsAliasRow>input[type='number']{
+    width:100%;
+    max-width:none;
+    min-width:0;
+  }
+  .settingsAliasCreate>.secondary,
+  .settingsAliasRow>.secondary{
+    width:100%;
+    justify-content:center;
+  }
+}

@@ -9,6 +9,7 @@ const jsonHeaders={...corsHeaders,'Content-Type':'application/json'};
 const SENDCLOUD_BASE='https://panel.sendcloud.sc/api/v3';
 
 type Caller={user_id:string;data_owner_id:string;role:string;active:boolean;permissions:string[]|null};
+type SendcloudCredentials={publicKey:string;secretKey:string};
 
 function response(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:jsonHeaders});}
 function fail(message:string,status=400){return response({error:message},status);}
@@ -17,17 +18,42 @@ function getAdminKey(){
   if(secretKeys){try{const parsed=JSON.parse(secretKeys);if(parsed?.default)return parsed.default as string}catch{/* fallback */}}
   return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'';
 }
-function credentials(){
-  const publicKey=Deno.env.get('SENDCLOUD_PUBLIC_KEY')||Deno.env.get('SENDCLOUD_API_KEY')||'';
-  const secretKey=Deno.env.get('SENDCLOUD_SECRET_KEY')||Deno.env.get('SENDCLOUD_API_SECRET')||'';
-  return {publicKey,secretKey,configured:Boolean(publicKey&&secretKey)};
+function envCredentials():SendcloudCredentials|null{
+  const publicKey=clean(Deno.env.get('SENDCLOUD_PUBLIC_KEY')||Deno.env.get('SENDCLOUD_API_KEY'));
+  const secretKey=clean(Deno.env.get('SENDCLOUD_SECRET_KEY')||Deno.env.get('SENDCLOUD_API_SECRET'));
+  return publicKey&&secretKey?{publicKey,secretKey}:null;
 }
 function basicAuth(publicKey:string,secretKey:string){return `Basic ${btoa(`${publicKey}:${secretKey}`)}`;}
-async function sendcloudJson(path:string,init:RequestInit={}){
-  const {publicKey,secretKey,configured}=credentials();
-  if(!configured)throw new Error('Faltan las claves de la API de Sendcloud.');
+async function readIntegrationSecret(admin:any,secretId:string|null){
+  if(!secretId)return {};
+  const {data,error}=await admin.rpc('integration_read_secret',{p_secret_id:secretId});if(error)throw error;
+  try{return JSON.parse(String(data||'{}'))}catch{throw new Error('Las credenciales cifradas de Sendcloud no tienen un formato válido.');}
+}
+async function credentialsForOrder(admin:any,ownerId:string,integrationAccountId?:string|null):Promise<SendcloudCredentials>{
+  if(integrationAccountId){
+    const {data,error}=await admin.from('integration_accounts').select('credential_source,secret_id,status,enabled,display_name')
+      .eq('owner_id',ownerId).eq('provider','sendcloud').eq('id',integrationAccountId).maybeSingle();
+    if(error)throw error;if(!data)throw new Error('La cuenta de Sendcloud asociada al pedido ya no existe.');
+    if(data.status==='disabled'||data.enabled===false)throw new Error('La cuenta de Sendcloud asociada al pedido está deshabilitada.');
+    const stored=await readIntegrationSecret(admin,data.secret_id||null),env=envCredentials();
+    const publicKey=clean(stored?.publicKey||stored?.public_key||(data.credential_source==='environment'?env?.publicKey:''));
+    const secretKey=clean(stored?.secretKey||stored?.secret_key||(data.credential_source==='environment'?env?.secretKey:''));
+    if(!publicKey||!secretKey)throw new Error(`Faltan las claves de Sendcloud para ${data.display_name||'la cuenta del pedido'}.`);
+    return {publicKey,secretKey};
+  }
+  const {data,error}=await admin.from('integration_accounts').select('id').eq('owner_id',ownerId).eq('provider','sendcloud')
+    .eq('enabled',true).neq('status','disabled').order('is_default',{ascending:false}).order('updated_at',{ascending:false}).limit(1).maybeSingle();
+  if(error)throw error;
+  if(data)return credentialsForOrder(admin,ownerId,String(data.id));
+  const env=envCredentials();if(!env)throw new Error('Sendcloud todavía no está conectado.');return env;
+}
+function remoteSendcloudId(order:any){
+  const explicit=clean(order?.sendcloud_remote_id);if(explicit)return explicit;
+  const stored=clean(order?.sendcloud_id);return stored.includes(':')?stored.slice(stored.lastIndexOf(':')+1):stored;
+}
+async function sendcloudJson(credentials:SendcloudCredentials,path:string,init:RequestInit={}){
   const url=path.startsWith('http')?path:`${SENDCLOUD_BASE}${path.startsWith('/')?'':'/'}${path}`;
-  const headers=new Headers(init.headers||{});headers.set('Authorization',basicAuth(publicKey,secretKey));headers.set('Accept','application/json');
+  const headers=new Headers(init.headers||{});headers.set('Authorization',basicAuth(credentials.publicKey,credentials.secretKey));headers.set('Accept','application/json');
   if(init.body&&!headers.has('Content-Type'))headers.set('Content-Type','application/json');
   const res=await fetch(url,{...init,headers});const body=await res.text();let data:any=null;try{data=body?JSON.parse(body):null}catch{data=body}
   if(!res.ok){const detail=Array.isArray(data?.errors)?data.errors.map((x:any)=>x?.detail||x?.title).filter(Boolean).join(' · '):data?.message||data?.error||body;throw new Error(`Sendcloud (${res.status}): ${String(detail||'Error desconocido').slice(0,900)}`)}
@@ -74,8 +100,8 @@ function normalizeOption(option:any){
   const billed=option?.billed_weight;
   return {code,name,carrierCode,carrierName:clean(option?.carrier?.name||option?.carrier_name)||friendlyCarrier(carrierCode),contractId:contractValue==null?null:Number(contractValue),price:priceValue==null?null:Number(priceValue),currency:currency||null,billedWeightKg:toKg(billed?.value,billed?.unit),raw:option};
 }
-async function senderAddress(){
-  try{const {data}=await sendcloudJson('/addresses/sender-addresses');return Array.isArray(data?.data)?data.data[0]||null:null}catch{return null}
+async function senderAddress(credentials:SendcloudCredentials){
+  try{const {data}=await sendcloudJson(credentials,'/addresses/sender-addresses');return Array.isArray(data?.data)?data.data[0]||null:null}catch{return null}
 }
 function configuredSender(shipping:any){
   const country=clean(shipping?.senderCountryCode).toUpperCase(),postal=clean(shipping?.senderPostalCode),city=clean(shipping?.senderCity),address=clean(shipping?.senderAddress);
@@ -95,9 +121,10 @@ Deno.serve(async(req:Request)=>{
   const admin=createClient(url,adminKey,{auth:{persistSession:false,autoRefreshToken:false}});
   try{
     const caller=await authenticate(req,admin),body=await req.json().catch(()=>({})),action=clean(body?.action),config=await workspaceConfig(admin,caller.data_owner_id),ordersConfig=config.orders,shippingConfig=config.shipping;
-    if(!credentials().configured)return fail('Sendcloud todavía no está conectado.',503);
     const orderId=clean(body?.orderId);if(!orderId)return fail('Falta el pedido.');
     const {data:order,error}=await admin.from('fulfillment_orders').select('*').eq('id',orderId).eq('owner_id',caller.data_owner_id).maybeSingle();if(error)throw error;if(!order)return fail('Pedido no encontrado.',404);
+    const orderCredentials=await credentialsForOrder(admin,caller.data_owner_id,order.shipping_integration_account_id||null);
+    const sendcloudOrderId=remoteSendcloudId(order);if(!sendcloudOrderId)return fail('El pedido no tiene identificador remoto de Sendcloud.',409);
 
     if(action==='validate_address'){
       const address=order.shipping_address||{},carrierCode=clean(body?.carrierCode||ordersConfig.defaultCarrier||'mrw').toLowerCase();
@@ -112,7 +139,7 @@ Deno.serve(async(req:Request)=>{
       };
       if(normalizedState)payloadAddress.state_province_code=normalizedState;
       try{
-        const {data}=await sendcloudJson('/addresses/validate',{method:'POST',body:JSON.stringify({address:payloadAddress,carrier_code:carrierCode})});
+        const {data}=await sendcloudJson(orderCredentials,'/addresses/validate',{method:'POST',body:JSON.stringify({address:payloadAddress,carrier_code:carrierCode})});
         const results=Array.isArray(data?.results)?data.results:[];
         const recommended=results.find((item:any)=>item?.recommended)||results[0]||null;
         const reasons=results.flatMap((item:any)=>Array.isArray(item?.analysis?.validation_result?.reasons)?item.analysis.validation_result.reasons:[]).map(clean).filter(Boolean);
@@ -140,12 +167,12 @@ Deno.serve(async(req:Request)=>{
 
     if(action==='shipping_options'){
       if(!canEdit(order.source_status)||order.sendcloud_parcel_id)return fail('Este pedido ya no admite una nueva etiqueta.',409);
-      let address=order.shipping_address||{};const sender=configuredSender(shippingConfig)||await senderAddress(),weightKg=orderWeightKg(order,shippingConfig.fallbackWeightKg);
+      let address=order.shipping_address||{};const sender=configuredSender(shippingConfig)||await senderAddress(orderCredentials),weightKg=orderWeightKg(order,shippingConfig.fallbackWeightKg);
       const normalizedState=normalizeStateProvince(address.country_code,address.state_province_code);
       if(clean(address.state_province_code)!==clean(normalizedState)){
         const correctedAddress={...address,state_province_code:normalizedState};
         try{
-          const {data:patched}=await sendcloudJson(`/orders/${encodeURIComponent(String(order.sendcloud_id))}`,{method:'PATCH',body:JSON.stringify({shipping_address:correctedAddress})});
+          const {data:patched}=await sendcloudJson(orderCredentials,`/orders/${encodeURIComponent(sendcloudOrderId)}`,{method:'PATCH',body:JSON.stringify({shipping_address:correctedAddress})});
           address=patched?.data?.shipping_address||correctedAddress;
           const raw=order.raw_payload||{},newRaw={...raw,...(patched?.data||{}),shipping_address:address};
           await admin.from('fulfillment_orders').update({shipping_address:address,raw_payload:newRaw,last_synced_at:new Date().toISOString()}).eq('id',order.id).eq('owner_id',caller.data_owner_id);
@@ -165,7 +192,7 @@ Deno.serve(async(req:Request)=>{
         const fromState=normalizeStateProvince(sender.country_code,sender.state_province_code);if(fromState)fromAddress.state_province_code=fromState;
         requestBody.from_address=fromAddress;
       }
-      const {data}=await sendcloudJson('/shipping-options',{method:'POST',body:JSON.stringify(requestBody)});
+      const {data}=await sendcloudJson(orderCredentials,'/shipping-options',{method:'POST',body:JSON.stringify(requestBody)});
       const options=(data?.data||[]).map(normalizeOption).filter((x:any)=>x.code).filter((x:any)=>enabledCarrier(x,shippingConfig.enabledCarriers));
       return response({weightKg,options,message:options.length?data?.message||null:'No hay servicios disponibles entre los transportistas habilitados.'});
     }
@@ -181,7 +208,7 @@ Deno.serve(async(req:Request)=>{
       const raw=order.raw_payload||{},shippingDetails={...(raw.shipping_details||{}),measurement:{...(raw.shipping_details?.measurement||{}),weight:{value:Number(weightKg.toFixed(3)),unit:'kg'}}};
       const customerDetails={...(raw.customer_details||{}),name,email:email||null,phone_number:phone||null};
       const patch={shipping_address:shippingAddress,shipping_details:shippingDetails,customer_details:customerDetails};
-      const {data}=await sendcloudJson(`/orders/${encodeURIComponent(String(order.sendcloud_id))}`,{method:'PATCH',body:JSON.stringify(patch)});
+      const {data}=await sendcloudJson(orderCredentials,`/orders/${encodeURIComponent(sendcloudOrderId)}`,{method:'PATCH',body:JSON.stringify(patch)});
       const remote=data?.data||{},now=new Date().toISOString(),newRaw={...raw,...remote,shipping_address:remote.shipping_address||shippingAddress,shipping_details:remote.shipping_details||shippingDetails,customer_details:remote.customer_details||customerDetails};
       const {error:updateError}=await admin.from('fulfillment_orders').update({customer_name:name,customer_email:email||null,customer_phone:phone||null,shipping_address:remote.shipping_address||shippingAddress,raw_payload:newRaw,order_updated_at:remote?.order_details?.order_updated_at||remote?.modified_at||now,last_synced_at:now}).eq('id',order.id).eq('owner_id',caller.data_owner_id);if(updateError)throw updateError;
       return response({ok:true,weightKg,stateProvince});

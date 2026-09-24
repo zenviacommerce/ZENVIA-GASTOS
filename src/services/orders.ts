@@ -5,6 +5,7 @@ export type OrderChannel = 'amazon' | 'shopify' | 'other';
 
 export interface FulfillmentOrder {
   id:string; sendcloudId:string; orderId:string|null; orderNumber:string|null;
+  sourceIntegrationAccountId:string|null; shippingIntegrationAccountId:string|null;
   integrationId:number; integrationName:string|null; integrationType:string|null; sourceChannel:OrderChannel;
   sourceStatus:string|null; orderCreatedAt:string|null; orderUpdatedAt:string|null;
   customerName:string|null; customerEmail:string|null; customerPhone:string|null;
@@ -21,8 +22,14 @@ export interface FulfillmentOrder {
 
 export interface SendcloudIntegration {
   id:number; shopName:string; type:string; shopUrl?:string|null; channel:OrderChannel; isApi?:boolean;
+  sendcloudAccountId?:string|null; sendcloudAccountName?:string|null;
 }
-export interface SendcloudStatus { configured:boolean; integrations:SendcloudIntegration[]; message?:string; }
+export interface SendcloudStatus {
+  configured:boolean;
+  integrations:SendcloudIntegration[];
+  accounts?:Array<{id:string|null;displayName:string}>;
+  message?:string;
+}
 export interface OrderAddressValidation {
   ok:boolean;
   inputAddressIsValid:boolean|null;
@@ -43,7 +50,7 @@ export interface LabelResult {
 export interface LocalPrinter { id:string; name:string; default?:boolean; }
 export interface ManualOrderItem { name:string; sku?:string; quantity:number; unitPrice:number; }
 export interface ManualOrderInput {
-  integrationId:number; orderNumber:string; customerName:string; email?:string; phone?:string;
+  integrationId:number; shippingIntegrationAccountId?:string|null; orderNumber:string; customerName:string; email?:string; phone?:string;
   address:string; houseNumber?:string; address2?:string; postalCode:string; city:string; countryCode:string;
   weightKg:number; items:ManualOrderItem[];
 }
@@ -69,7 +76,8 @@ function mapRow(row:any):FulfillmentOrder{
   const shippingAddress=row.shipping_address||{};
   const balearicPending=isBalearicAddress(shippingAddress)&&row.sendcloud_parcel_id==null;
   return {
-    id:row.id, sendcloudId:String(row.sendcloud_id), orderId:row.order_id||null, orderNumber:row.order_number||null,
+    id:row.id, sendcloudId:String(row.sendcloud_remote_id||row.sendcloud_id), orderId:row.order_id||null, orderNumber:row.order_number||null,
+    sourceIntegrationAccountId:row.source_integration_account_id||null, shippingIntegrationAccountId:row.shipping_integration_account_id||null,
     integrationId:Number(row.integration_id), integrationName:row.integration_name||null, integrationType:row.integration_type||null,
     sourceChannel:(row.source_channel||'other') as OrderChannel, sourceStatus:row.source_status||null,
     orderCreatedAt:row.order_created_at||null, orderUpdatedAt:row.order_updated_at||null,

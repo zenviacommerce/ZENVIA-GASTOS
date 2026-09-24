@@ -7,7 +7,7 @@ async function source(path){return readFile(new URL(`../${path}`,import.meta.url
 test('marketplace bootstrap uses Sellers API and upserts the configured seller workspace',async()=>{
   const marketplaces=await source('supabase/functions/_shared/amazon/marketplaces.ts');
   assert.match(marketplaces,/\/sellers\/v1\/marketplaceParticipations/);
-  assert.match(marketplaces,/readAmazonSpApiCredentials/);
+  assert.match(marketplaces,/loadAmazonSpApiCredentials/);
   assert.match(marketplaces,/amazon_accounts/);
   assert.match(marketplaces,/amazon_marketplaces/);
   assert.match(marketplaces,/marketplace\.id/);

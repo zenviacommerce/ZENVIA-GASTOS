@@ -1,6 +1,7 @@
 import { authenticateAdminUser, createAdminClient } from '../_shared/amazon/supabase.ts';
 import { ensureAmazonAccountAndMarketplaces } from '../_shared/amazon/marketplaces.ts';
 import { enqueueHourlySync } from '../_shared/amazon/sync.ts';
+import { filterAutomaticMarketplaces, loadAmazonAutomaticSyncSettings } from '../_shared/amazon/settings.ts';
 
 const corsHeaders={
   'Access-Control-Allow-Origin':'*',
@@ -16,9 +17,31 @@ Deno.serve(async(req:Request)=>{
   try{
     const caller=await authenticateAdminUser(req,admin);
     if(caller.role!=='admin')return response({error:'Solo un administrador puede sincronizar Amazon.'},403);
-    const bootstrap=await ensureAmazonAccountAndMarketplaces(admin,caller.data_owner_id);
-    const created=await enqueueHourlySync(admin,bootstrap.account,bootstrap.marketplaces,'manual');
-    return response({ok:true,accounts:1,jobs:created.length});
+    const body=await req.json().catch(()=>({}));
+    const requestedId=String(body?.integrationAccountId||'').trim();
+
+    let integrationIds:Array<string|null>=[];
+    if(requestedId){
+      const {data,error}=await admin.from('integration_accounts').select('id').eq('owner_id',caller.data_owner_id).eq('provider','amazon').eq('id',requestedId).neq('status','disabled').maybeSingle();
+      if(error)throw error;
+      if(!data)return response({error:'La cuenta de Amazon seleccionada no está disponible.'},404);
+      integrationIds=[data.id];
+    }else{
+      const {data,error}=await admin.from('integration_accounts').select('id').eq('owner_id',caller.data_owner_id).eq('provider','amazon').eq('enabled',true).neq('status','disabled').order('is_default',{ascending:false});
+      if(error)throw error;
+      integrationIds=(data||[]).map((row:any)=>String(row.id));
+      if(!integrationIds.length)integrationIds=[null];
+    }
+
+    let jobs=0,processed=0;
+    for(const integrationAccountId of integrationIds){
+      const bootstrap=await ensureAmazonAccountAndMarketplaces(admin,caller.data_owner_id,integrationAccountId);
+      const settings=await loadAmazonAutomaticSyncSettings(admin,caller.data_owner_id,integrationAccountId);
+      const marketplaces=filterAutomaticMarketplaces(bootstrap.marketplaces,settings.activeMarketplaceIds);
+      const created=await enqueueHourlySync(admin,bootstrap.account,marketplaces,'manual',new Date(),settings.enabledSources);
+      jobs+=created.length;processed+=1;
+    }
+    return response({ok:true,accounts:processed,jobs});
   }catch(error){
     const message=error instanceof Error?error.message:'No se pudo solicitar la sincronización de Amazon.';
     const status=/sesión|administrador|acceso/i.test(message)?403:500;

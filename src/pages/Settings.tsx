@@ -34,8 +34,10 @@ import type { ExpenseCategory } from '../types';
 import { addEntityAlias, deleteEntityAlias, loadEntityAliases, updateEntityAlias, type EntityAliasRule } from '../services/entityAliases';
 import { loadSupplierOptions, type SupplierOption } from '../services/supplierEditor';
 import { addShippingRule, deleteShippingRule, loadShippingRules, updateShippingRule, type ShippingRule } from '../services/shippingRules';
-import { AMAZON_KPI_KEYS, loadAmazonStatus, type AmazonMarketplaceStatus } from '../services/amazon';
-import { loadIntegrationHealth, syncIntegration, testIntegrationConnection, type IntegrationHealth, type IntegrationId } from '../services/integrations';
+import { AMAZON_KPI_KEYS, loadAmazonStatus, requestAmazonSync, type AmazonMarketplaceStatus } from '../services/amazon';
+import { getSendcloudStatus, syncSendcloudOrders } from '../services/orders';
+import { createIntegrationAccount, disconnectIntegrationAccount, discoverShopifyStores, loadAmazonAccountMarketplaces, loadIntegrationAccounts, setDefaultIntegrationAccount, syncSendcloudIntegrationAccount, testIntegrationAccount, updateIntegrationAccount, type IntegrationAccount, type IntegrationProvider, type ShopifyDiscovery } from '../services/integrationAccounts';
+import { connectGmail, disconnectGmail, getCachedGmailConnection, setActiveGmailConnection, testGmailConnection } from '../services/gmail';
 import { DEFAULT_AUTOMATION_RULES, loadAutomationRules, saveAutomationRule, type AutomationRule } from '../services/automationRules';
 import { applyExpenseInvoiceReprocess, findClientDuplicates, findInvoiceDuplicates, findProductDuplicates, findSupplierDuplicates, listClientsMissingTaxId, listProductsWithoutCost, listReprocessableInvoices, listSuppliersMissingTaxId, mergeClient, mergeSupplier, previewClientMerge, previewExpenseInvoiceReprocess, previewPriceHistoryRebuild, previewProductCostRecalculation, previewSupplierMerge, previewSupplierProductRebuild, rebuildPriceHistoryLinks, rebuildSupplierProductLinks, recalculateProductCosts, runAmazonSync, runSendcloudSync, type DuplicateCandidate, type ExpenseInvoiceReprocessPreview, type MaintenanceRepairPreview, type MergePreview, type ReprocessableInvoiceOption } from '../services/maintenance';
 import { downloadSettingsExport, previewSettingsReset, resetAllSettingsToDefaults, type SettingsResetPreview } from '../services/settingsExport';
@@ -48,7 +50,6 @@ type SettingsSectionId =
   | 'expenses'
   | 'orders'
   | 'shipping'
-  | 'amazon'
   | 'products'
   | 'clients'
   | 'suppliers'
@@ -71,7 +72,6 @@ const sections:SettingsSection[]=[
   {id:'expenses',label:'Gastos e importación',description:'Importación, duplicados y reglas de facturas recibidas.',icon:FileInput,adminOnly:true},
   {id:'orders',label:'Pedidos',description:'Comportamiento general de pedidos, etiquetas y tracking.',icon:ShoppingBag,adminOnly:true},
   {id:'shipping',label:'Envíos',description:'Transportistas, servicios y preferencias logísticas.',icon:Truck,adminOnly:true},
-  {id:'amazon',label:'Amazon',description:'Marketplaces, sincronización y comportamiento analítico.',icon:Gauge,adminOnly:true},
   {id:'products',label:'Productos',description:'IVA, costes, márgenes y creación automática.',icon:Box,adminOnly:true},
   {id:'clients',label:'Clientes',description:'Defaults, identidad y enriquecimiento de clientes.',icon:Users,adminOnly:true},
   {id:'suppliers',label:'Proveedores',description:'Defaults, alias, identidad y categorización.',icon:Building2,adminOnly:true},
@@ -846,10 +846,11 @@ function AmazonSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   };
 
   return <section className="settingsSectionCard">
-    <div className="settingsSectionHero"><div className="settingsSectionIcon"><Gauge size={22}/></div><div><h2>Configuración de Amazon</h2><p>Marketplaces, criterios analíticos y sincronización automática de Amazon.</p></div></div>
+    <div className="settingsSectionHero"><div className="settingsSectionIcon"><Gauge size={22}/></div><div><h2>Amazon · valores globales</h2><p>Valores predeterminados de análisis y sincronización. Las cuentas, credenciales y marketplaces de cada cuenta se gestionan en Integraciones.</p></div></div>
     {loading?<div className="settingsInlineLoading">Cargando marketplaces de Amazon…</div>:<>
       <div className="settingsSubsection">
-        <h3>Marketplaces</h3>
+        <h3>Marketplaces predeterminados</h3>
+        <p className="settingsHelpText">Se usan como fallback global. Si una cuenta tiene marketplaces configurados en Integraciones, prevalece la configuración de esa cuenta.</p>
         <div className="settingsToggleGrid">
           {marketplaces.map(item=><label className="settingsToggleField" key={item.id}><input type="checkbox" checked={effectiveMarketplaceIds.includes(item.id)} onChange={e=>toggleMarketplace(item.id,e.target.checked)}/><span><strong>{item.countryCode} · {item.name}</strong><small>{item.currencyCode} · {item.id}</small></span></label>)}
           {!marketplaces.length&&<div className="settingsEmptyMini">No hay marketplaces activos disponibles.</div>}
@@ -896,106 +897,393 @@ function AmazonSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
 function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   const {settings,updateSection,resetSection}=useSettings();
   const [draft,setDraft]=useState<IntegrationsSettings>(settings.integrations);
-  const [health,setHealth]=useState<IntegrationHealth[]>([]);
+  const [accounts,setAccounts]=useState<IntegrationAccount[]>([]);
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
   const [busy,setBusy]=useState<string|null>(null);
-  const [results,setResults]=useState<Partial<Record<IntegrationId,{checkedAt:string;message:string;ok:boolean}>>>({});
+  const [editorOpen,setEditorOpen]=useState(false);
+  const [editing,setEditing]=useState<IntegrationAccount|null>(null);
+  const [provider,setProvider]=useState<IntegrationProvider>('amazon');
+  const [displayName,setDisplayName]=useState('');
+  const [sellerId,setSellerId]=useState('');
+  const [refreshToken,setRefreshToken]=useState('');
+  const [amazonClientId,setAmazonClientId]=useState('');
+  const [amazonClientSecret,setAmazonClientSecret]=useState('');
+  const [sendcloudPublicKey,setSendcloudPublicKey]=useState('');
+  const [sendcloudSecretKey,setSendcloudSecretKey]=useState('');
+  const [parentAccountId,setParentAccountId]=useState('');
+  const [shopifyIntegrationId,setShopifyIntegrationId]=useState('');
+  const [shopifyStores,setShopifyStores]=useState<ShopifyDiscovery[]>([]);
+  const [accountEnabled,setAccountEnabled]=useState(true);
+  const [syncOrders,setSyncOrders]=useState(true);
+  const [syncInventory,setSyncInventory]=useState(true);
+  const [syncFinance,setSyncFinance]=useState(true);
+  const [syncImages,setSyncImages]=useState(true);
+  const [gmailMonths,setGmailMonths]=useState(12);
+  const [marketplaces,setMarketplaces]=useState<AmazonMarketplaceStatus[]>([]);
+  const [activeMarketplaceIds,setActiveMarketplaceIds]=useState<string[]>([]);
+  const [primaryMarketplaceId,setPrimaryMarketplaceId]=useState<string>('');
 
   useEffect(()=>{setDraft(settings.integrations);onDirtyChange(false)},[settings.integrations,onDirtyChange]);
 
-  const refreshHealth=async()=>{
+  const reload=async()=>{
     setLoading(true);
-    try{setHealth(await loadIntegrationHealth(draft));}
-    catch(e){showError(e instanceof Error?e.message:'No se pudo cargar el estado de las integraciones.');}
+    try{setAccounts(await loadIntegrationAccounts());}
+    catch(e){showError(e instanceof Error?e.message:'No se pudieron cargar las cuentas de integración.');}
     finally{setLoading(false);}
   };
-  useEffect(()=>{void refreshHealth()},[]);
+  useEffect(()=>{void reload()},[]);
 
-  const settingKey:Record<IntegrationId,keyof IntegrationsSettings>={
+  const providerMeta:Record<IntegrationProvider,{name:string;description:string}>={
+    amazon:{name:'Amazon',description:'Seller Central / SP-API. Admite varias cuentas y marketplaces por cuenta.'},
+    shopify:{name:'Shopify',description:'Tiendas Shopify detectadas en una cuenta conectada de Sendcloud.'},
+    sendcloud:{name:'Sendcloud',description:'Cuentas logísticas, etiquetas, transportistas y seguimiento.'},
+    gmail:{name:'Gmail',description:'Cuentas autorizadas para importar facturas recibidas.'},
+  };
+  const ordered:IntegrationProvider[]=['amazon','shopify','sendcloud','gmail'];
+  const settingKey:Record<IntegrationProvider,keyof IntegrationsSettings>={
     gmail:'gmailEnabled',amazon:'amazonEnabled',sendcloud:'sendcloudEnabled',shopify:'shopifyEnabled',
   };
-  const names:Record<IntegrationId,string>={gmail:'Gmail',amazon:'Amazon',sendcloud:'Sendcloud',shopify:'Shopify'};
-  const descriptions:Record<IntegrationId,string>={
-    gmail:'Importación de facturas desde la cuenta autorizada en esta sesión.',
-    amazon:'SP-API, pedidos, inventario, finanzas e imágenes.',
-    sendcloud:'Pedidos, etiquetas, transportistas y seguimiento.',
-    shopify:'Canal Shopify conectado a través de una integración real de Sendcloud.',
-  };
-  const enabled=(id:IntegrationId)=>Boolean(draft[settingKey[id]]);
-  const toggle=(id:IntegrationId,value:boolean)=>{
-    setDraft(current=>({...current,[settingKey[id]]:value}));
-    onDirtyChange(true);
-  };
+  const enabled=(id:IntegrationProvider)=>Boolean(draft[settingKey[id]]);
+  const toggle=(id:IntegrationProvider,value:boolean)=>{setDraft(current=>({...current,[settingKey[id]]:value}));onDirtyChange(true)};
   const dateTime=(value:string|null)=>formatAppDateTime(value,settings.general,'Sin registro');
+  const sendcloudAccounts=accounts.filter(item=>item.provider==='sendcloud'&&item.status!=='disabled');
+  const compatibilityMode=accounts.some(item=>item.legacy);
 
-  const run=async(id:IntegrationId,action:'test'|'sync')=>{
-    const key=`${id}:${action}`;
-    setBusy(key);
-    try{
-      const result=action==='test'?await testIntegrationConnection(id):await syncIntegration(id);
-      setResults(current=>({...current,[id]:result}));
-      showSuccess(result.message);
-      const next=await loadIntegrationHealth(draft);
-      setHealth(next);
-    }catch(e){
-      const message=e instanceof Error?e.message:'La operación no se pudo completar.';
-      const checkedAt=new Date().toISOString();
-      setResults(current=>({...current,[id]:{ok:false,checkedAt,message}}));
-      showError(message);
-    }finally{setBusy(null);}
+  const resetEditor=(nextProvider:IntegrationProvider,account:IntegrationAccount|null=null)=>{
+    const legacyAmazon=Boolean(account?.legacy&&account.provider==='amazon');
+    setProvider(nextProvider);setEditing(account);setDisplayName(account?.displayName||'');
+    setSellerId(account?.provider==='amazon'?(account.externalAccountId||''):'');
+    setRefreshToken('');setAmazonClientId('');setAmazonClientSecret('');
+    setSendcloudPublicKey('');setSendcloudSecretKey('');
+    setParentAccountId(account?.parentAccountId||sendcloudAccounts.find(item=>item.isDefault)?.id||sendcloudAccounts[0]?.id||'');
+    setShopifyIntegrationId(String(account?.config?.sendcloudIntegrationId||account?.externalAccountId||''));
+    setShopifyStores([]);setAccountEnabled(account?.enabled??true);
+    setSyncOrders(legacyAmazon?settings.amazon.autoSyncOrders:(typeof account?.config?.syncOrders==='boolean'?Boolean(account.config.syncOrders):true));
+    setSyncInventory(legacyAmazon?settings.amazon.autoSyncInventory:(typeof account?.config?.syncInventory==='boolean'?Boolean(account.config.syncInventory):true));
+    setSyncFinance(legacyAmazon?settings.amazon.autoSyncFinance:(typeof account?.config?.syncFinance==='boolean'?Boolean(account.config.syncFinance):true));
+    setSyncImages(legacyAmazon?settings.amazon.autoSyncImages:(typeof account?.config?.syncImages==='boolean'?Boolean(account.config.syncImages):true));
+    setGmailMonths(Number(account?.config?.months||12));
+    setMarketplaces([]);
+    setActiveMarketplaceIds(legacyAmazon?settings.amazon.activeMarketplaceIds:(Array.isArray(account?.config?.activeMarketplaceIds)?account!.config.activeMarketplaceIds as string[]:[]));
+    setPrimaryMarketplaceId(legacyAmazon?(settings.amazon.primaryMarketplaceId||''):(typeof account?.config?.primaryMarketplaceId==='string'?account.config.primaryMarketplaceId:''));
+    setEditorOpen(true);
+    if(account?.provider==='amazon'&&account.linkedResourceId){
+      void loadAmazonAccountMarketplaces(account.linkedResourceId).then(rows=>{
+        setMarketplaces(rows);
+        const configuredIds=account.legacy?settings.amazon.activeMarketplaceIds:(Array.isArray(account.config?.activeMarketplaceIds)?account.config.activeMarketplaceIds as string[]:[]);
+        if(!configuredIds.length)setActiveMarketplaceIds(rows.filter(item=>item.active).map(item=>item.id));
+      }).catch(e=>showError(e instanceof Error?e.message:'No se pudieron cargar los marketplaces de esta cuenta.'));
+    }
   };
 
-  const save=async()=>{
-    setSaving(true);
+  const closeEditor=()=>{if(busy)return;setEditorOpen(false);setEditing(null);setShopifyStores([])};
+
+  const discoverShopify=async()=>{
+    if(!parentAccountId){showError('Selecciona primero una cuenta de Sendcloud.');return;}
+    setBusy('discover-shopify');
     try{
-      await updateSection('integrations',draft);
-      setHealth(current=>current.map(item=>({...item,enabled:Boolean(draft[settingKey[item.id]])})));
-      onDirtyChange(false);
-      showSuccess('Configuración de integraciones guardada.');
-    }catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración de integraciones.');}
+      const stores=await discoverShopifyStores(parentAccountId);
+      setShopifyStores(stores);
+      if(stores.length===1&&!shopifyIntegrationId)setShopifyIntegrationId(String(stores[0].id));
+      if(!stores.length)showError('No se ha encontrado ninguna tienda Shopify en esa cuenta de Sendcloud.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudieron consultar las tiendas Shopify.');}
+    finally{setBusy(null);}
+  };
+
+  const accountConfig=()=>{
+    if(provider==='amazon')return {
+      activeMarketplaceIds,primaryMarketplaceId:primaryMarketplaceId||null,
+      syncOrders,syncInventory,syncFinance,syncImages,
+    };
+    if(provider==='shopify')return {sendcloudIntegrationId:Number(shopifyIntegrationId),syncOrders};
+    if(provider==='sendcloud')return {syncOrders,shippingEnabled:true};
+    return {months:Math.max(1,Math.min(36,Number(gmailMonths)||12)),invoiceImportEnabled:true};
+  };
+
+  const saveAccount=async()=>{
+    setBusy('save-account');
+    try{
+      if(editing?.legacy){
+        if(provider==='amazon'){
+          await updateSection('amazon',{
+            ...settings.amazon,
+            activeMarketplaceIds,
+            primaryMarketplaceId:primaryMarketplaceId||null,
+            autoSyncOrders:syncOrders,
+            autoSyncInventory:syncInventory,
+            autoSyncFinance:syncFinance,
+            autoSyncImages:syncImages,
+          });
+          await updateSection('integrations',{...settings.integrations,amazonEnabled:accountEnabled});
+          showSuccess('Configuración de la cuenta actual guardada como valores globales hasta completar la migración multicuenta.');
+        }else{
+          await updateSection('integrations',{
+            ...settings.integrations,
+            [settingKey[provider]]:accountEnabled,
+          } as IntegrationsSettings);
+          showSuccess('Estado de la integración actual guardado. La configuración por cuenta se activará al completar la migración multicuenta.');
+        }
+      }else if(editing){
+        const credentials:Record<string,string>={};
+        if(provider==='amazon'){
+          if(refreshToken.trim())credentials.refreshToken=refreshToken.trim();
+          if(amazonClientId.trim())credentials.clientId=amazonClientId.trim();
+          if(amazonClientSecret.trim())credentials.clientSecret=amazonClientSecret.trim();
+        }
+        if(provider==='sendcloud'){
+          if(sendcloudPublicKey.trim())credentials.publicKey=sendcloudPublicKey.trim();
+          if(sendcloudSecretKey.trim())credentials.secretKey=sendcloudSecretKey.trim();
+        }
+        await updateIntegrationAccount(editing.id,{
+          displayName:displayName.trim()||editing.displayName,enabled:accountEnabled,config:accountConfig(),
+          ...(Object.keys(credentials).length?{credentials}:{}),
+        });
+        showSuccess('Cuenta de integración actualizada.');
+      }else if(provider==='gmail'){
+        const connection=await connectGmail(true);
+        const created=await createIntegrationAccount({
+          provider:'gmail',displayName:connection.email,externalAccountId:connection.email,config:accountConfig(),test:false,
+        });
+        setActiveGmailConnection(connection.email);
+        await testGmailConnection(connection.email);
+        await testIntegrationAccount(created.id);
+        showSuccess(`Gmail conectado: ${connection.email}.`);
+      }else if(provider==='amazon'){
+        if(!sellerId.trim()||!refreshToken.trim())throw new Error('Indica Seller ID y refresh token de Amazon.');
+        await createIntegrationAccount({
+          provider:'amazon',displayName:displayName.trim()||undefined,
+          credentials:{
+            sellerId:sellerId.trim(),refreshToken:refreshToken.trim(),
+            ...(amazonClientId.trim()?{clientId:amazonClientId.trim()}:{}),
+            ...(amazonClientSecret.trim()?{clientSecret:amazonClientSecret.trim()}:{}),
+          },
+          config:accountConfig(),test:true,
+        });
+        showSuccess('Cuenta de Amazon conectada.');
+      }else if(provider==='sendcloud'){
+        if(!sendcloudPublicKey.trim()||!sendcloudSecretKey.trim())throw new Error('Indica las claves Public y Secret de Sendcloud.');
+        await createIntegrationAccount({
+          provider:'sendcloud',displayName:displayName.trim()||undefined,
+          credentials:{publicKey:sendcloudPublicKey.trim(),secretKey:sendcloudSecretKey.trim()},
+          config:accountConfig(),test:true,
+        });
+        showSuccess('Cuenta de Sendcloud conectada.');
+      }else{
+        if(!parentAccountId||!shopifyIntegrationId)throw new Error('Selecciona la cuenta de Sendcloud y la tienda Shopify.');
+        const shop=shopifyStores.find(item=>String(item.id)===shopifyIntegrationId);
+        await createIntegrationAccount({
+          provider:'shopify',displayName:displayName.trim()||shop?.shopName||undefined,parentAccountId,
+          externalAccountId:shopifyIntegrationId,config:{...accountConfig(),shopUrl:shop?.shopUrl||null},test:true,
+        });
+        showSuccess('Tienda Shopify añadida.');
+      }
+      await reload();setEditorOpen(false);setEditing(null);
+    }catch(e){
+      const detail=e instanceof Error?e.message:'';
+      showError(/integration-accounts|edge function|functionsrelay|not found/i.test(detail)
+        ?'El backend multicuenta todavía no está activado en este entorno. La pantalla ya permite añadir cuentas; falta activar la migración y la función segura del backend.'
+        :(detail||'No se pudo guardar la integración.'));
+    }
+    finally{setBusy(null);}
+  };
+
+  const testAccount=async(account:IntegrationAccount)=>{
+    setBusy('test:'+account.id);
+    try{
+      if(account.legacy){
+        if(account.provider==='amazon'){
+          const status=await loadAmazonStatus();
+          if(!status.connected)throw new Error(status.error||'Amazon no está conectado.');
+        }else if(account.provider==='sendcloud'){
+          const status=await getSendcloudStatus();
+          if(!status.configured)throw new Error(status.message||'Sendcloud no está configurado.');
+        }else if(account.provider==='shopify'){
+          const status=await getSendcloudStatus();
+          const remoteId=Number(account.externalAccountId);
+          if(!status.integrations.some(item=>item.channel==='shopify'&&item.id===remoteId))throw new Error('La tienda Shopify ya no aparece en Sendcloud.');
+        }else{
+          await testGmailConnection(account.externalAccountId||undefined);
+        }
+        showSuccess(`${providerMeta[account.provider].name}: conexión actual correcta.`);
+        return;
+      }
+      if(account.provider==='gmail')await testGmailConnection(account.externalAccountId||undefined);
+      const result=await testIntegrationAccount(account.id);
+      showSuccess(`${providerMeta[account.provider].name}: conexión correcta.`);
+      setAccounts(current=>current.map(item=>item.id===account.id?result.account:item));
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo comprobar la conexión.');if(!account.legacy)await reload();}
+    finally{setBusy(null);}
+  };
+
+  const syncAccount=async(account:IntegrationAccount)=>{
+    if(account.provider!=='amazon'&&account.provider!=='sendcloud')return;
+    setBusy('sync:'+account.id);
+    try{
+      if(account.provider==='amazon'){
+        const result=await requestAmazonSync(account.legacy?undefined:account.id);
+        showSuccess(`Sincronización solicitada: ${result.jobs} trabajos para ${account.displayName}.`);
+      }else if(account.legacy){
+        const result=await syncSendcloudOrders(false,true,false);
+        showSuccess(`Sendcloud sincronizado: ${result.synced} pedidos actualizados.`);
+      }else{
+        const result=await syncSendcloudIntegrationAccount(account.id);
+        showSuccess(`Sendcloud sincronizado: ${result.synced} pedidos, ${result.enriched} enriquecidos.`);
+      }
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo iniciar la sincronización.');}
+    finally{setBusy(null);}
+  };
+
+  const makeDefault=async(account:IntegrationAccount)=>{
+    if(account.legacy){showSuccess(`${account.displayName} ya es la cuenta actual predeterminada.`);return;}
+    setBusy('default:'+account.id);
+    try{
+      if(account.provider==='gmail'&&account.externalAccountId&&getCachedGmailConnection(account.externalAccountId))setActiveGmailConnection(account.externalAccountId);
+      setAccounts(await setDefaultIntegrationAccount(account.id));
+      showSuccess(`${account.displayName} es ahora la cuenta predeterminada.`);
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo cambiar la cuenta predeterminada.');}
+    finally{setBusy(null);}
+  };
+
+  const disconnect=async(account:IntegrationAccount)=>{
+    if(account.legacy){showError('La cuenta actual no se desconecta desde el modo de compatibilidad. Se habilitará al completar la migración multicuenta.');return;}
+    if(!await confirmAction({title:'Desconectar integración',message:`Se desconectará “${account.displayName}”. El histórico ya importado se conservará.`,confirmLabel:'Desconectar',tone:'danger'}))return;
+    setBusy('disconnect:'+account.id);
+    try{
+      if(account.provider==='gmail'&&account.externalAccountId)await disconnectGmail(account.externalAccountId);
+      setAccounts(await disconnectIntegrationAccount(account.id));
+      showSuccess('Integración desconectada.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo desconectar la integración.');}
+    finally{setBusy(null);}
+  };
+
+  const saveGlobal=async()=>{
+    setSaving(true);
+    try{await updateSection('integrations',draft);onDirtyChange(false);showSuccess('Comportamiento global de integraciones guardado.');}
+    catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración global.');}
     finally{setSaving(false);}
   };
   const restore=async()=>{
-    if(!await confirmAction({title:'Restaurar Integraciones',message:'Se restaurarán los valores predeterminados de Integraciones.',confirmLabel:'Restaurar',tone:'warning'}))return;
+    if(!await confirmAction({title:'Restaurar Integraciones',message:'Se restaurarán los interruptores globales de Integraciones. Las cuentas conectadas no se modificarán.',confirmLabel:'Restaurar',tone:'warning'}))return;
     setSaving(true);
-    try{await resetSection('integrations');onDirtyChange(false);showSuccess('Valores predeterminados de Integraciones restaurados.');}
+    try{await resetSection('integrations');onDirtyChange(false);showSuccess('Valores globales restaurados.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
     finally{setSaving(false);}
   };
 
-  const ordered:IntegrationId[]=['gmail','amazon','sendcloud','shopify'];
-  const byId=new Map(health.map(item=>[item.id,item]));
+  const toggleMarketplace=(id:string,checked:boolean)=>{
+    setActiveMarketplaceIds(current=>checked?Array.from(new Set([...current,id])):current.filter(value=>value!==id));
+    if(!checked&&primaryMarketplaceId===id)setPrimaryMarketplaceId('');
+  };
 
   return <section className="settingsSectionCard">
-    <div className="settingsSectionHero"><div className="settingsSectionIcon"><PlugZap size={22}/></div><div><h2>Integraciones</h2><p>Estado, sincronización y activación de servicios externos sin exponer credenciales.</p></div></div>
+    <div className="settingsSectionHero"><div className="settingsSectionIcon"><PlugZap size={22}/></div><div><h2>Integraciones</h2><p>Conecta y administra varias cuentas por servicio. Las credenciales se gestionan por cuenta; aquí no se muestran secretos guardados.</p></div></div>
+
     <div className="settingsSubsection">
-      <h3>Servicios conectados</h3>
-      {loading&&!health.length?<div className="settingsInlineLoading">Comprobando integraciones…</div>:<div className="settingsToggleGrid">
+      <div className="settingsSubsectionHead"><div><h3>Cuentas conectadas</h3><p>Amazon, Shopify, Sendcloud y Gmail pueden tener varias cuentas dentro del mismo espacio de trabajo.</p></div></div>
+      {compatibilityMode&&<p className="settingsHelpText">Estás viendo conexiones actuales detectadas automáticamente. Ya puedes abrir el alta de nuevas cuentas; si este entorno todavía no tiene activado el backend multicuenta, al guardar se indicará de forma explícita.</p>}
+      {loading?<div className="settingsInlineLoading">Cargando cuentas…</div>:<div className="integrationProviderGrid">
         {ordered.map(id=>{
-          const item=byId.get(id);
-          const result=results[id];
-          const connected=Boolean(item?.connected);
-          return <div className="settingsToggleField" key={id}>
-            <input aria-label={`Activar ${names[id]}`} type="checkbox" checked={enabled(id)} onChange={e=>toggle(id,e.target.checked)}/>
-            <span>
-              <strong>{names[id]} · {connected?'Conectado':'No conectado'}</strong>
-              <small>{descriptions[id]}</small>
-              <small>Último éxito: {dateTime(item?.lastSuccessAt||null)}</small>
-              <small>Último intento: {dateTime(item?.lastAttemptAt||null)}</small>
-              {item?.lastError&&<small>{item.lastError}</small>}
-              {result&&<small>{result.ok?'Correcto':'Error'} · {dateTime(result.checkedAt)} · {result.message}</small>}
-              <span className="settingsInlineActions">
-                <button type="button" className="secondary" disabled={busy!==null} onClick={()=>void run(id,'test')}>{busy===`${id}:test`?'Comprobando…':'Probar conexión'}</button>
-                <button type="button" className="secondary" disabled={busy!==null||!connected} onClick={()=>void run(id,'sync')}>{busy===`${id}:sync`?'Sincronizando…':'Sincronizar ahora'}</button>
-              </span>
-            </span>
+          const items=accounts.filter(item=>item.provider===id);
+          return <div className="integrationProviderCard" key={id}>
+            <div className="integrationProviderHead">
+              <div><strong>{providerMeta[id].name}</strong><small>{providerMeta[id].description}</small></div>
+              <button type="button" className="secondary" disabled={busy!==null||(id==='shopify'&&!sendcloudAccounts.length)} onClick={()=>resetEditor(id)}><Plus size={14}/> {id==='shopify'?'Añadir tienda':'Añadir cuenta'}</button>
+            </div>
+            {id==='shopify'&&!sendcloudAccounts.length&&<p className="settingsHelpText">Conecta primero una cuenta de Sendcloud para detectar sus tiendas Shopify.</p>}
+            <div className="integrationAccountList">
+              {!items.length?<div className="settingsEmptyMini">Todavía no hay cuentas configuradas.</div>:items.map(account=><div className={`integrationAccountRow ${account.status==='disabled'?'isDisabled':''}`} key={account.id}>
+                <div className="integrationAccountMain">
+                  <span className={`integrationStatusDot status-${account.status}`}/>
+                  <div>
+                    <strong>{account.displayName}{account.isDefault&&<em>Predeterminada</em>}{account.legacy&&<em>Actual</em>}</strong>
+                    <small>{account.externalAccountId||'Sin identificador externo'} · {account.status==='connected'?'Conectada':account.status==='disabled'?'Desconectada':account.status==='error'?'Con error':'Pendiente'}</small>
+                    {account.lastSuccessAt&&<small>Último éxito: {dateTime(account.lastSuccessAt)}</small>}
+                    {account.legacy&&<small>Conexión existente detectada automáticamente.</small>}
+                    {account.lastError&&<small className="integrationError">{account.lastError}</small>}
+                  </div>
+                </div>
+                <div className="integrationAccountActions">
+                  <button type="button" className="secondary" disabled={busy!==null||account.status==='disabled'} onClick={()=>void testAccount(account)}>{busy==='test:'+account.id?'Probando…':'Probar'}</button>
+                  {(account.provider==='amazon'||account.provider==='sendcloud')&&<button type="button" className="secondary" disabled={busy!==null||account.status!=='connected'} onClick={()=>void syncAccount(account)}>{busy==='sync:'+account.id?'Sincronizando…':'Sincronizar'}</button>}
+                  <button type="button" className="secondary" disabled={busy!==null} onClick={()=>resetEditor(account.provider,account)}>Configurar</button>
+                  {!account.isDefault&&account.status!=='disabled'&&<button type="button" className="secondary" disabled={busy!==null} onClick={()=>void makeDefault(account)}>Predeterminada</button>}
+                  {account.status!=='disabled'&&!account.legacy&&<button type="button" className="secondary dangerText" disabled={busy!==null} onClick={()=>void disconnect(account)}>Desconectar</button>}
+                </div>
+              </div>)}
+            </div>
           </div>;
         })}
       </div>}
-      <p className="settingsHelpText">Desactivar una integración detiene sus automatismos configurados. Las acciones manuales y el historial siguen disponibles.</p>
     </div>
-    <div className="settingsSectionActions"><button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores predeterminados</button><button type="button" className="primary" disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+
+    <div className="settingsSubsection">
+      <h3>Comportamiento global</h3>
+      <p className="settingsHelpText">Estos interruptores afectan al servicio completo. La conexión, marketplaces y reglas concretas pertenecen a cada cuenta.</p>
+      <div className="settingsToggleGrid">
+        {ordered.map(id=><label className="settingsToggleField" key={id}><input type="checkbox" checked={enabled(id)} onChange={e=>toggle(id,e.target.checked)}/><span><strong>{providerMeta[id].name}</strong><small>{enabled(id)?'Automatismos globales permitidos.':'Automatismos globales desactivados.'}</small></span></label>)}
+      </div>
+    </div>
+
+    <div className="integrationAmazonSettings">
+      <AmazonSection onDirtyChange={onDirtyChange}/>
+    </div>
+
+    <div className="settingsSectionActions"><button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores globales</button><button type="button" className="primary" disabled={saving} onClick={()=>void saveGlobal()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+
+    {editorOpen&&<div className="integrationEditorBackdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)closeEditor()}}>
+      <div className="integrationEditor" role="dialog" aria-modal="true" aria-label={editing?'Configurar integración':'Añadir integración'}>
+        <div className="integrationEditorHead"><div><strong>{editing?'Configurar':'Añadir'} {providerMeta[provider].name}</strong><small>{editing?.legacy?'Cuenta actual detectada en el sistema existente. Los secretos se mantienen en el backend actual hasta completar la migración multicuenta.':editing?'Los secretos guardados nunca se vuelven a mostrar. Déjalos vacíos para conservarlos.':'Configura la cuenta que quieres conectar.'}</small></div><button type="button" className="iconBtn" onClick={closeEditor} aria-label="Cerrar">×</button></div>
+        <div className="integrationEditorBody">
+          {provider!=='gmail'&&<label className="settingsField"><span>Nombre / alias</span><input value={displayName} disabled={Boolean(editing?.legacy)} onChange={e=>setDisplayName(e.target.value)} placeholder={provider==='amazon'?'Ej. ZENVIA COMMERCE':provider==='sendcloud'?'Ej. Logística principal':'Ej. TrufaPet'}/></label>}
+
+          {provider==='amazon'&&<>
+            <div className="settingsFormGrid">
+              <label className="settingsField"><span>Seller ID</span><input value={sellerId} disabled={Boolean(editing)} onChange={e=>setSellerId(e.target.value)} placeholder="A1XXXXXXXXXXXXX"/></label>
+              {!editing?.legacy&&<>
+                <label className="settingsField"><span>{editing?'Nuevo refresh token (opcional)':'Refresh token'}</span><input type="password" autoComplete="new-password" value={refreshToken} onChange={e=>setRefreshToken(e.target.value)} placeholder={editing?'Sin cambios':'Atzr|...'}/></label>
+                <label className="settingsField"><span>Client ID SP-API (opcional)</span><input type="password" autoComplete="new-password" value={amazonClientId} onChange={e=>setAmazonClientId(e.target.value)} placeholder="Usar configuración del backend"/></label>
+                <label className="settingsField"><span>Client secret SP-API (opcional)</span><input type="password" autoComplete="new-password" value={amazonClientSecret} onChange={e=>setAmazonClientSecret(e.target.value)} placeholder="Usar configuración del backend"/></label>
+              </>}
+            </div>
+            {editing?.legacy&&<div className="settingsResetPreview"><strong>Credenciales protegidas</strong><small>La cuenta sigue usando las credenciales actuales del backend. No se copian ni se muestran en el preview.</small></div>}
+            {editing&&marketplaces.length>0&&<div className="integrationAccountConfigBlock"><h4>Marketplaces de esta cuenta</h4><div className="settingsToggleGrid">
+              {marketplaces.filter(item=>item.active).map(item=><label className="settingsToggleField" key={item.id}><input type="checkbox" checked={activeMarketplaceIds.includes(item.id)} onChange={e=>toggleMarketplace(item.id,e.target.checked)}/><span><strong>{item.countryCode} · {item.name}</strong><small>{item.currencyCode}</small></span></label>)}
+            </div><label className="settingsField"><span>Marketplace principal</span><SelectField ariaLabel="Marketplace principal de la cuenta" allowEmpty emptyLabel="Primero activo" value={primaryMarketplaceId} options={marketplaces.filter(item=>item.active&&activeMarketplaceIds.includes(item.id)).map(item=>({value:item.id,label:`${item.countryCode} · ${item.name}`}))} onChange={setPrimaryMarketplaceId}/></label></div>}
+            <div className="integrationAccountConfigBlock"><h4>Sincronización de esta cuenta</h4><div className="settingsToggleGrid">
+              <label className="settingsToggleField"><input type="checkbox" checked={syncOrders} onChange={e=>setSyncOrders(e.target.checked)}/><span><strong>Pedidos</strong><small>Permitir sincronización de pedidos.</small></span></label>
+              <label className="settingsToggleField"><input type="checkbox" checked={syncInventory} onChange={e=>setSyncInventory(e.target.checked)}/><span><strong>Inventario</strong><small>Permitir sincronización de inventario.</small></span></label>
+              <label className="settingsToggleField"><input type="checkbox" checked={syncFinance} onChange={e=>setSyncFinance(e.target.checked)}/><span><strong>Finanzas</strong><small>Permitir sincronización financiera.</small></span></label>
+              <label className="settingsToggleField"><input type="checkbox" checked={syncImages} onChange={e=>setSyncImages(e.target.checked)}/><span><strong>Imágenes</strong><small>Permitir actualización de imágenes.</small></span></label>
+            </div></div>
+          </>}
+
+          {provider==='sendcloud'&&<>
+            {!editing?.legacy?<div className="settingsFormGrid">
+              <label className="settingsField"><span>{editing?'Nueva Public key (opcional)':'Public key'}</span><input type="password" autoComplete="new-password" value={sendcloudPublicKey} onChange={e=>setSendcloudPublicKey(e.target.value)} placeholder={editing?'Sin cambios':'Public key'}/></label>
+              <label className="settingsField"><span>{editing?'Nueva Secret key (opcional)':'Secret key'}</span><input type="password" autoComplete="new-password" value={sendcloudSecretKey} onChange={e=>setSendcloudSecretKey(e.target.value)} placeholder={editing?'Sin cambios':'Secret key'}/></label>
+            </div>:<div className="settingsResetPreview"><strong>Credenciales protegidas</strong><small>Sendcloud continúa usando las claves actuales del backend hasta completar la migración multicuenta.</small></div>}
+            <label className="settingsToggleField"><input type="checkbox" checked={syncOrders} onChange={e=>setSyncOrders(e.target.checked)}/><span><strong>Sincronizar pedidos</strong><small>Permitir que esta cuenta importe pedidos y actualice seguimiento.</small></span></label>
+          </>}
+
+          {provider==='shopify'&&<>
+            <label className="settingsField"><span>Cuenta de Sendcloud</span><SelectField ariaLabel="Cuenta de Sendcloud para Shopify" value={parentAccountId} options={sendcloudAccounts.map(item=>({value:item.id,label:item.displayName}))} onChange={value=>{setParentAccountId(value);setShopifyStores([]);setShopifyIntegrationId('')}}/></label>
+            {!editing&&<div className="settingsInlineActions"><button type="button" className="secondary" disabled={busy!==null||!parentAccountId} onClick={()=>void discoverShopify()}>{busy==='discover-shopify'?'Buscando…':'Buscar tiendas Shopify'}</button></div>}
+            {!editing&&shopifyStores.length>0&&<label className="settingsField"><span>Tienda</span><SelectField ariaLabel="Tienda Shopify" value={shopifyIntegrationId} options={shopifyStores.map(item=>({value:String(item.id),label:item.shopName,description:item.shopUrl||undefined}))} onChange={value=>{setShopifyIntegrationId(value);const shop=shopifyStores.find(item=>String(item.id)===value);if(shop&&!displayName)setDisplayName(shop.shopName)}}/></label>}
+            {editing&&<div className="settingsResetPreview"><strong>Integración Sendcloud #{shopifyIntegrationId}</strong><small>{String(editing.config?.shopUrl||'La tienda se valida contra Sendcloud al probar la conexión.')}</small></div>}
+            <label className="settingsToggleField"><input type="checkbox" checked={syncOrders} onChange={e=>setSyncOrders(e.target.checked)}/><span><strong>Sincronizar pedidos</strong><small>Incluir esta tienda en las sincronizaciones de pedidos.</small></span></label>
+          </>}
+
+          {provider==='gmail'&&<>
+            <div className="settingsResetPreview"><strong>{editing?editing.externalAccountId||editing.displayName:'Autorización con Google'}</strong><small>{editing?'La autorización se conserva por cuenta durante la sesión del navegador.':'Al guardar se abrirá Google para elegir y autorizar una cuenta. Puedes repetirlo para añadir más cuentas.'}</small></div>
+            <label className="settingsField"><span>Histórico al buscar facturas</span><div className="settingsNumberWithSuffix"><input type="number" min="1" max="36" value={gmailMonths} onChange={e=>setGmailMonths(Number(e.target.value))}/><em>meses</em></div></label>
+          </>}
+
+          {editing&&<label className="settingsToggleField"><input type="checkbox" checked={accountEnabled} onChange={e=>setAccountEnabled(e.target.checked)}/><span><strong>Cuenta activa</strong><small>Permite usar esta cuenta sin afectar a las demás del mismo proveedor.</small></span></label>}
+        </div>
+        <div className="integrationEditorActions"><button type="button" className="secondary" disabled={busy!==null} onClick={closeEditor}>Cancelar</button><button type="button" className="primary" disabled={busy!==null} onClick={()=>void saveAccount()}>{busy==='save-account'?'Guardando…':provider==='gmail'&&!editing?'Autorizar y añadir':'Guardar cuenta'}</button></div>
+      </div>
+    </div>}
   </section>;
 }
 
@@ -1889,7 +2177,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='amazon'?<AmazonSection onDirtyChange={setDirty}/>:active&&active.id==='integrations'?<IntegrationsSection onDirtyChange={setDirty}/>:active&&active.id==='automations'?<AlertsSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&active.id==='maintenance'?<MaintenanceSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='integrations'?<IntegrationsSection onDirtyChange={setDirty}/>:active&&active.id==='automations'?<AlertsSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&active.id==='maintenance'?<MaintenanceSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
