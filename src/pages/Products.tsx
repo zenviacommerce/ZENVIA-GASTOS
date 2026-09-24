@@ -12,11 +12,10 @@ import { productMarginMetrics } from '../services/productMetrics';
 import { showError, showSuccess } from '../services/toast';
 import { confirmAction, openActionProcess } from '../services/actionDialog';
 import { useSettings } from '../context/SettingsContext';
-import { hiddenTableColumns, persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
+import { orderedTableColumns, persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
+import { formatAppDate, formatAppMoney } from '../services/formatting';
 import '../supplier-actions.css';
 
-const money=(value:number|null,decimals=2,maxDecimals=Math.max(decimals,4))=>value==null?'—':`${value.toLocaleString('es-ES',{minimumFractionDigits:decimals,maximumFractionDigits:maxDecimals})} €`;
-const dateLabel=(value?:string|null)=>value?new Date(`${value.slice(0,10)}T12:00:00`).toLocaleDateString('es-ES'):'—';
 
 type ProductSalesInfo={salePrice:number|null;salesTaxRate:number;invoiceDescription:string;ean:string};
 type ProductScope='all'|'with_sale'|'without_sale'|'missing_cost'|'negative_margin'|'cost_up'|'cost_down';
@@ -30,6 +29,9 @@ function productMetrics(product:Product,extra?:ProductSalesInfo){
 }
 
 function ProductDrawer({product,extra,onClose,onEdit,onDelete,busy}:{product:Product;extra?:ProductSalesInfo;onClose:()=>void;onEdit:()=>void;onDelete:()=>void;busy:boolean}){
+  const {settings}=useSettings();
+  const money=(value:number|null,decimals=2,maxDecimals=Math.max(decimals,4))=>value==null?'—':formatAppMoney(value,settings.general.currencyCode,settings.general,{minimumFractionDigits:decimals,maximumFractionDigits:maxDecimals});
+  const dateLabel=(value?:string|null)=>formatAppDate(value,settings.general,'—');
   const metric=productMetrics(product,extra);
   return <div className="masterDrawerBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}>
     <aside className="masterDrawer">
@@ -53,8 +55,10 @@ function ProductDrawer({product,extra,onClose,onEdit,onDelete,busy}:{product:Pro
 
 export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];onAdd:()=>void;onEdit:(product:Product)=>void;onDelete:(product:Product)=>Promise<void>}){
  const {settings,preferences,updatePreferences}=useSettings();
+ const money=(value:number|null,decimals=2,maxDecimals=Math.max(decimals,4))=>value==null?'—':formatAppMoney(value,settings.general.currencyCode,settings.general,{minimumFractionDigits:decimals,maximumFractionDigits:maxDecimals});
+ const dateLabel=(value?:string|null)=>formatAppDate(value,settings.general,'—');
  const pageSize=preferences.pageSize;
- const hiddenColumns=hiddenTableColumns(preferences,'products');
+ const columns=orderedTableColumns(preferences,'products');
  const marginAlertThreshold=Math.max(settings.products.minimumMarginPct,settings.products.marginAlertPct);
  const costIncreaseThreshold=settings.products.costIncreaseAlertPct;
  const costMoney=(value:number|null)=>money(value,Math.min(settings.products.costDecimals,8),Math.min(settings.products.costDecimals,8));
@@ -167,6 +171,29 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
    }finally{setBulkBusy(false);}
  };
  const edit=(product:Product)=>{setSelected(null);onEdit(product)};
+ const columnHeader=(key:string)=>{
+   if(key==='product')return <th key={key}>Producto</th>;
+   if(key==='sku')return <th key={key}>SKU / EAN</th>;
+   if(key==='supplier')return <th key={key}>Proveedor</th>;
+   if(key==='lastPurchase')return <th key={key}>Última compra</th>;
+   if(key==='cost')return <th key={key} className="right">Coste</th>;
+   if(key==='salePrice')return <th key={key} className="right">P. venta</th>;
+   if(key==='margin')return <th key={key} className="right">Margen</th>;
+   if(key==='costChange')return <th key={key} className="right">Var. coste</th>;
+   return null;
+ };
+ const columnCell=(key:string,p:Product,extra:ProductSalesInfo|undefined)=>{
+   const metric=productMetrics(p,extra);
+   if(key==='product')return <td key={key}><div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{p.name}</strong><small>{p.category||'Sin categoría'} · por {p.unit}</small></div></div></td>;
+   if(key==='sku')return <td key={key}><span className="mono">{p.sku||'—'}</span>{extra?.ean&&<div className="muted mono">{extra.ean}</div>}</td>;
+   if(key==='supplier')return <td key={key}>{p.supplier&&p.supplier!=='—'?p.supplier:<span className="muted">Sin proveedor</span>}</td>;
+   if(key==='lastPurchase')return <td key={key}>{dateLabel(p.lastPurchaseDate)}</td>;
+   if(key==='cost')return <td key={key} className="right"><strong>{metric.cost==null?'—':costMoney(metric.cost)}</strong></td>;
+   if(key==='salePrice')return <td key={key} className="right"><strong>{money(metric.sale)}</strong></td>;
+   if(key==='margin')return <td key={key} className="right">{metric.margin==null?<span className="muted">—</span>:<><strong className={metric.marginPct!=null&&metric.marginPct<marginAlertThreshold?'warnText':undefined}>{money(metric.margin)}</strong>{metric.marginPct!=null&&<div className={metric.marginPct<settings.products.minimumMarginPct?'warnText':'muted'}>{metric.marginPct.toFixed(1)} %</div>}</>}</td>;
+   if(key==='costChange')return <td key={key} className="right">{metric.delta==null?<span className="muted">Sin histórico</span>:<span className={metric.delta>=costIncreaseThreshold?'delta up':metric.delta>0?'delta up':'delta down'}>{metric.delta>0?<TrendingUp size={15}/>:<TrendingDown size={15}/>} {metric.delta>0?'+':''}{metric.delta.toFixed(1)}%</span>}</td>;
+   return null;
+ };
  return (
     <div className="page masterPage">
       <div className="pageHead">
@@ -217,18 +244,11 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
 
       <section className="card tableCard masterTableCard">
         {shown.length?(
-          <table className="masterTable" data-preference-table="products" data-hidden-columns={hiddenColumns}>
-            <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allShownSelected} onChange={toggleAllProducts} label={allShownSelected?'Deseleccionar productos visibles':'Seleccionar productos visibles'}/></th><th>Producto</th><th>SKU / EAN</th><th>Proveedor</th><th>Última compra</th><th className="right">Coste</th><th className="right">P. venta</th><th className="right">Margen</th><th className="right">Var. coste</th><th></th></tr></thead>
-            <tbody>{paged.map(p=>{const extra=salesMap.get(p.id);const metric=productMetrics(p,extra);return <tr key={p.id} className={`clickableRow ${checkedIds.has(p.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(p)}>
+          <table className="masterTable" data-preference-table="products">
+            <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allShownSelected} onChange={toggleAllProducts} label={allShownSelected?'Deseleccionar productos visibles':'Seleccionar productos visibles'}/></th>{columns.map(columnHeader)}<th></th></tr></thead>
+            <tbody>{paged.map(p=>{const extra=salesMap.get(p.id);return <tr key={p.id} className={`clickableRow ${checkedIds.has(p.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(p)}>
                 <td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(p.id)} onChange={checked=>toggleProduct(p.id,checked)} label={`Seleccionar ${p.name}`}/></td>
-                <td><div className="masterEntityCell"><div className="masterAvatar"><Package size={17}/></div><div><strong>{p.name}</strong><small>{p.category||'Sin categoría'} · por {p.unit}</small></div></div></td>
-                <td><span className="mono">{p.sku||'—'}</span>{extra?.ean&&<div className="muted mono">{extra.ean}</div>}</td>
-                <td>{p.supplier&&p.supplier!=='—'?p.supplier:<span className="muted">Sin proveedor</span>}</td>
-                <td>{dateLabel(p.lastPurchaseDate)}</td>
-                <td className="right"><strong>{metric.cost==null?'—':costMoney(metric.cost)}</strong></td>
-                <td className="right"><strong>{money(metric.sale)}</strong></td>
-                <td className="right">{metric.margin==null?<span className="muted">—</span>:<><strong className={metric.marginPct!=null&&metric.marginPct<marginAlertThreshold?'warnText':undefined}>{money(metric.margin)}</strong>{metric.marginPct!=null&&<div className={metric.marginPct<settings.products.minimumMarginPct?'warnText':'muted'}>{metric.marginPct.toFixed(1)} %</div>}</>}</td>
-                <td className="right">{metric.delta==null?<span className="muted">Sin histórico</span>:<span className={metric.delta>=costIncreaseThreshold?'delta up':metric.delta>0?'delta up':'delta down'}>{metric.delta>0?<TrendingUp size={15}/>:<TrendingDown size={15}/>} {metric.delta>0?'+':''}{metric.delta.toFixed(1)}%</span>}</td>
+                {columns.map(key=>columnCell(key,p,extra))}
                 <td className="right"><ChevronRight size={17}/></td>
               </tr>})}</tbody>
           </table>
