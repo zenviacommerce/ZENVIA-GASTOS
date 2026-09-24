@@ -127,10 +127,16 @@ export function normalizeAutomationRule<K extends AutomationRuleKey>(
 }
 
 async function workspaceOwnerId(){
-  const {data,error}=await supabase.from('app_settings').select('owner_id').limit(1).maybeSingle();
-  if(error)throw error;
-  if(!data?.owner_id)throw new Error('No se pudo resolver el workspace de Configuración.');
-  return String(data.owner_id);
+  const {data:{user},error:userError}=await supabase.auth.getUser();
+  if(userError)throw userError;
+  if(!user)throw new Error('No hay una sesión activa.');
+  const {data:profile,error:profileError}=await supabase
+    .from('app_users')
+    .select('data_owner_id')
+    .eq('user_id',user.id)
+    .maybeSingle();
+  if(profileError)throw profileError;
+  return String(profile?.data_owner_id||user.id);
 }
 
 export async function loadAutomationRules():Promise<{
