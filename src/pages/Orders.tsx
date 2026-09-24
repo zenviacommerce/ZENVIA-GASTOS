@@ -205,11 +205,11 @@ function ManualOrderModal({status,saving,defaultCountryCode,fallbackWeightKg,wei
 export function Orders(){
   const {settings,preferences,updatePreferences}=useSettings();
   const remembered=rememberedFilter<{
-    query:string;channel:'all'|OrderChannel;state:OrderFilter;trackingFilter:TrackingFilter;countryFilter:string;carrierFilter:string;dateFilter:ReturnType<typeof defaultDateFilter>;
-  }>(preferences,'orders.filters',{query:'',channel:'all',state:'pending',trackingFilter:'all',countryFilter:'all',carrierFilter:'all',dateFilter:defaultDateFilter(preferences.defaultPeriod)});
+    query:string;state:OrderFilter;trackingFilter:TrackingFilter;countryFilter:string;carrierFilter:string;dateFilter:ReturnType<typeof defaultDateFilter>;
+  }>(preferences,'orders.filters',{query:'',state:'pending',trackingFilter:'all',countryFilter:'all',carrierFilter:'all',dateFilter:defaultDateFilter(preferences.defaultPeriod)});
   const [orders,setOrders]=useState<FulfillmentOrder[]>([]),[status,setStatus]=useState<SendcloudStatus|null>(null);
   const [loading,setLoading]=useState(true),[syncing,setSyncing]=useState(false),[error,setError]=useState('');
-  const [query,setQuery]=useState(remembered.query),[channel,setChannel]=useState<'all'|OrderChannel>(remembered.channel),[state,setState]=useState<OrderFilter>(remembered.state),[trackingFilter,setTrackingFilter]=useState<TrackingFilter>(remembered.trackingFilter),[countryFilter,setCountryFilter]=useState(remembered.countryFilter),[carrierFilter,setCarrierFilter]=useState(remembered.carrierFilter);
+  const [query,setQuery]=useState(remembered.query),[channel,setChannel]=useState<'all'|OrderChannel>('all'),[state,setState]=useState<OrderFilter>(remembered.state),[trackingFilter,setTrackingFilter]=useState<TrackingFilter>(remembered.trackingFilter),[countryFilter,setCountryFilter]=useState(remembered.countryFilter),[carrierFilter,setCarrierFilter]=useState(remembered.carrierFilter);
   const [selected,setSelected]=useState<FulfillmentOrder|null>(null),[labelOrder,setLabelOrder]=useState<FulfillmentOrder|null>(null),[options,setOptions]=useState<ShippingOption[]>([]),[optionsLoading,setOptionsLoading]=useState(false),[busyOrder,setBusyOrder]=useState<string|null>(null);
   const [printers,setPrinters]=useState<LocalPrinter[]>([]),[printer,setPrinter]=useState(preferences.labelPrinterId||''),[printerChecking,setPrinterChecking]=useState(false);
   const [dateFilter,setDateFilter]=useState(remembered.dateFilter);
@@ -222,10 +222,10 @@ export function Orders(){
   const [amazonImages,setAmazonImages]=useState<Record<string,string>>({});
   useEffect(()=>{setPrinter(preferences.labelPrinterId||'')},[preferences.labelPrinterId]);
   useEffect(()=>{
-    const value={query,channel,state,trackingFilter,countryFilter,carrierFilter,dateFilter};
+    const value={query,state,trackingFilter,countryFilter,carrierFilter,dateFilter};
     const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'orders.filters',value)},350);
     return()=>window.clearTimeout(timer);
-  },[query,channel,state,trackingFilter,countryFilter,carrierFilter,dateFilter,preferences.rememberFilters]);
+  },[query,state,trackingFilter,countryFilter,carrierFilter,dateFilter,preferences.rememberFilters]);
   const [shippingRules,setShippingRules]=useState<ShippingRule[]>(()=>defaultShippingRules());
 
   const refresh=useCallback(async()=>{try{setOrders(await listFulfillmentOrders())}catch(e){setError(errorMessage(e,'No se pudieron cargar los pedidos.'))}},[]);
