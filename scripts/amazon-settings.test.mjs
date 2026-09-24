@@ -50,7 +50,9 @@ test('automatic Amazon orchestration honors settings server-side but manual sync
   assert.match(orchestrator,/loadAmazonAutomaticSyncSettings/);
   assert.match(orchestrator,/enabledSources/);
   assert.match(manual,/enqueueHourlySync/);
-  assert.doesNotMatch(manual,/loadAmazonAutomaticSyncSettings/);
+  assert.match(manual,/loadAmazonAutomaticSyncSettings/);
+  assert.match(helper,/enabledSources,/);
+  assert.doesNotMatch(helper,/enabledSources:automaticEnabled\?enabledSources:\[\]/);
 });
 
 test('Amazon settings editor exposes marketplaces, analytics fallbacks and automatic sync controls',async()=>{
@@ -86,7 +88,9 @@ test('automatic image sync is controlled by settings and scoped to the workspace
   const orchestrator=await read('supabase/functions/amazon-sync-orchestrator/index.ts');
   const images=await read('supabase/functions/amazon-sync-product-images/index.ts');
   assert.match(orchestrator,/automaticSettings\.autoSyncImages/);
-  assert.match(orchestrator,/ownerId,limit:10/);
+  assert.match(orchestrator,/ownerId,amazonAccountId,limit:10/);
   assert.match(images,/const ownerId=String\(body\?\.ownerId/);
+  assert.match(images,/const amazonAccountId=String\(body\?\.amazonAccountId/);
   assert.match(images,/accountQuery=accountQuery\.eq\('owner_id',ownerId\)/);
+  assert.match(images,/accountQuery=accountQuery\.eq\('id',amazonAccountId\)/);
 });
