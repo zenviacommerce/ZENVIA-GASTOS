@@ -89,3 +89,38 @@ test('configurable data tables consume visible columns in saved order',async()=>
     assert.match(source,/columns\.map/);
   }
 });
+
+
+test('remembered filters persist as a partial patch and cannot overwrite theme or other preferences',async()=>{
+  const {persistRememberedFilter}=await transpiled('../src/services/uiPreferences.ts');
+  const preferences={
+    theme:'light',density:'spacious',pageSize:50,startPage:'sales',defaultPeriod:'current_month',
+    rememberFilters:true,tableColumns:{clients:['client']},tableColumnOrder:{clients:['client']},
+    dashboardKpis:['sales'],filters:{},labelPrinterId:'printer-1',
+  };
+  let patch=null;
+  const changed=await persistRememberedFilter(preferences,async value=>{patch=value},'clients.filters',{query:'abc'});
+  assert.equal(changed,true);
+  assert.deepEqual(patch,{filters:{'clients.filters':{query:'abc'}}});
+  assert.equal(Object.prototype.hasOwnProperty.call(patch,'theme'),false);
+  assert.equal(Object.prototype.hasOwnProperty.call(patch,'density'),false);
+  assert.equal(Object.prototype.hasOwnProperty.call(patch,'pageSize'),false);
+});
+
+test('automatic preference writers use patchPreferences instead of stale full preference snapshots',async()=>{
+  const app=await readFile(new URL('../src/App.tsx',import.meta.url),'utf8');
+  const orders=await readFile(new URL('../src/pages/Orders.tsx',import.meta.url),'utf8');
+  const dashboard=await readFile(new URL('../src/pages/Dashboard.tsx',import.meta.url),'utf8');
+  assert.match(app,/patchPreferences\(\{theme:next\}\)/);
+  assert.doesNotMatch(app,/updatePreferences\(\{\.\.\.preferences,theme:/);
+  assert.match(orders,/patchPreferences\(\{labelPrinterId:/);
+  assert.doesNotMatch(orders,/updatePreferences\(\{\.\.\.preferences,labelPrinterId:/);
+  assert.match(dashboard,/persistRememberedFilter\(preferences,patchPreferences/);
+});
+
+test('preference patch service reloads the persisted row and merges nested filter maps',async()=>{
+  const source=await readFile(new URL('../src/services/settings.ts',import.meta.url),'utf8');
+  assert.match(source,/export async function patchUserPreferences/);
+  assert.match(source,/const current=await loadUserPreferences\(\)/);
+  assert.match(source,/filters:patch\.filters\?\{\.\.\.current\.filters,\.\.\.patch\.filters\}:current\.filters/);
+});
