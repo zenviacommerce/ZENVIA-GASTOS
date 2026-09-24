@@ -1,4 +1,4 @@
-export type ToastKind = 'success' | 'error';
+export type ToastKind = 'success' | 'error' | 'info';
 export const TOAST_EVENT = 'zenvia-gastos-toast';
 
 export interface ToastPayload {
@@ -17,6 +17,10 @@ export function showSuccess(message: string, duration = 3800) {
 
 export function showError(message: string, duration = 9000) {
   emit({ kind: 'error', message, duration });
+}
+
+export function showInfo(message: string, duration = 6500) {
+  emit({ kind: 'info', message, duration });
 }
 
 export function errorMessage(error: unknown, fallback = 'Se ha producido un error.') {
