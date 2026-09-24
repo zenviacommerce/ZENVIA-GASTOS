@@ -61,3 +61,14 @@ test('client supplier and product masters use the configured locale and currency
   assert.doesNotMatch(productModal,/Coste actual \(€/);
   assert.doesNotMatch(productModal,/Precio de venta \(€/);
 });
+
+
+test('General exposes the company default start page used by personal fallback',async()=>{
+  const settingsPage=await read('../src/pages/Settings.tsx');
+  const app=await read('../src/App.tsx');
+  assert.match(settingsPage,/Página inicial predeterminada/);
+  assert.match(settingsPage,/updateGeneral\('startPage'/);
+  assert.match(settingsPage,/companyStartPageOptions/);
+  assert.match(settingsPage,/Usar valor de empresa/);
+  assert.match(app,/effectiveStartPage\(preferences\.startPage,settings\.general\.startPage,allowedPages\)/);
+});
