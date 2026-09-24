@@ -55,7 +55,7 @@ test('Spanish national and +34 phone formats pass preflight',async()=>{
 
 test('MRW final-carrier preflight requires a usable telephone',async()=>{
   const {validateOrderForCarrier}=await loadShipping();
-  const result=validateOrderForCarrier(order({customerPhone:''}),'mrw');
+  const result=validateOrderForCarrier(order({customerPhone:'',shippingAddress:{...order().shippingAddress,phone_number:''}}),'mrw');
   assert.equal(result.blocking,true);
   assert.match(result.issues.find(item=>item.field==='phone')?.message||'',/obligatorio/);
 });
