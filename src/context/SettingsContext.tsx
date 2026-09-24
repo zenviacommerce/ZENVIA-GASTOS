@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from '../services/supabase';
 import {
   loadAppSettings,
@@ -6,6 +6,8 @@ import {
   resetSettingsSection,
   saveSettingsSection,
   saveUserPreferences,
+  patchUserPreferences,
+  type UserPreferencesPatch,
 } from '../services/settings';
 import {
   DEFAULT_APP_SETTINGS,
@@ -26,6 +28,7 @@ type SettingsContextValue = {
   updateSection: <K extends SettingsSection>(section: K, value: AppSettings[K]) => Promise<void>;
   resetSection: <K extends SettingsSection>(section: K) => Promise<void>;
   updatePreferences: (value: UserPreferences) => Promise<void>;
+  patchPreferences: (patch: UserPreferencesPatch) => Promise<void>;
 };
 
 const clone=<T,>(value:T):T=>JSON.parse(JSON.stringify(value)) as T;
@@ -40,6 +43,7 @@ export function SettingsProvider({children,userId}:{children:ReactNode;userId?:s
   const [warnings,setWarnings]=useState<SettingsWarning[]>([]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState<string|null>(null);
+  const preferenceWriteQueue=useRef<Promise<void>>(Promise.resolve());
 
   useEffect(()=>{
     if(userId!==undefined)return;
@@ -108,8 +112,7 @@ export function SettingsProvider({children,userId}:{children:ReactNode;userId?:s
     setWarnings(loaded.warnings);
   },[]);
 
-  const updatePreferences=useCallback(async(value:UserPreferences)=>{
-    const loaded=await saveUserPreferences(value);
+  const applyLoadedPreferences=useCallback((loaded:Awaited<ReturnType<typeof saveUserPreferences>>)=>{
     setPreferences(loaded.preferences);
     setWarnings(current=>[
       ...current.filter(item=>!item.path.startsWith('preferences')),
@@ -117,9 +120,24 @@ export function SettingsProvider({children,userId}:{children:ReactNode;userId?:s
     ]);
   },[]);
 
+  const enqueuePreferenceWrite=useCallback(async(work:()=>ReturnType<typeof saveUserPreferences>)=>{
+    const run=preferenceWriteQueue.current.then(work,work);
+    preferenceWriteQueue.current=run.then(()=>undefined,()=>undefined);
+    const loaded=await run;
+    applyLoadedPreferences(loaded);
+  },[applyLoadedPreferences]);
+
+  const updatePreferences=useCallback(async(value:UserPreferences)=>{
+    await enqueuePreferenceWrite(()=>saveUserPreferences(value));
+  },[enqueuePreferenceWrite]);
+
+  const patchPreferences=useCallback(async(patch:UserPreferencesPatch)=>{
+    await enqueuePreferenceWrite(()=>patchUserPreferences(patch));
+  },[enqueuePreferenceWrite]);
+
   const value=useMemo<SettingsContextValue>(()=>({
-    settings,preferences,warnings,loading,error,refresh,updateSection,resetSection,updatePreferences,
-  }),[settings,preferences,warnings,loading,error,refresh,updateSection,resetSection,updatePreferences]);
+    settings,preferences,warnings,loading,error,refresh,updateSection,resetSection,updatePreferences,patchPreferences,
+  }),[settings,preferences,warnings,loading,error,refresh,updateSection,resetSection,updatePreferences,patchPreferences]);
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
