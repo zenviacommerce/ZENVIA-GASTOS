@@ -11,7 +11,7 @@ import { defaultInvoiceFilter, filterInvoices, periodLabel, safeExportLabel } fr
 import { errorMessage, showError, showSuccess } from '../services/toast';
 import { confirmAction, openActionProcess } from '../services/actionDialog';
 import { useSettings } from '../context/SettingsContext';
-import { hiddenTableColumns, persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
+import { orderedTableColumns, persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
 import { formatAppDate, formatAppMoney } from '../services/formatting';
 
 
@@ -19,7 +19,7 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
  const {settings,preferences,updatePreferences}=useSettings();
  const money=(value:number)=>formatAppMoney(value,settings.general.currencyCode,settings.general,{minimumFractionDigits:2,maximumFractionDigits:2});
  const pageSize=preferences.pageSize;
- const hiddenColumns=hiddenTableColumns(preferences,'expenses');
+ const columns=orderedTableColumns(preferences,'expenses');
  const remembered=rememberedFilter<{query:string;filter:ReturnType<typeof defaultInvoiceFilter>}>(preferences,'expenses.filters',{query:'',filter:defaultInvoiceFilter(preferences.defaultPeriod)});
  const [query,setQuery]=useState(remembered.query); const [exporting,setExporting]=useState(false);
  const [filter,setFilter]=useState(remembered.filter);
@@ -89,6 +89,28 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
    setBusyId(invoice.id);
    try{await onCategoryChange(invoice.id,categoryId);const category=categories.find(c=>c.id===categoryId);if(category)setSelected(current=>current?.id===invoice.id?{...current,categoryId,category:category.name}:current);showSuccess('Categoría de la factura actualizada correctamente.')}catch(e){throw e instanceof Error?e:new Error('No se pudo cambiar la categoría de la factura.')}finally{setBusyId(null)}
  };
+ const columnHeader=(key:string)=>{
+   if(key==='date')return <th key={key}>Fecha</th>;
+   if(key==='supplier')return <th key={key}>Proveedor</th>;
+   if(key==='invoice')return <th key={key}>Factura</th>;
+   if(key==='category')return <th key={key}>Categoría</th>;
+   if(key==='source')return <th key={key}>Origen</th>;
+   if(key==='status')return <th key={key}>Estado</th>;
+   if(key==='vat')return <th key={key} className="right">IVA</th>;
+   if(key==='total')return <th key={key} className="right">Total</th>;
+   return null;
+ };
+ const columnCell=(key:string,i:Invoice)=>{
+   if(key==='date')return <td key={key}>{formatAppDate(i.invoiceDate,settings.general)}</td>;
+   if(key==='supplier')return <td key={key}><strong>{i.supplierName}</strong></td>;
+   if(key==='invoice')return <td key={key}>{i.invoiceNumber}</td>;
+   if(key==='category')return <td key={key}><span className="tag">{i.category}</span></td>;
+   if(key==='source')return <td key={key}>{i.source==='camera'?<><Camera size={14}/> Cámara</>:i.source==='manual'?<><FileUp size={14}/> Archivo</>:'Gmail'}</td>;
+   if(key==='status')return <td key={key}><div className="statusActions" onClick={e=>e.stopPropagation()}><button title="Pendiente" className={i.status==='pending'?'statusBtn active warnBtn':'statusBtn'} onClick={()=>void changeStatus(i.id,'pending')}>P</button><button title="Revisada" className={i.status==='reviewed'?'statusBtn active okBtn':'statusBtn'} onClick={()=>void changeStatus(i.id,'reviewed')}><CheckCircle2 size={13}/></button><button title="Contabilizada" className={i.status==='accounted'?'statusBtn active accountBtn':'statusBtn'} onClick={()=>void changeStatus(i.id,'accounted')}><CircleDollarSign size={13}/></button></div></td>;
+   if(key==='vat')return <td key={key} className="right">{money(i.vat)}</td>;
+   if(key==='total')return <td key={key} className="right"><strong>{money(i.total)}</strong></td>;
+   return null;
+ };
  return <div className="page"><div className="pageHead"><div><div className="eyebrow">DOCUMENTACIÓN · {periodLabel(filter)}</div><h1>Facturas de gastos</h1><p>Consulta el histórico completo, filtra y exporta cualquier periodo.</p></div><div className="actions"><button className="secondary" onClick={doExport} disabled={exporting||!exportRows.length}><Download size={17}/> {exporting?'Preparando…':selectedRows.length?`Exportar seleccionadas (${selectedRows.length})`:`Exportar (${filtered.length})`}</button><button className="secondary" onClick={onBulkUpload}><Files size={17}/> Importar facturas</button><button className="primary" onClick={onUpload}>+ Nueva factura</button></div></div>
  <InvoiceFilters filter={filter} onChange={setFilter} invoices={invoices} suppliers={suppliers} categories={categories}/>
  <div className="stats expenseStats"><StatCard label="Gasto total" value={money(expenseTotal)} sub={selectionLabel} icon={<Euro/>}/><StatCard label="IVA soportado" value={money(vatTotal)} sub={selectionLabel} icon={<BadgeEuro/>}/><StatCard label="Nº de facturas" value={String(invoiceCount)} sub={selectionLabel} icon={<ReceiptText/>}/><StatCard label="Pendientes de revisar" value={String(pendingReview)} sub={pendingReview?`${pendingReview} pendiente${pendingReview===1?'':'s'}`:'Todo revisado'} icon={<Clock3/>}/><StatCard label="Ticket medio" value={money(averageTicket)} sub="Media por factura" icon={<Calculator/>}/><StatCard label="Proveedores distintos" value={String(supplierCount)} sub={selectionLabel} icon={<Building2/>}/></div>
@@ -97,7 +119,7 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
    <button className="secondary dangerText" type="button" disabled={!selectedRows.length||bulkDeleting||exporting} onClick={()=>void removeSelected()}><Trash2 size={15}/> {bulkDeleting?'Eliminando…':`Eliminar seleccionados (${selectedRows.length})`}</button>
    <button className="primary" type="button" disabled={!selectedRows.length||exporting||bulkDeleting} onClick={doExport}><Download size={15}/> Exportar seleccionados ({selectedRows.length})</button>
  </BulkSelectionToolbar>}
- <section className="card tableCard">{filtered.length?<><table data-preference-table="expenses" data-hidden-columns={hiddenColumns}><thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllFiltered} label={allFilteredSelected?'Deseleccionar gastos visibles':'Seleccionar gastos visibles'}/></th><th>Fecha</th><th>Proveedor</th><th>Factura</th><th>Categoría</th><th>Origen</th><th>Estado</th><th className="right">IVA</th><th className="right">Total</th><th className="right">Acciones</th></tr></thead><tbody>{paged.map(i=><tr key={i.id} className={`clickableRow ${checkedIds.has(i.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(i)}><td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(i.id)} onChange={checked=>toggleChecked(i.id,checked)} label={`Seleccionar gasto ${i.invoiceNumber==='—'?i.supplierName:i.invoiceNumber}`}/></td><td>{formatAppDate(i.invoiceDate,settings.general)}</td><td><strong>{i.supplierName}</strong></td><td>{i.invoiceNumber}</td><td><span className="tag">{i.category}</span></td><td>{i.source==='camera'?<><Camera size={14}/> Cámara</>:i.source==='manual'?<><FileUp size={14}/> Archivo</>:'Gmail'}</td><td><div className="statusActions" onClick={e=>e.stopPropagation()}><button title="Pendiente" className={i.status==='pending'?'statusBtn active warnBtn':'statusBtn'} onClick={()=>void changeStatus(i.id,'pending')}>P</button><button title="Revisada" className={i.status==='reviewed'?'statusBtn active okBtn':'statusBtn'} onClick={()=>void changeStatus(i.id,'reviewed')}><CheckCircle2 size={13}/></button><button title="Contabilizada" className={i.status==='accounted'?'statusBtn active accountBtn':'statusBtn'} onClick={()=>void changeStatus(i.id,'accounted')}><CircleDollarSign size={13}/></button></div></td><td className="right">{money(i.vat)}</td><td className="right"><strong>{money(i.total)}</strong></td><td className="right"><div className="invoiceActions" onClick={e=>e.stopPropagation()}><button className="iconBtn" title="Abrir factura" disabled={!i.filePath} onClick={()=>openFile(i)}><Eye size={16}/></button><button className="iconBtn dangerIcon" title="Eliminar factura" disabled={busyId===i.id} onClick={()=>remove(i)}><Trash2 size={16}/></button></div></td></tr>)}</tbody></table><Pagination page={page} totalItems={filtered.length} pageSize={pageSize} onPageChange={setPage}/></>:<div className="emptyState large">No hay facturas para los filtros seleccionados.</div>}</section>
+ <section className="card tableCard">{filtered.length?<><table data-preference-table="expenses"><thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllFiltered} label={allFilteredSelected?'Deseleccionar gastos visibles':'Seleccionar gastos visibles'}/></th>{columns.map(columnHeader)}<th className="right">Acciones</th></tr></thead><tbody>{paged.map(i=><tr key={i.id} className={`clickableRow ${checkedIds.has(i.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(i)}><td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(i.id)} onChange={checked=>toggleChecked(i.id,checked)} label={`Seleccionar gasto ${i.invoiceNumber==='—'?i.supplierName:i.invoiceNumber}`}/></td>{columns.map(key=>columnCell(key,i))}<td className="right"><div className="invoiceActions" onClick={e=>e.stopPropagation()}><button className="iconBtn" title="Abrir factura" disabled={!i.filePath} onClick={()=>openFile(i)}><Eye size={16}/></button><button className="iconBtn dangerIcon" title="Eliminar factura" disabled={busyId===i.id} onClick={()=>remove(i)}><Trash2 size={16}/></button></div></td></tr>)}</tbody></table><Pagination page={page} totalItems={filtered.length} pageSize={pageSize} onPageChange={setPage}/></>:<div className="emptyState large">No hay facturas para los filtros seleccionados.</div>}</section>
  <InvoiceDetailModal invoice={selected} suppliers={suppliers} categories={categories} onClose={()=>setSelected(null)} onOpenFile={openFile} onDelete={remove} onSupplierChange={changeSupplier} onCategoryChange={changeCategory} deleting={busyId===selected?.id}/>
  </div>
 }
