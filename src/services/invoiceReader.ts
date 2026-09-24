@@ -46,15 +46,25 @@ function lastMoney(line: string): number {
   return parseMoney(values.at(-1));
 }
 
+function validCalendarDate(year:number,month:number,day:number){
+  if(year<2000||year>2100||month<1||month>12||day<1||day>31)return false;
+  const date=new Date(Date.UTC(year,month-1,day));
+  return date.getUTCFullYear()===year&&date.getUTCMonth()===month-1&&date.getUTCDate()===day;
+}
+
 function parseDate(value: string): string {
-  const iso = value.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
-  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
-  const es = value.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2}|\d{2})\b/);
+  // Los PDF/OCR separan a menudo los componentes con espacios: "24 / 09 / 2026".
+  const iso = value.match(/\b(20\d{2})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})\b/);
+  if (iso) {
+    const year=Number(iso[1]),month=Number(iso[2]),day=Number(iso[3]);
+    if(validCalendarDate(year,month,day))return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+  }
+  const es = value.match(/\b(\d{1,2})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(20\d{2}|\d{2})\b/);
   if (!es) return '';
-  const year = es[3].length === 2 ? `20${es[3]}` : es[3];
+  const year = Number(es[3].length === 2 ? `20${es[3]}` : es[3]);
   const day = Number(es[1]);
   const month = Number(es[2]);
-  if (day < 1 || day > 31 || month < 1 || month > 12) return '';
+  if (!validCalendarDate(year,month,day)) return '';
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
