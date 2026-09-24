@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const read=path=>readFile(new URL(path,import.meta.url),'utf8');
@@ -39,4 +41,10 @@ test('label size flows from Orders to the local printer driver',async()=>{
   assert.match(page,/ordersQuickLabelFormat/);
   assert.match(page,/value:'AUTO',label:'Original'/);
   assert.match(page,/value:'A5',label:'A5'/);
+});
+
+
+test('Print Agent server has valid Node syntax',()=>{
+  const server=fileURLToPath(new URL('../tools/print-agent/server.mjs',import.meta.url));
+  execFileSync(process.execPath,['--check',server],{stdio:'pipe'});
 });
