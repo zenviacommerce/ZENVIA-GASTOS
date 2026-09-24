@@ -30,6 +30,20 @@ export function isNonProductInvoiceLine(value:string){
   return false;
 }
 
+export function isLikelyProductDescription(value:string){
+  const line=cleanInvoiceProductDescription(value);
+  if(!line||line.length<3||isNonProductInvoiceLine(line))return false;
+  const letters=(line.match(/[A-Za-zÁÉÍÓÚÑÜáéíóúñü]/g)||[]).length;
+  const digits=(line.match(/\d/g)||[]).length;
+  const moneyLike=(line.match(/-?\d+(?:[.,]\d+)?/g)||[]).length;
+  // Column-based PDF extraction can collapse an entire numeric column into the
+  // description field. Do not persist those values as products.
+  if(letters<3)return false;
+  if(moneyLike>=3&&letters<Math.max(5,Math.round(digits*.45)))return false;
+  if(/^(?:m[aá]laga|granada|c[aá]diz|sevilla|euros?|un|ud|uds?)$/i.test(line))return false;
+  return true;
+}
+
 export type InclusiveTaxSummary={taxRate:number;subtotal:number;vat:number;total:number};
 
 export function extractInclusiveTaxSummary(text:string):InclusiveTaxSummary|null{
@@ -137,7 +151,7 @@ export function repairInvoiceProductLines(text:string,lines:RepairableInvoiceLin
       : lines
         .filter(line=>!isNonProductInvoiceLine(line.description))
         .map(line=>({...line,description:cleanInvoiceProductDescription(line.description)}))
-        .filter(line=>line.description.length>=3)
+        .filter(line=>isLikelyProductDescription(line.description))
         .slice(0,50);
   return inclusiveSummary?repaired.map(line=>normalizeInclusiveLine(line,inclusiveSummary)):repaired;
 }

@@ -140,7 +140,7 @@ export async function loadUserPreferences():Promise<LoadedUserPreferences>{
   if(error)throw error;
   if(!data){
     const preferences=clone(DEFAULT_USER_PREFERENCES);
-    const legacyTheme=safeStorageGet('local','zenvia-gestion-theme')||safeStorageGet('local','zenvia-gastos-theme');
+    const legacyTheme=safeStorageGet('local','zenvia-gestion-theme');
     const legacyPrinter=safeStorageGet('local','zenvia-label-printer');
     let migrated=false;
     if(legacyTheme==='dark'||legacyTheme==='light'){preferences.theme=legacyTheme;migrated=true;}

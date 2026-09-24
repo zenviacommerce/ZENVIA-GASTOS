@@ -109,3 +109,17 @@ test('product list leaves complete-name hover handling to the global truncated-t
   assert.match(source, /<strong>\{p\.name\}<\/strong>/);
   assert.doesNotMatch(source, /title=\{p\.name\}/);
 });
+
+
+test('rejects collapsed numeric columns as product descriptions',async()=>{
+  const {isLikelyProductDescription,repairInvoiceProductLines}=await loadModule();
+  assert.equal(isLikelyProductDescription('19,73 10,69 16,91 16,54 20,06 18,72'),false);
+  assert.equal(isLikelyProductDescription('Málaga'),false);
+  assert.equal(isLikelyProductDescription('MANTEL ROLLO 1,20X7 MT. ROJO C/25 R-0985'),true);
+  const repaired=repairInvoiceProductLines('FACTURA VENTA',[
+    {description:'19,73 10,69 16,91 16,54',quantity:1},
+    {description:'Málaga',quantity:1},
+    {description:'MANTEL ROLLO 1,20X7 MT. ROJO C/25 R-0985',quantity:1},
+  ]);
+  assert.deepEqual(repaired.map(line=>line.description),['MANTEL ROLLO 1,20X7 MT. ROJO C/25 R-0985']);
+});

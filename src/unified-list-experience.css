@@ -176,3 +176,47 @@ html[data-theme='dark'] .zenviaRowAction.danger:hover{background:#3f171b;border-
   .zenviaDetailDrawer .detailActions{grid-template-columns:1fr}
   .zenviaMobileAction{flex:1}
 }
+
+
+/* Shared side-drawer behavior across expenses, sales, master data and orders.
+   The drawer owns vertical scrolling; the page behind it stays fixed. */
+html.zenviaSideDrawerOpen,
+body.zenviaSideDrawerOpen{
+  overflow:hidden!important;
+  overscroll-behavior:none!important;
+}
+
+:where(.zenviaDetailDrawerBackdrop,.masterDrawerBackdrop,.ordersDrawerBackdrop){
+  overflow:hidden!important;
+  overscroll-behavior:contain!important;
+}
+
+:where(.zenviaDetailDrawer,.masterDrawer,.ordersDrawer){
+  height:100dvh!important;
+  max-height:100dvh!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain!important;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-gutter:stable;
+  touch-action:pan-y;
+}
+
+:where(.zenviaDetailDrawer>.modalHead,.masterDrawerHead,.ordersDrawerHead){
+  position:sticky!important;
+  top:0!important;
+  z-index:6!important;
+}
+
+:where(.zenviaDetailDrawer>.modalActions,.masterDrawerActions,.ordersDrawerActions){
+  position:sticky!important;
+  bottom:0!important;
+  z-index:6!important;
+}
+
+@media(max-width:760px){
+  :where(.zenviaDetailDrawer,.masterDrawer,.ordersDrawer){
+    height:100dvh!important;
+    max-height:100dvh!important;
+  }
+}

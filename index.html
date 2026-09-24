@@ -8,7 +8,7 @@
       (function(){
         try{
           var preference=localStorage.getItem('zenvia-gestion-theme-preference');
-          var resolved=localStorage.getItem('zenvia-gestion-theme')||localStorage.getItem('zenvia-gastos-theme');
+          var resolved=localStorage.getItem('zenvia-gestion-theme');
           var dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
           var theme=preference==='light'||preference==='dark'
             ?preference

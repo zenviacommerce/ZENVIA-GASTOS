@@ -1,4 +1,4 @@
-name: Build ZENVIA Gastos
+name: Build ZENVIA Gestión
 
 on:
   push:
