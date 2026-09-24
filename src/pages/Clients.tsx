@@ -13,7 +13,8 @@ import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
 import { StatCard } from '../components/StatCard';
 import { defaultDateFilter, periodLabel } from '../services/filters';
 import { useSettings } from '../context/SettingsContext';
-import { hiddenTableColumns, persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
+import { orderedTableColumns, persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
+import { formatAppDate, formatAppMoney } from '../services/formatting';
 import '../sales.css';
 
 const emptyClient = (settings:{defaultCountryCode:string;defaultPaymentTermsDays:number;defaultVatRate:number;defaultPaymentMethod:string}): ClientInput => ({
@@ -21,8 +22,6 @@ const emptyClient = (settings:{defaultCountryCode:string;defaultPaymentTermsDays
   countryCode:settings.defaultCountryCode,paymentTermsDays:settings.defaultPaymentTermsDays,
   defaultVatRate:settings.defaultVatRate,defaultPaymentMethod:settings.defaultPaymentMethod,notes:'',
 });
-const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
-const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
 const regionNames=typeof Intl!=='undefined'&&'DisplayNames' in Intl?new Intl.DisplayNames(['es'],{type:'region'}):null;
 const countryName=(code:string)=>regionNames?.of(code)||code;
 type ClientBalanceFilter='all'|'pending'|'settled'|'active'|'inactive';
@@ -106,6 +105,9 @@ function ClientModal({open,client,onClose,onSaved}:{open:boolean;client:Client|n
 }
 
 function ClientDrawer({client,metric,period,onClose,onEdit,onDelete,busy}:{client:Client;metric:ClientMetric;period:string;onClose:()=>void;onEdit:()=>void;onDelete:()=>void;busy:boolean}){
+  const {settings}=useSettings();
+  const money=(value:number)=>formatAppMoney(value,settings.general.currencyCode,settings.general,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const dateLabel=(value?:string|null)=>formatAppDate(value,settings.general,'—');
   const address=[client.addressLine1,client.addressLine2,[client.postalCode,client.city].filter(Boolean).join(' '),client.province,client.countryCode].filter(Boolean).join(', ');
   return <div className="masterDrawerBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}>
     <aside className="masterDrawer">
@@ -129,9 +131,11 @@ function ClientDrawer({client,metric,period,onClose,onEdit,onDelete,busy}:{clien
 }
 
 export function Clients(){
-  const {preferences,updatePreferences}=useSettings();
+  const {settings,preferences,updatePreferences}=useSettings();
+  const money=(value:number)=>formatAppMoney(value,settings.general.currencyCode,settings.general,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const dateLabel=(value?:string|null)=>formatAppDate(value,settings.general,'—');
   const pageSize=preferences.pageSize;
-  const hiddenColumns=hiddenTableColumns(preferences,'clients');
+  const columns=orderedTableColumns(preferences,'clients');
   const remembered=rememberedFilter<{query:string;dateFilter:ReturnType<typeof defaultDateFilter>;balanceFilter:ClientBalanceFilter;countryFilter:string}>(preferences,'clients.filters',{query:'',dateFilter:defaultDateFilter(preferences.defaultPeriod),balanceFilter:'all',countryFilter:'all'});
   const [clients,setClients]=useState<Client[]>([]);
   const [invoices,setInvoices]=useState<SalesInvoice[]>([]);
@@ -226,6 +230,26 @@ export function Clients(){
       process.finish(`${removed} eliminado${removed===1?'':'s'}.${failed?` ${failed} con error.`:''}`,failed?(removed?'warning':'error'):'success');
     }finally{setBulkBusy(false);}
   };
+  const columnHeader=(key:string)=>{
+    if(key==='client')return <th key={key}>Cliente</th>;
+    if(key==='taxId')return <th key={key}>CIF/NIF</th>;
+    if(key==='country')return <th key={key}>País</th>;
+    if(key==='contact')return <th key={key}>Contacto</th>;
+    if(key==='invoiced')return <th key={key} className="right">Facturado</th>;
+    if(key==='pending')return <th key={key} className="right">Pendiente</th>;
+    if(key==='lastInvoice')return <th key={key}>Última factura</th>;
+    return null;
+  };
+  const columnCell=(key:string,client:Client,metric:ClientMetric)=>{
+    if(key==='client')return <td key={key}><div className="masterEntityCell"><div className="masterAvatar"><UserRound size={17}/></div><div><strong>{client.name}</strong><small>{client.city||'Sin ciudad'}</small></div></div></td>;
+    if(key==='taxId')return <td key={key}>{client.taxId||<span className="muted">Pendiente</span>}</td>;
+    if(key==='country')return <td key={key}><span className="masterCountry">{client.countryCode&&client.countryCode!=='XX'?client.countryCode:'Pendiente'}</span></td>;
+    if(key==='contact')return <td key={key}><div className="masterContactCell"><span>{client.email||'—'}</span><small>{client.phone||''}</small></div></td>;
+    if(key==='invoiced')return <td key={key} className="right"><strong>{money(metric.invoiced)}</strong></td>;
+    if(key==='pending')return <td key={key} className="right"><strong className={metric.pending>0.005?'masterPending':''}>{money(metric.pending)}</strong></td>;
+    if(key==='lastInvoice')return <td key={key}>{dateLabel(metric.lastDate)}</td>;
+    return null;
+  };
 
   return <div className="page masterPage">
     <div className="pageHead"><div><div className="eyebrow">VENTAS · {selectedPeriod}</div><h1>Clientes</h1><p>Directorio comercial, facturación y situación de cobro por periodo.</p></div><button className="primary" onClick={openNew}>+ Cliente</button></div>
@@ -249,7 +273,7 @@ export function Clients(){
       <button className="secondary dangerText" type="button" disabled={!selectedClients.length||bulkBusy} onClick={()=>void removeSelected()}><Trash2 size={15}/> {bulkBusy?'Eliminando…':`Eliminar seleccionados (${selectedClients.length})`}</button>
     </BulkSelectionToolbar>}
     {error&&<div className="errorBox">{error}</div>}
-    <section className="card tableCard masterTableCard">{loading?<div className="emptyState large">Cargando clientes…</div>:filtered.length?<table className="masterTable" data-preference-table="clients" data-hidden-columns={hiddenColumns}><thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllClients} label={allFilteredSelected?'Deseleccionar clientes visibles':'Seleccionar clientes visibles'}/></th><th>Cliente</th><th>CIF/NIF</th><th>País</th><th>Contacto</th><th className="right">Facturado</th><th className="right">Pendiente</th><th>Última factura</th><th></th></tr></thead><tbody>{paged.map(client=>{const metric=metrics.get(client.id)!;return <tr key={client.id} className={`clickableRow ${checkedIds.has(client.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(client)}><td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(client.id)} onChange={checked=>toggleClient(client.id,checked)} label={`Seleccionar ${client.name}`}/></td><td><div className="masterEntityCell"><div className="masterAvatar"><UserRound size={17}/></div><div><strong>{client.name}</strong><small>{client.city||'Sin ciudad'}</small></div></div></td><td>{client.taxId||<span className="muted">Pendiente</span>}</td><td><span className="masterCountry">{client.countryCode&&client.countryCode!=='XX'?client.countryCode:'Pendiente'}</span></td><td><div className="masterContactCell"><span>{client.email||'—'}</span><small>{client.phone||''}</small></div></td><td className="right"><strong>{money(metric.invoiced)}</strong></td><td className="right"><strong className={metric.pending>0.005?'masterPending':''}>{money(metric.pending)}</strong></td><td>{dateLabel(metric.lastDate)}</td><td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay clientes para los filtros seleccionados.</div>}</section>
+    <section className="card tableCard masterTableCard">{loading?<div className="emptyState large">Cargando clientes…</div>:filtered.length?<table className="masterTable" data-preference-table="clients"><thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllClients} label={allFilteredSelected?'Deseleccionar clientes visibles':'Seleccionar clientes visibles'}/></th>{columns.map(columnHeader)}<th></th></tr></thead><tbody>{paged.map(client=>{const metric=metrics.get(client.id)!;return <tr key={client.id} className={`clickableRow ${checkedIds.has(client.id)?'bulkSelectedRow':''}`} onClick={()=>setSelected(client)}><td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(client.id)} onChange={checked=>toggleClient(client.id,checked)} label={`Seleccionar ${client.name}`}/></td>{columns.map(key=>columnCell(key,client,metric))}<td className="right"><ChevronRight size={17}/></td></tr>})}</tbody></table>:<div className="emptyState large">No hay clientes para los filtros seleccionados.</div>}</section>
     {!loading&&filtered.length>0&&<div className="masterMobileList">{paged.map(client=>{const metric=metrics.get(client.id)!;return <div className={`bulkMobileSelectableRow ${checkedIds.has(client.id)?'selected':''}`} key={client.id}><BulkSelectCheckbox checked={checkedIds.has(client.id)} onChange={checked=>toggleClient(client.id,checked)} label={`Seleccionar ${client.name}`}/><button className="card masterMobileRow" onClick={()=>setSelected(client)}><div className="masterEntityCell"><div className="masterAvatar"><UserRound size={17}/></div><div><strong>{client.name}</strong><small>{client.taxId||'CIF/NIF pendiente'} · {client.countryCode&&client.countryCode!=='XX'?client.countryCode:'Pendiente'}</small></div></div><div className="masterMobileAmounts"><span>Facturado <strong>{money(metric.invoiced)}</strong></span><span>Pendiente <strong className={metric.pending>0.005?'masterPending':''}>{money(metric.pending)}</strong></span></div><ChevronRight size={18}/></button></div>})}</div>}
     {!loading&&filtered.length>0&&<Pagination page={page} totalItems={filtered.length} pageSize={pageSize} onPageChange={setPage}/>}
     <ClientModal open={modal} client={editing} onClose={()=>{setModal(false);setEditing(null)}} onSaved={refresh}/>
