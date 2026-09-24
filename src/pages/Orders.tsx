@@ -30,7 +30,7 @@ import {
   calculateDefaultShippingPreview, previewFromShippingOption, shippingPriceForOrder, validateOrderForCarrier,
   type OrderValidationIssue, type ShippingPricePreview,
 } from '../services/orderShipping';
-import { errorMessage, showError, showSuccess } from '../services/toast';
+import { errorMessage, showError, showInfo, showSuccess } from '../services/toast';
 import { persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
 import { formatAppDateTime } from '../services/formatting';
 import type { GeneralSettings, ShippingSettings } from '../services/settingsSchema';
@@ -373,7 +373,7 @@ export function Orders(){
   const configuredBulkTargets=settings.orders.bulkScope==='selected'?selectedOrders:pendingOrders;
   const generateConfiguredLabels=()=>generateLabels(configuredBulkTargets,settings.orders.bulkScope==='selected'?'seleccionadas':'pendientes');
   const generateSelectedLabels=()=>generateLabels(selectedOrders,'seleccionadas');
-  const detectPrinters=async()=>{setPrinterChecking(true);try{const found=await listLocalPrinters();setPrinters(found);const chosen=preferences.labelPrinterId||found.find(item=>item.default)?.id||found[0]?.id||'';setPrinter(chosen);if(chosen)await patchPreferences({labelPrinterId:chosen});showSuccess(found.length?`${found.length} impresora${found.length===1?'':'s'} detectada${found.length===1?'':'s'} para impresión directa.`:'Sendcloud Print Client está disponible, pero no ha devuelto ninguna impresora.')}catch{setPrinters([]);setPrinter('');await patchPreferences({labelPrinterId:null}).catch(()=>undefined);showError('Impresión directa no disponible: requiere Sendcloud Print Client instalado y abierto. Puedes seguir generando, descargando e imprimiendo las etiquetas PDF con normalidad.')}finally{setPrinterChecking(false)}};
+  const detectPrinters=async()=>{setPrinterChecking(true);try{const found=await listLocalPrinters();setPrinters(found);const chosen=preferences.labelPrinterId||found.find(item=>item.default)?.id||found[0]?.id||'';setPrinter(chosen);if(chosen)await patchPreferences({labelPrinterId:chosen});showSuccess(found.length?`${found.length} impresora${found.length===1?'':'s'} detectada${found.length===1?'':'s'} para impresión directa.`:'Sendcloud Print Client está disponible, pero no ha devuelto ninguna impresora.')}catch{setPrinters([]);setPrinter('');await patchPreferences({labelPrinterId:null}).catch(()=>undefined);showInfo('La impresión directa requiere Sendcloud Print Client instalado y abierto. No afecta a la generación de etiquetas: puedes descargarlas e imprimirlas como PDF con normalidad.')}finally{setPrinterChecking(false)}};
   const saveManual=async(value:any)=>{setManualSaving(true);try{const result=await createManualOrder(value);await refresh();setManualOpen(false);showSuccess(`Pedido ${result.orderNumber} creado en ZENVIA y Sendcloud.`)}catch(e){showError(errorMessage(e,'No se pudo crear el pedido manual.'))}finally{setManualSaving(false)}};
   const saveEdit=async(value:OrderUpdateInput)=>{if(!editOrder)return;setEditSaving(true);try{await updateFulfillmentOrder(editOrder.id,value);const freshOrders=await listFulfillmentOrders();setOrders(freshOrders);const fresh=freshOrders.find(item=>item.id===editOrder.id)||editOrder;setSelected(fresh);setEditValidationIssues([]);setEditOrder(null);showSuccess('Pedido actualizado en ZENVIA y Sendcloud.')}catch(e){showError(errorMessage(e,'No se pudo actualizar el pedido.'))}finally{setEditSaving(false)}};
 
