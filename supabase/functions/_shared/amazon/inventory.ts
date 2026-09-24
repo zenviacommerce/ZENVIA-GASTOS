@@ -1,4 +1,5 @@
 import { spApiRequest } from './sp-api.ts';
+import { loadAmazonSpApiCredentials } from './config.ts';
 
 function quantity(value:unknown){const parsed=Number(value);return Number.isFinite(parsed)?Math.max(0,Math.trunc(parsed)):0;}
 
@@ -58,6 +59,7 @@ async function persistInventoryPage(admin:any,summaries:any[],job:any){
 
 export async function syncInventoryJob(admin:any,job:any){
   if(!job?.marketplace_id)throw new Error('Job de inventario incompleto.');
+  const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:job.amazon_account_id});
   let nextToken:string|undefined;
   let processed=0;
   do{
@@ -68,7 +70,7 @@ export async function syncInventoryJob(admin:any,job:any){
       marketplaceIds:[job.marketplace_id],
       ...(nextToken?{nextToken}:{}),
     };
-    const data:any=await spApiRequest('/fba/inventory/v1/summaries',{query});
+    const data:any=await spApiRequest('/fba/inventory/v1/summaries',{query},credentials);
     const summaries=Array.isArray(data?.payload?.inventorySummaries)?data.payload.inventorySummaries:[];
     processed+=await persistInventoryPage(admin,summaries,job);
     nextToken=data?.pagination?.nextToken||undefined;
