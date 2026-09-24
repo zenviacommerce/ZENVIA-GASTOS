@@ -35,7 +35,7 @@ import { addEntityAlias, deleteEntityAlias, loadEntityAliases, updateEntityAlias
 import { loadSupplierOptions, type SupplierOption } from '../services/supplierEditor';
 import { addShippingRule, deleteShippingRule, loadShippingRules, updateShippingRule, type ShippingRule } from '../services/shippingRules';
 import { AMAZON_KPI_KEYS, loadAmazonStatus, requestAmazonSync, type AmazonMarketplaceStatus } from '../services/amazon';
-import { createIntegrationAccount, disconnectIntegrationAccount, discoverShopifyStores, loadAmazonAccountMarketplaces, loadIntegrationAccounts, setDefaultIntegrationAccount, testIntegrationAccount, updateIntegrationAccount, type IntegrationAccount, type IntegrationProvider, type ShopifyDiscovery } from '../services/integrationAccounts';
+import { createIntegrationAccount, disconnectIntegrationAccount, discoverShopifyStores, loadAmazonAccountMarketplaces, loadIntegrationAccounts, setDefaultIntegrationAccount, syncSendcloudIntegrationAccount, testIntegrationAccount, updateIntegrationAccount, type IntegrationAccount, type IntegrationProvider, type ShopifyDiscovery } from '../services/integrationAccounts';
 import { connectGmail, disconnectGmail, getCachedGmailConnection, setActiveGmailConnection, testGmailConnection } from '../services/gmail';
 import { DEFAULT_AUTOMATION_RULES, loadAutomationRules, saveAutomationRule, type AutomationRule } from '../services/automationRules';
 import { applyExpenseInvoiceReprocess, findClientDuplicates, findInvoiceDuplicates, findProductDuplicates, findSupplierDuplicates, listClientsMissingTaxId, listProductsWithoutCost, listReprocessableInvoices, listSuppliersMissingTaxId, mergeClient, mergeSupplier, previewClientMerge, previewExpenseInvoiceReprocess, previewPriceHistoryRebuild, previewProductCostRecalculation, previewSupplierMerge, previewSupplierProductRebuild, rebuildPriceHistoryLinks, rebuildSupplierProductLinks, recalculateProductCosts, runAmazonSync, runSendcloudSync, type DuplicateCandidate, type ExpenseInvoiceReprocessPreview, type MaintenanceRepairPreview, type MergePreview, type ReprocessableInvoiceOption } from '../services/maintenance';
@@ -847,10 +847,11 @@ function AmazonSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   };
 
   return <section className="settingsSectionCard">
-    <div className="settingsSectionHero"><div className="settingsSectionIcon"><Gauge size={22}/></div><div><h2>Configuración de Amazon</h2><p>Marketplaces, criterios analíticos y sincronización automática de Amazon.</p></div></div>
+    <div className="settingsSectionHero"><div className="settingsSectionIcon"><Gauge size={22}/></div><div><h2>Amazon · valores globales</h2><p>Valores predeterminados de análisis y sincronización. Las cuentas, credenciales y marketplaces de cada cuenta se gestionan en Integraciones.</p></div></div>
     {loading?<div className="settingsInlineLoading">Cargando marketplaces de Amazon…</div>:<>
       <div className="settingsSubsection">
-        <h3>Marketplaces</h3>
+        <h3>Marketplaces predeterminados</h3>
+        <p className="settingsHelpText">Se usan como fallback global. Si una cuenta tiene marketplaces configurados en Integraciones, prevalece la configuración de esa cuenta.</p>
         <div className="settingsToggleGrid">
           {marketplaces.map(item=><label className="settingsToggleField" key={item.id}><input type="checkbox" checked={effectiveMarketplaceIds.includes(item.id)} onChange={e=>toggleMarketplace(item.id,e.target.checked)}/><span><strong>{item.countryCode} · {item.name}</strong><small>{item.currencyCode} · {item.id}</small></span></label>)}
           {!marketplaces.length&&<div className="settingsEmptyMini">No hay marketplaces activos disponibles.</div>}
@@ -1075,11 +1076,16 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
   };
 
   const syncAccount=async(account:IntegrationAccount)=>{
-    if(account.provider!=='amazon')return;
+    if(account.provider!=='amazon'&&account.provider!=='sendcloud')return;
     setBusy('sync:'+account.id);
     try{
-      const result=await requestAmazonSync(account.id);
-      showSuccess(`Sincronización solicitada: ${result.jobs} trabajos para ${account.displayName}.`);
+      if(account.provider==='amazon'){
+        const result=await requestAmazonSync(account.id);
+        showSuccess(`Sincronización solicitada: ${result.jobs} trabajos para ${account.displayName}.`);
+      }else{
+        const result=await syncSendcloudIntegrationAccount(account.id);
+        showSuccess(`Sendcloud sincronizado: ${result.synced} pedidos, ${result.enriched} enriquecidos.`);
+      }
     }catch(e){showError(e instanceof Error?e.message:'No se pudo iniciar la sincronización.');}
     finally{setBusy(null);}
   };
@@ -1151,7 +1157,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
                 </div>
                 <div className="integrationAccountActions">
                   <button type="button" className="secondary" disabled={busy!==null||account.status==='disabled'} onClick={()=>void testAccount(account)}>{busy==='test:'+account.id?'Probando…':'Probar'}</button>
-                  {account.provider==='amazon'&&<button type="button" className="secondary" disabled={busy!==null||account.status!=='connected'} onClick={()=>void syncAccount(account)}>{busy==='sync:'+account.id?'Sincronizando…':'Sincronizar'}</button>}
+                  {(account.provider==='amazon'||account.provider==='sendcloud')&&<button type="button" className="secondary" disabled={busy!==null||account.status!=='connected'} onClick={()=>void syncAccount(account)}>{busy==='sync:'+account.id?'Sincronizando…':'Sincronizar'}</button>}
                   <button type="button" className="secondary" disabled={busy!==null} onClick={()=>resetEditor(account.provider,account)}>Configurar</button>
                   {!account.isDefault&&account.status!=='disabled'&&<button type="button" className="secondary" disabled={busy!==null} onClick={()=>void makeDefault(account)}>Predeterminada</button>}
                   {account.status!=='disabled'&&<button type="button" className="secondary dangerText" disabled={busy!==null} onClick={()=>void disconnect(account)}>Desconectar</button>}
