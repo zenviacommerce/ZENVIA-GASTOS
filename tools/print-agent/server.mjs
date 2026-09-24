@@ -21,7 +21,7 @@ const allowedOrigins=new Set([...DEFAULT_ORIGINS,...configured]);
 function vercelPreview(origin){
   try{
     const url=new URL(origin);
-    return url.protocol==='https:'&&/\.vercel\.app$/i.test(url.hostname);
+    return url.protocol==='https:'&&/^(?:gestionzenvia|zenvia-gastos)(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(url.hostname);
   }catch{return false}
 }
 function originAllowed(origin){
