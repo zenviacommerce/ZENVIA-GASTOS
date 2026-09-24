@@ -1377,6 +1377,7 @@ const themeOptions=[
 const densityOptions=[
   {value:'comfortable',label:'Cómoda'},
   {value:'compact',label:'Compacta'},
+  {value:'spacious',label:'Amplia'},
 ];
 
 const pageSizeOptions=[10,20,25,50,100].map(value=>({value:String(value),label:String(value)}));
