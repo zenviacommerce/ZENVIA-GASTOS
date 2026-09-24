@@ -17,14 +17,15 @@ export function splitBundledInvoiceText(text:string):string[]{
   const headers=lines.map((line,index)=>headerPattern.test(line)?index:-1).filter(index=>index>=0);
   if(headers.length<2)return [];
 
-  const contextStarts=headers.map((header,index)=>{
-    if(index===0)return 0;
-    const previousHeader=headers[index-1];
-    return Math.max(previousHeader+1,header-12);
-  });
-
-  const blocks=contextStarts.map((start,index)=>{
-    const end=index<contextStarts.length-1?contextStarts[index+1]:lines.length;
+  const blocks=headers.map((header,index)=>{
+    const previousHeader=index>0?headers[index-1]:-1;
+    const gap=index>0?header-previousHeader:Number.POSITIVE_INFINITY;
+    const start=index===0
+      ?0
+      :gap>16
+        ?Math.max(previousHeader+1,header-12)
+        :header;
+    const end=index<headers.length-1?headers[index+1]:lines.length;
     return lines.slice(start,end).join('\n').trim();
   }).filter(Boolean);
 
