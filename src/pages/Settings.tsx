@@ -117,6 +117,18 @@ const languageOptions=[
   {value:'pt',label:'Português'},
 ];
 
+const companyStartPageOptions=[
+  {value:'dashboard',label:'Resumen'},
+  {value:'sales',label:'Facturación'},
+  {value:'orders',label:'Pedidos'},
+  {value:'invoices',label:'Gastos'},
+  {value:'clients',label:'Clientes'},
+  {value:'products',label:'Productos'},
+  {value:'suppliers',label:'Proveedores'},
+  {value:'amazon',label:'Amazon'},
+  {value:'settings',label:'Configuración'},
+];
+
 function GeneralSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   const {settings,updateSection}=useSettings();
   const [business,setBusiness]=useState<BusinessSettings>({legalName:'ZENVIA COMMERCE SL',countryCode:'ES'});
@@ -223,6 +235,7 @@ function GeneralSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
           <label className="settingsField"><span>Zona horaria</span><input value={general.timezone} onChange={e=>updateGeneral('timezone',e.target.value)}/></label>
           <label className="settingsField"><span>Formato de fecha</span><SelectField ariaLabel="Formato de fecha" value={general.dateFormat} options={dateFormatOptions} onChange={value=>updateGeneral('dateFormat',value as typeof general.dateFormat)}/></label>
           <label className="settingsField"><span>Idioma</span><SelectField ariaLabel="Idioma" value={general.documentLanguage} options={languageOptions} onChange={value=>updateGeneral('documentLanguage',value as typeof general.documentLanguage)}/></label>
+          <label className="settingsField"><span>Página inicial predeterminada</span><SelectField ariaLabel="Página inicial predeterminada de empresa" value={general.startPage} options={companyStartPageOptions} onChange={value=>updateGeneral('startPage',value)}/></label>
         </div>
       </div>
 
@@ -1384,15 +1397,7 @@ const pageSizeOptions=[10,20,25,50,100].map(value=>({value:String(value),label:S
 
 const startPageOptions=[
   {value:'',label:'Usar valor de empresa'},
-  {value:'dashboard',label:'Resumen'},
-  {value:'sales',label:'Facturación'},
-  {value:'orders',label:'Pedidos'},
-  {value:'invoices',label:'Gastos'},
-  {value:'clients',label:'Clientes'},
-  {value:'products',label:'Productos'},
-  {value:'suppliers',label:'Proveedores'},
-  {value:'amazon',label:'Amazon'},
-  {value:'settings',label:'Configuración'},
+  ...companyStartPageOptions,
 ];
 
 const periodOptions=[
