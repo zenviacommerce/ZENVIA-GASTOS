@@ -22,11 +22,11 @@ Deno.serve(async(req:Request)=>{
 
     let integration:any=null;
     if(requestedIntegrationId){
-      const result=await admin.from('integration_accounts').select('id,display_name,status,enabled,secret_id,credential_source,linked_resource_id')
+      const result=await admin.from('integration_accounts').select('id,display_name,status,enabled,secret_id,credential_source,linked_resource_id,last_error')
         .eq('owner_id',caller.data_owner_id).eq('provider','amazon').eq('id',requestedIntegrationId).maybeSingle();
       if(result.error)throw result.error;integration=result.data;
     }else{
-      const preferred=await admin.from('integration_accounts').select('id,display_name,status,enabled,secret_id,credential_source,linked_resource_id')
+      const preferred=await admin.from('integration_accounts').select('id,display_name,status,enabled,secret_id,credential_source,linked_resource_id,last_error')
         .eq('owner_id',caller.data_owner_id).eq('provider','amazon').neq('status','disabled')
         .order('is_default',{ascending:false}).order('updated_at',{ascending:false}).limit(1).maybeSingle();
       if(preferred.error)throw preferred.error;integration=preferred.data;
