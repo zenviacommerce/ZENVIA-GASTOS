@@ -953,6 +953,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
   const compatibilityMode=accounts.some(item=>item.legacy);
 
   const resetEditor=(nextProvider:IntegrationProvider,account:IntegrationAccount|null=null)=>{
+    const legacyAmazon=Boolean(account?.legacy&&account.provider==='amazon');
     setProvider(nextProvider);setEditing(account);setDisplayName(account?.displayName||'');
     setSellerId(account?.provider==='amazon'?(account.externalAccountId||''):'');
     setRefreshToken('');setAmazonClientId('');setAmazonClientSecret('');
@@ -960,20 +961,20 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
     setParentAccountId(account?.parentAccountId||sendcloudAccounts.find(item=>item.isDefault)?.id||sendcloudAccounts[0]?.id||'');
     setShopifyIntegrationId(String(account?.config?.sendcloudIntegrationId||account?.externalAccountId||''));
     setShopifyStores([]);setAccountEnabled(account?.enabled??true);
-    setSyncOrders(typeof account?.config?.syncOrders==='boolean'?Boolean(account.config.syncOrders):true);
-    setSyncInventory(typeof account?.config?.syncInventory==='boolean'?Boolean(account.config.syncInventory):true);
-    setSyncFinance(typeof account?.config?.syncFinance==='boolean'?Boolean(account.config.syncFinance):true);
-    setSyncImages(typeof account?.config?.syncImages==='boolean'?Boolean(account.config.syncImages):true);
+    setSyncOrders(legacyAmazon?settings.amazon.autoSyncOrders:(typeof account?.config?.syncOrders==='boolean'?Boolean(account.config.syncOrders):true));
+    setSyncInventory(legacyAmazon?settings.amazon.autoSyncInventory:(typeof account?.config?.syncInventory==='boolean'?Boolean(account.config.syncInventory):true));
+    setSyncFinance(legacyAmazon?settings.amazon.autoSyncFinance:(typeof account?.config?.syncFinance==='boolean'?Boolean(account.config.syncFinance):true));
+    setSyncImages(legacyAmazon?settings.amazon.autoSyncImages:(typeof account?.config?.syncImages==='boolean'?Boolean(account.config.syncImages):true));
     setGmailMonths(Number(account?.config?.months||12));
-    setMarketplaces([]);setActiveMarketplaceIds(Array.isArray(account?.config?.activeMarketplaceIds)?account!.config.activeMarketplaceIds as string[]:[]);
-    setPrimaryMarketplaceId(typeof account?.config?.primaryMarketplaceId==='string'?account.config.primaryMarketplaceId:'');
+    setMarketplaces([]);
+    setActiveMarketplaceIds(legacyAmazon?settings.amazon.activeMarketplaceIds:(Array.isArray(account?.config?.activeMarketplaceIds)?account!.config.activeMarketplaceIds as string[]:[]));
+    setPrimaryMarketplaceId(legacyAmazon?(settings.amazon.primaryMarketplaceId||''):(typeof account?.config?.primaryMarketplaceId==='string'?account.config.primaryMarketplaceId:''));
     setEditorOpen(true);
     if(account?.provider==='amazon'&&account.linkedResourceId){
       void loadAmazonAccountMarketplaces(account.linkedResourceId).then(rows=>{
         setMarketplaces(rows);
-        if(!Array.isArray(account.config?.activeMarketplaceIds)||!(account.config.activeMarketplaceIds as unknown[]).length){
-          setActiveMarketplaceIds(rows.filter(item=>item.active).map(item=>item.id));
-        }
+        const configuredIds=account.legacy?settings.amazon.activeMarketplaceIds:(Array.isArray(account.config?.activeMarketplaceIds)?account.config.activeMarketplaceIds as string[]:[]);
+        if(!configuredIds.length)setActiveMarketplaceIds(rows.filter(item=>item.active).map(item=>item.id));
       }).catch(e=>showError(e instanceof Error?e.message:'No se pudieron cargar los marketplaces de esta cuenta.'));
     }
   };
@@ -1225,17 +1226,20 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
 
     {editorOpen&&<div className="integrationEditorBackdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)closeEditor()}}>
       <div className="integrationEditor" role="dialog" aria-modal="true" aria-label={editing?'Configurar integración':'Añadir integración'}>
-        <div className="integrationEditorHead"><div><strong>{editing?'Configurar':'Añadir'} {providerMeta[provider].name}</strong><small>{editing?'Los secretos guardados nunca se vuelven a mostrar. Déjalos vacíos para conservarlos.':'Configura la cuenta que quieres conectar.'}</small></div><button type="button" className="iconBtn" onClick={closeEditor} aria-label="Cerrar">×</button></div>
+        <div className="integrationEditorHead"><div><strong>{editing?'Configurar':'Añadir'} {providerMeta[provider].name}</strong><small>{editing?.legacy?'Cuenta actual detectada en el sistema existente. Los secretos se mantienen en el backend actual hasta completar la migración multicuenta.':editing?'Los secretos guardados nunca se vuelven a mostrar. Déjalos vacíos para conservarlos.':'Configura la cuenta que quieres conectar.'}</small></div><button type="button" className="iconBtn" onClick={closeEditor} aria-label="Cerrar">×</button></div>
         <div className="integrationEditorBody">
-          {provider!=='gmail'&&<label className="settingsField"><span>Nombre / alias</span><input value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder={provider==='amazon'?'Ej. ZENVIA COMMERCE':provider==='sendcloud'?'Ej. Logística principal':'Ej. TrufaPet'}/></label>}
+          {provider!=='gmail'&&<label className="settingsField"><span>Nombre / alias</span><input value={displayName} disabled={Boolean(editing?.legacy)} onChange={e=>setDisplayName(e.target.value)} placeholder={provider==='amazon'?'Ej. ZENVIA COMMERCE':provider==='sendcloud'?'Ej. Logística principal':'Ej. TrufaPet'}/></label>}
 
           {provider==='amazon'&&<>
             <div className="settingsFormGrid">
               <label className="settingsField"><span>Seller ID</span><input value={sellerId} disabled={Boolean(editing)} onChange={e=>setSellerId(e.target.value)} placeholder="A1XXXXXXXXXXXXX"/></label>
-              <label className="settingsField"><span>{editing?'Nuevo refresh token (opcional)':'Refresh token'}</span><input type="password" autoComplete="new-password" value={refreshToken} onChange={e=>setRefreshToken(e.target.value)} placeholder={editing?'Sin cambios':'Atzr|...'}/></label>
-              <label className="settingsField"><span>Client ID SP-API (opcional)</span><input type="password" autoComplete="new-password" value={amazonClientId} onChange={e=>setAmazonClientId(e.target.value)} placeholder="Usar configuración del backend"/></label>
-              <label className="settingsField"><span>Client secret SP-API (opcional)</span><input type="password" autoComplete="new-password" value={amazonClientSecret} onChange={e=>setAmazonClientSecret(e.target.value)} placeholder="Usar configuración del backend"/></label>
+              {!editing?.legacy&&<>
+                <label className="settingsField"><span>{editing?'Nuevo refresh token (opcional)':'Refresh token'}</span><input type="password" autoComplete="new-password" value={refreshToken} onChange={e=>setRefreshToken(e.target.value)} placeholder={editing?'Sin cambios':'Atzr|...'}/></label>
+                <label className="settingsField"><span>Client ID SP-API (opcional)</span><input type="password" autoComplete="new-password" value={amazonClientId} onChange={e=>setAmazonClientId(e.target.value)} placeholder="Usar configuración del backend"/></label>
+                <label className="settingsField"><span>Client secret SP-API (opcional)</span><input type="password" autoComplete="new-password" value={amazonClientSecret} onChange={e=>setAmazonClientSecret(e.target.value)} placeholder="Usar configuración del backend"/></label>
+              </>}
             </div>
+            {editing?.legacy&&<div className="settingsResetPreview"><strong>Credenciales protegidas</strong><small>La cuenta sigue usando las credenciales actuales del backend. No se copian ni se muestran en el preview.</small></div>}
             {editing&&marketplaces.length>0&&<div className="integrationAccountConfigBlock"><h4>Marketplaces de esta cuenta</h4><div className="settingsToggleGrid">
               {marketplaces.filter(item=>item.active).map(item=><label className="settingsToggleField" key={item.id}><input type="checkbox" checked={activeMarketplaceIds.includes(item.id)} onChange={e=>toggleMarketplace(item.id,e.target.checked)}/><span><strong>{item.countryCode} · {item.name}</strong><small>{item.currencyCode}</small></span></label>)}
             </div><label className="settingsField"><span>Marketplace principal</span><SelectField ariaLabel="Marketplace principal de la cuenta" allowEmpty emptyLabel="Primero activo" value={primaryMarketplaceId} options={marketplaces.filter(item=>item.active&&activeMarketplaceIds.includes(item.id)).map(item=>({value:item.id,label:`${item.countryCode} · ${item.name}`}))} onChange={setPrimaryMarketplaceId}/></label></div>}
@@ -1248,10 +1252,10 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
           </>}
 
           {provider==='sendcloud'&&<>
-            <div className="settingsFormGrid">
+            {!editing?.legacy?<div className="settingsFormGrid">
               <label className="settingsField"><span>{editing?'Nueva Public key (opcional)':'Public key'}</span><input type="password" autoComplete="new-password" value={sendcloudPublicKey} onChange={e=>setSendcloudPublicKey(e.target.value)} placeholder={editing?'Sin cambios':'Public key'}/></label>
               <label className="settingsField"><span>{editing?'Nueva Secret key (opcional)':'Secret key'}</span><input type="password" autoComplete="new-password" value={sendcloudSecretKey} onChange={e=>setSendcloudSecretKey(e.target.value)} placeholder={editing?'Sin cambios':'Secret key'}/></label>
-            </div>
+            </div>:<div className="settingsResetPreview"><strong>Credenciales protegidas</strong><small>Sendcloud continúa usando las claves actuales del backend hasta completar la migración multicuenta.</small></div>}
             <label className="settingsToggleField"><input type="checkbox" checked={syncOrders} onChange={e=>setSyncOrders(e.target.checked)}/><span><strong>Sincronizar pedidos</strong><small>Permitir que esta cuenta importe pedidos y actualice seguimiento.</small></span></label>
           </>}
 
