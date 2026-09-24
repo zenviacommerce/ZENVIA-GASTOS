@@ -5,6 +5,8 @@ import { expenseImportPolicyFromSettings } from './expenseImportPolicy';
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 const TOKEN_STORAGE_KEY = 'zenvia-gmail-access';
+const TOKEN_ACCOUNTS_STORAGE_KEY = 'zenvia-gmail-access-accounts';
+const TOKEN_ACTIVE_STORAGE_KEY = 'zenvia-gmail-access-active';
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60_000;
 const GMAIL_MAX_RETRIES = 3;
 
@@ -81,24 +83,77 @@ function loadGoogleIdentityServices() {
   });
 }
 
+function connectionKey(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function loadConnectionMap(): Record<string, GmailConnection> {
+  try {
+    const raw = sessionStorage.getItem(TOKEN_ACCOUNTS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistConnectionMap(map: Record<string, GmailConnection>) {
+  sessionStorage.setItem(TOKEN_ACCOUNTS_STORAGE_KEY, JSON.stringify(map));
+}
+
 function saveConnection(connection: GmailConnection) {
+  const key = connectionKey(connection.email);
+  const map = loadConnectionMap();
+  map[key] = connection;
+  persistConnectionMap(map);
+  sessionStorage.setItem(TOKEN_ACTIVE_STORAGE_KEY, key);
+  // Legacy key remains populated so older screens keep working while the
+  // application migrates to account-aware Gmail calls.
   sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(connection));
 }
 
-export function getCachedGmailConnection(): GmailConnection | null {
+export function listCachedGmailConnections(): GmailConnection[] {
+  const map = loadConnectionMap();
+  let changed = false;
+  const valid = Object.entries(map).filter(([, connection]) => {
+    const ok = Boolean(connection?.accessToken) && Number(connection?.expiresAt) > Date.now() + TOKEN_REFRESH_BUFFER_MS;
+    if (!ok) changed = true;
+    return ok;
+  });
+  if (changed) persistConnectionMap(Object.fromEntries(valid));
+  return valid.map(([, connection]) => connection);
+}
+
+export function getCachedGmailConnection(email?: string): GmailConnection | null {
+  const map = loadConnectionMap();
+  const requested = email ? connectionKey(email) : sessionStorage.getItem(TOKEN_ACTIVE_STORAGE_KEY) || '';
+  const selected = requested ? map[requested] : undefined;
+  if (selected?.accessToken && selected.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) return selected;
+
   try {
     const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
-    if (!raw) return null;
+    if (!raw) return listCachedGmailConnections()[0] || null;
     const parsed = JSON.parse(raw) as GmailConnection;
     if (!parsed.accessToken || parsed.expiresAt <= Date.now() + TOKEN_REFRESH_BUFFER_MS) {
       sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-      return null;
+      return listCachedGmailConnections()[0] || null;
     }
-    return parsed;
+    if (!email || connectionKey(parsed.email) === connectionKey(email)) {
+      saveConnection(parsed);
+      return parsed;
+    }
   } catch {
     sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-    return null;
   }
+  return null;
+}
+
+export function setActiveGmailConnection(email: string) {
+  const connection = getCachedGmailConnection(email);
+  if (!connection) throw new Error('La cuenta de Gmail no está autorizada en esta sesión.');
+  const key = connectionKey(connection.email);
+  sessionStorage.setItem(TOKEN_ACTIVE_STORAGE_KEY, key);
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(connection));
 }
 
 const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
@@ -202,24 +257,39 @@ export async function connectGmail(forceConsent = false): Promise<GmailConnectio
   });
 }
 
-export async function testGmailConnection():Promise<{email:string}>{
-  const connection=getCachedGmailConnection();
+export async function testGmailConnection(email?: string):Promise<{email:string}>{
+  const connection=getCachedGmailConnection(email);
   if(!connection)throw new Error('Gmail no está conectado en esta sesión.');
   const profile=await gmailFetch<{emailAddress?:string}>(connection.accessToken,'profile');
   return {email:profile.emailAddress||connection.email||'Cuenta de Gmail'};
 }
 
-export async function syncGmailInvoiceCandidates(months=12):Promise<{found:number;stored:number}>{
-  const connection=getCachedGmailConnection();
+export async function syncGmailInvoiceCandidates(months=12,email?:string,integrationAccountId?:string):Promise<{found:number;stored:number}>{
+  const connection=getCachedGmailConnection(email);
   if(!connection)throw new Error('Gmail no está conectado en esta sesión.');
   const candidates=await searchGmailInvoiceCandidates(connection.accessToken,months);
-  const stored=await saveGmailCandidates(candidates);
+  const stored=await saveGmailCandidates(candidates,integrationAccountId);
   return {found:candidates.length,stored:stored.length};
 }
 
-export async function disconnectGmail() {
-  const connection = getCachedGmailConnection();
-  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+export async function disconnectGmail(email?: string) {
+  const connection = getCachedGmailConnection(email);
+  if (connection) {
+    const key = connectionKey(connection.email);
+    const map = loadConnectionMap();
+    delete map[key];
+    persistConnectionMap(map);
+    if (sessionStorage.getItem(TOKEN_ACTIVE_STORAGE_KEY) === key) {
+      const next = Object.keys(map)[0] || '';
+      if (next) sessionStorage.setItem(TOKEN_ACTIVE_STORAGE_KEY, next);
+      else sessionStorage.removeItem(TOKEN_ACTIVE_STORAGE_KEY);
+    }
+    const legacy = getCachedGmailConnection();
+    if (legacy) sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(legacy));
+    else sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  } else if (!email) {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  }
   if (!connection) return;
   try {
     await loadGoogleIdentityServices();
@@ -368,7 +438,7 @@ export async function loadGmailImports(): Promise<GmailCandidate[]> {
   return (data || []).map(mapImportRow);
 }
 
-export async function saveGmailCandidates(candidates: GmailCandidate[]) {
+export async function saveGmailCandidates(candidates: GmailCandidate[], integrationAccountId?: string) {
   if (!candidates.length) return loadGmailImports();
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
@@ -386,6 +456,7 @@ export async function saveGmailCandidates(candidates: GmailCandidate[]) {
     attachment_mime_type: candidate.mimeType,
     attachment_size: candidate.size || null,
     status: 'found',
+    integration_account_id: integrationAccountId || null,
     metadata: {
       ...(candidate.metadata || {}),
       snippet: candidate.snippet || null,
