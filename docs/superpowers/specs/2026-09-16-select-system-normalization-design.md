@@ -2,7 +2,7 @@
 
 ## Goal
 
-Normalize every visible dropdown in ZENVIA Gastos so the application uses one coherent visual system while preserving two interaction modes: a simple selector for short, fixed lists and a searchable selector for growing catalogs. Also remove duplicate browser/native tooltips where the global truncated-text tooltip already applies.
+Normalize every visible dropdown in ZENVIA Gestión so the application uses one coherent visual system while preserving two interaction modes: a simple selector for short, fixed lists and a searchable selector for growing catalogs. Also remove duplicate browser/native tooltips where the global truncated-text tooltip already applies.
 
 ## Architecture
 
