@@ -144,15 +144,22 @@ export function repairInvoiceProductLines(text:string,lines:RepairableInvoiceLin
   const simple=sourceLines
     .map(parseSimpleInvoiceProductRow)
     .filter((line):line is SimpleInvoiceProductRow=>Boolean(line));
-  const repaired=coded.length>=2
-    ? coded.slice(0,50)
-    : simple.length>=2
-      ? simple.slice(0,50)
-      : lines
-        .filter(line=>!isNonProductInvoiceLine(line.description))
-        .map(line=>({...line,description:cleanInvoiceProductDescription(line.description)}))
-        .filter(line=>isLikelyProductDescription(line.description))
-        .slice(0,50);
+  const provided=lines
+    .filter(line=>!isNonProductInvoiceLine(line.description))
+    .map(line=>({...line,description:cleanInvoiceProductDescription(line.description)}))
+    .filter(line=>isLikelyProductDescription(line.description))
+    .slice(0,50);
+  // Cash Sierra PDFs expose their columns in separate visual blocks. The enhanced
+  // reader reconstructs those rows before this generic safety pass; reparsing the
+  // raw text here would turn the numeric columns back into fake product rows.
+  const preferProvided=/(?:cashsierranevada\.es|Cash\s+Sierra\s+Nevada,\s*S\.?L\.?)/i.test(text)&&provided.length>0;
+  const repaired=preferProvided
+    ? provided
+    : coded.length>=2
+      ? coded.slice(0,50)
+      : simple.length>=2
+        ? simple.slice(0,50)
+        : provided;
   return inclusiveSummary?repaired.map(line=>normalizeInclusiveLine(line,inclusiveSummary)):repaired;
 }
 

@@ -99,6 +99,94 @@ function leroyProductLines(lines: string[]): NewInvoiceLineInput[] {
   return result.slice(0, 50);
 }
 
+
+const cashSierraProductStart=/\b(?:PAPEL\s+HIGIENICO|BOLSA\s+BASURA|COPA|TENEDOR|CUCHARILLA|CUCHARA|CHAMPU|DELANTAL|SERVILLETAS?|TOALLITA|BARQUETA|CAÑA|VELA|BANDEJA|FOLIOS?|PLATO|BOWL|MANTEL|VASO|TARRINA|ENVASE|FILM|PALILLO|GUANTE|TAPA|BOBINA)\b/gi;
+
+function splitCashSierraDescriptions(value:string){
+  const text=compact(value)
+    .replace(/\s+\d{1,3}(?:\.\d{3})*,\d{2}(?:\s+\d{1,3}(?:\.\d{3})*,\d{2})+\s*$/,'')
+    .trim();
+  const matches=[...text.matchAll(cashSierraProductStart)];
+  if(!matches.length)return [];
+  return matches.map((match,index)=>{
+    const start=match.index||0;
+    const end=index+1<matches.length?(matches[index+1].index||text.length):text.length;
+    return compact(text.slice(start,end))
+      .replace(/\s+CARRO\s+N(?:º|°|O)?\s*\d+\s*$/i,'')
+      .replace(/^[#·\s]+|[#·\s]+$/g,'')
+      .slice(0,250);
+  }).filter(description=>description.length>=3);
+}
+
+function previousLineIndex(lines:string[],from:number,pattern:RegExp,maxDistance=40){
+  for(let index=from-1;index>=Math.max(0,from-maxDistance);index-=1){
+    if(pattern.test(lines[index]))return index;
+  }
+  return -1;
+}
+
+function cashSierraPriceValues(lines:string[],facturaIndex:number){
+  const priceLabel=previousLineIndex(lines,facturaIndex,/^PRECIO\s+IVA$/i,45);
+  if(priceLabel<0)return [];
+  const values:number[]=[];
+  for(let index=priceLabel+1;index<Math.min(facturaIndex,priceLabel+8);index+=1){
+    const line=compact(lines[index]);
+    if(/PRADO\s+DEL\s+REY|PRECIO\s+CON\s+TASAS|^PEPE$/i.test(line))break;
+    const found=moneyValues(line);
+    if(found.length&&/^[\d.,\s-]+$/.test(line))values.push(...found);
+  }
+  return values;
+}
+
+function cashSierraQuantityValues(lines:string[],facturaIndex:number){
+  const quantityLabel=previousLineIndex(lines,facturaIndex,/^CANTIDAD$/i,30);
+  if(quantityLabel<0)return [];
+  const totalLabel=previousLineIndex(lines,quantityLabel,/^TOTAL\s+FACTURA$/i,10);
+  const start=totalLabel>=0?totalLabel+1:Math.max(0,quantityLabel-3);
+  return lines.slice(start,quantityLabel).flatMap(line=>moneyValues(line));
+}
+
+/**
+ * Cash Sierra Nevada imprime las columnas de cantidad/precio y los conceptos en
+ * bloques separados dentro del PDF. pdf.js conserva esos bloques pero no una fila
+ * por producto, así que el parser genérico confundía columnas numéricas con
+ * descripciones. Reconstruimos las líneas usando el orden visual de esos bloques.
+ */
+export function getCashSierraNevadaProductLines(lines:string[],fullText:string):NewInvoiceLineInput[]{
+  if(!/(?:cashsierranevada\.es|Cash\s+Sierra\s+Nevada,\s*S\.?L\.?)/i.test(fullText))return [];
+
+  const normalized=lines.map(compact);
+  const result:NewInvoiceLineInput[]=[];
+  for(let facturaIndex=0;facturaIndex<normalized.length;facturaIndex+=1){
+    if(!/^FACTURA\s+VENTA$/i.test(normalized[facturaIndex]))continue;
+    let end=facturaIndex+1;
+    while(end<normalized.length&&!/^BULTOS$/i.test(normalized[end]))end+=1;
+    if(end>=normalized.length)continue;
+
+    const descriptionBlob=normalized.slice(facturaIndex+1,end)
+      .filter(line=>line&&!/^Efectivo$/i.test(line)&&!/^[\d.,\s-]+$/.test(line))
+      .join(' ');
+    const descriptions=splitCashSierraDescriptions(descriptionBlob);
+    const quantities=cashSierraQuantityValues(normalized,facturaIndex);
+    const prices=cashSierraPriceValues(normalized,facturaIndex);
+    if(!descriptions.length||!quantities.length)continue;
+
+    for(let index=0;index<descriptions.length&&index<quantities.length;index+=1){
+      const quantity=quantities[index];
+      const unitPrice=prices[index]??null;
+      if(!(quantity>0))continue;
+      result.push({
+        description:descriptions[index],
+        quantity,
+        unit:'ud',
+        unitPrice,
+        lineTotal:unitPrice==null?null:Math.round(quantity*unitPrice*100)/100,
+      });
+    }
+  }
+  return result.slice(0,50);
+}
+
 export function getRetailInvoiceCorrection(lines: string[], fullText: string): RetailInvoiceCorrection | null {
   if (!/leroy\s+merlin/i.test(fullText)) return null;
 
