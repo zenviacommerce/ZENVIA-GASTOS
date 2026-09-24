@@ -24,6 +24,7 @@ import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
 import { showError, showSuccess } from '../services/toast';
+import { confirmAction } from '../services/actionDialog';
 import { DEFAULT_APP_SETTINGS, type AmazonSettings, type ClientsSettings, type ExpensesSettings, type IntegrationsSettings, type MaintenanceSettings, type NotificationsSettings, type NotificationSetting, type OrdersSettings, type ProductsSettings, type SalesSettings, type ShippingSettings, type SuppliersSettings, type UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
 import { loadCompanyBranding, removeCompanyLogo, uploadCompanyLogo, type CompanyBranding } from '../services/companyBranding';
@@ -332,7 +333,7 @@ function SalesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   };
 
   const restore=async()=>{
-    if(!window.confirm('Se restaurarán los valores predeterminados de Facturación. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Restaurar Facturación',message:'Se restaurarán los valores predeterminados de Facturación.',confirmLabel:'Restaurar',tone:'warning'}))return;
     setSaving(true);
     try{await resetSection('sales');onDirtyChange(false);showSuccess('Valores predeterminados de Facturación restaurados.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
@@ -439,7 +440,7 @@ function ExpensesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   };
 
   const restore=async()=>{
-    if(!window.confirm('Se restaurarán los valores predeterminados de Gastos e importación. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Restaurar Gastos e importación',message:'Se restaurarán los valores predeterminados de Gastos e importación.',confirmLabel:'Restaurar',tone:'warning'}))return;
     setSaving(true);
     try{await resetSection('expenses');onDirtyChange(false);showSuccess('Valores predeterminados de Gastos restaurados.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
@@ -548,7 +549,7 @@ function ClientsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   };
 
   const restore=async()=>{
-    if(!window.confirm('Se restaurarán los valores predeterminados de Clientes. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Restaurar Clientes',message:'Se restaurarán los valores predeterminados de Clientes.',confirmLabel:'Restaurar',tone:'warning'}))return;
     setSaving(true);
     try{await resetSection('clients');onDirtyChange(false);showSuccess('Valores predeterminados de Clientes restaurados.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
@@ -619,7 +620,7 @@ function OrdersSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
     finally{setSaving(false);}
   };
   const restore=async()=>{
-    if(!window.confirm('Se restaurarán los valores predeterminados de Pedidos. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Restaurar Pedidos',message:'Se restaurarán los valores predeterminados de Pedidos.',confirmLabel:'Restaurar',tone:'warning'}))return;
     setSaving(true);
     try{await resetSection('orders');onDirtyChange(false);showSuccess('Valores predeterminados de Pedidos restaurados.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
@@ -695,7 +696,7 @@ function ShippingSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
     finally{setSaving(false);}
   };
   const restore=async()=>{
-    if(!window.confirm('Se restaurarán los valores predeterminados de Envíos. Las reglas personalizadas se conservarán. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Restaurar Envíos',message:'Se restaurarán los valores predeterminados de Envíos.',confirmLabel:'Restaurar',tone:'warning',details:['Las reglas personalizadas se conservarán.']}))return;
     setSaving(true);
     try{await resetSection('shipping');onDirtyChange(false);showSuccess('Valores predeterminados de Envíos restaurados.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
@@ -715,7 +716,7 @@ function ShippingSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
     finally{setRuleBusy(null);}
   };
   const removeRule=async(rule:ShippingRule)=>{
-    if(!window.confirm(`¿Eliminar la regla “${rule.name}”?`))return;
+    if(!await confirmAction({title:'Eliminar regla de envío',message:`Se eliminará la regla “${rule.name}”.`,confirmLabel:'Eliminar',tone:'danger'}))return;
     setRuleBusy(rule.id);
     try{await deleteShippingRule(rule.id);await reloadRules();showSuccess('Regla de envío eliminada.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudo eliminar la regla.');}
@@ -817,7 +818,7 @@ function AmazonSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   };
 
   const restore=async()=>{
-    if(!window.confirm('Se restaurarán los valores predeterminados de Amazon. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Restaurar Amazon',message:'Se restaurarán los valores predeterminados de Amazon.',confirmLabel:'Restaurar',tone:'warning'}))return;
     setSaving(true);
     try{await resetSection('amazon');onDirtyChange(false);showSuccess('Valores predeterminados de Amazon restaurados.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
@@ -956,7 +957,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
     finally{setSaving(false);}
   };
   const restore=async()=>{
-    if(!window.confirm('Se restaurarán los valores predeterminados de Integraciones. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Restaurar Integraciones',message:'Se restaurarán los valores predeterminados de Integraciones.',confirmLabel:'Restaurar',tone:'warning'}))return;
     setSaving(true);
     try{await resetSection('integrations');onDirtyChange(false);showSuccess('Valores predeterminados de Integraciones restaurados.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
@@ -1067,7 +1068,7 @@ function AlertsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   };
 
   const restore=async()=>{
-    if(!window.confirm('Se restaurarán los valores predeterminados de Alertas y automatizaciones. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Restaurar Alertas y automatizaciones',message:'Se restaurarán los valores predeterminados de Alertas y automatizaciones.',confirmLabel:'Restaurar',tone:'warning'}))return;
     setSaving(true);
     try{
       const [savedOrder,savedExpense]=await Promise.all([
@@ -1167,7 +1168,7 @@ function ProductsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   };
 
   const restore=async()=>{
-    if(!window.confirm('Se restaurarán los valores predeterminados de Productos. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Restaurar Productos',message:'Se restaurarán los valores predeterminados de Productos.',confirmLabel:'Restaurar',tone:'warning'}))return;
     setSaving(true);
     try{await resetSection('products');onDirtyChange(false);showSuccess('Valores predeterminados de Productos restaurados.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
@@ -1272,7 +1273,7 @@ function SuppliersSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void})
   };
 
   const restore=async()=>{
-    if(!window.confirm('Se restaurarán los valores predeterminados de Proveedores. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Restaurar Proveedores',message:'Se restaurarán los valores predeterminados de Proveedores.',confirmLabel:'Restaurar',tone:'warning'}))return;
     setSaving(true);
     try{await resetSection('suppliers');onDirtyChange(false);showSuccess('Valores predeterminados de Proveedores restaurados.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
@@ -1307,7 +1308,7 @@ function SuppliersSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void})
   };
 
   const removeAlias=async(alias:EntityAliasRule)=>{
-    if(!window.confirm(`¿Eliminar el alias “${alias.alias}”?`))return;
+    if(!await confirmAction({title:'Eliminar alias',message:`Se eliminará el alias “${alias.alias}”.`,confirmLabel:'Eliminar',tone:'danger'}))return;
     setAliasBusy(alias.id);
     try{await deleteEntityAlias(alias.id);await reloadAliases();showSuccess('Alias eliminado.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudo eliminar el alias.');}
@@ -1566,7 +1567,7 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
     finally{setSaving(false);}
   };
   const restore=async()=>{
-    if(!window.confirm('Se restaurarán los valores predeterminados de Mantenimiento. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Restaurar Mantenimiento',message:'Se restaurarán los valores predeterminados de Mantenimiento.',confirmLabel:'Restaurar',tone:'warning'}))return;
     setSaving(true);
     try{await resetSection('maintenance');onDirtyChange(false);showSuccess('Valores predeterminados de Mantenimiento restaurados.');}
     catch(e){showError(e instanceof Error?e.message:'No se pudieron restaurar los valores.');}
@@ -1605,7 +1606,7 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
     if(!preview)return;
     const {kind,data}=preview;
     const label=kind==='supplier'?'proveedor':'cliente';
-    if(!window.confirm('Vas a fusionar el '+label+' “'+data.sourceLabel+'” dentro de “'+data.destinationLabel+'”. La operación es transaccional pero no tiene deshacer automático. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Confirmar fusión',message:'Se fusionará el '+label+' “'+data.sourceLabel+'” dentro de “'+data.destinationLabel+'”.',confirmLabel:'Fusionar',tone:'danger',details:['La operación es transaccional, pero no tiene deshacer automático.']}))return;
     setBusy('merge');
     try{
       if(kind==='supplier')await mergeSupplier(data.sourceId,data.destinationId);
@@ -1651,7 +1652,7 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
   const applyRepair=async()=>{
     if(!repairPreview)return;
     const labels={costs:'recalcular los costes actuales',supplierLinks:'reconstruir relaciones producto-proveedor',priceHistory:'reconstruir enlaces del histórico de precios'} as const;
-    if(!window.confirm('Se va a '+labels[repairPreview.kind]+'. La operación no elimina histórico. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Aplicar mantenimiento',message:'Se va a '+labels[repairPreview.kind]+'.',confirmLabel:'Aplicar',tone:'warning',details:['La operación no elimina histórico.']}))return;
     setBusy('repair-apply:'+repairPreview.kind);
     try{
       const data=repairPreview.kind==='costs'
@@ -1675,7 +1676,7 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
 
   const confirmInvoiceReprocess=async()=>{
     if(!reprocessPreview)return;
-    if(!window.confirm('Se actualizará la cabecera/extracción de esta factura con el parser actual. Las líneas y el histórico existente se conservarán. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Reprocesar factura',message:'Se actualizará la cabecera y extracción de esta factura con el parser actual.',confirmLabel:'Reprocesar',tone:'warning',details:['Las líneas y el histórico existente se conservarán.']}))return;
     setBusy('reprocess-apply');
     try{
       await applyExpenseInvoiceReprocess(reprocessPreview);
@@ -1701,7 +1702,7 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
 
   const confirmGlobalReset=async()=>{
     if(!resetPreview)return;
-    if(!window.confirm('Se restaurarán a valores predeterminados '+resetPreview.changedCount+' secciones globales. Tus preferencias personales no se modificarán. ¿Continuar?'))return;
+    if(!await confirmAction({title:'Restaurar configuración global',message:'Se restaurarán a valores predeterminados '+resetPreview.changedCount+' secciones globales.',confirmLabel:'Restaurar',tone:'danger',details:['Tus preferencias personales no se modificarán.']}))return;
     setBusy('reset-all');
     try{
       await resetAllSettingsToDefaults();
@@ -1858,9 +1859,9 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
     return()=>window.removeEventListener('beforeunload',beforeUnload);
   },[dirty]);
 
-  const requestSection=(next:SettingsSectionId)=>{
+  const requestSection=async(next:SettingsSectionId)=>{
     if(next===activeSection)return;
-    if(dirty&&!window.confirm('Tienes cambios sin guardar. ¿Quieres salir de esta sección y descartarlos?'))return;
+    if(dirty&&!await confirmAction({title:'Cambios sin guardar',message:'Tienes cambios sin guardar en esta sección.',confirmLabel:'Descartar cambios',tone:'warning',details:['Si continúas, los cambios realizados en esta sección se perderán.']}))return;
     setDirty(false);
     setActiveSection(next);
   };
@@ -1882,7 +1883,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
       <nav className="settingsNav" aria-label="Secciones de configuración">
         {visibleSections.map(section=>{
           const Icon=section.icon;
-          return <button key={section.id} type="button" className={activeSection===section.id?'active':''} onClick={()=>requestSection(section.id)}>
+          return <button key={section.id} type="button" className={activeSection===section.id?'active':''} onClick={()=>void requestSection(section.id)}>
             <Icon size={18}/><span><strong>{section.label}</strong><small>{section.description}</small></span>
           </button>;
         })}
