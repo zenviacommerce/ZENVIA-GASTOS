@@ -34,7 +34,7 @@ import type { ExpenseCategory } from '../types';
 import { addEntityAlias, deleteEntityAlias, loadEntityAliases, updateEntityAlias, type EntityAliasRule } from '../services/entityAliases';
 import { loadSupplierOptions, type SupplierOption } from '../services/supplierEditor';
 import { addShippingRule, deleteShippingRule, loadShippingRules, updateShippingRule, type ShippingRule } from '../services/shippingRules';
-import { AMAZON_KPI_KEYS, loadAmazonStatus, type AmazonMarketplaceStatus } from '../services/amazon';
+import { AMAZON_KPI_KEYS, loadAmazonStatus, requestAmazonSync, type AmazonMarketplaceStatus } from '../services/amazon';
 import { createIntegrationAccount, disconnectIntegrationAccount, discoverShopifyStores, loadAmazonAccountMarketplaces, loadIntegrationAccounts, setDefaultIntegrationAccount, testIntegrationAccount, updateIntegrationAccount, type IntegrationAccount, type IntegrationProvider, type ShopifyDiscovery } from '../services/integrationAccounts';
 import { connectGmail, disconnectGmail, getCachedGmailConnection, setActiveGmailConnection, testGmailConnection } from '../services/gmail';
 import { DEFAULT_AUTOMATION_RULES, loadAutomationRules, saveAutomationRule, type AutomationRule } from '../services/automationRules';
@@ -1074,6 +1074,16 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
     finally{setBusy(null);}
   };
 
+  const syncAccount=async(account:IntegrationAccount)=>{
+    if(account.provider!=='amazon')return;
+    setBusy('sync:'+account.id);
+    try{
+      const result=await requestAmazonSync(account.id);
+      showSuccess(`Sincronización solicitada: ${result.jobs} trabajos para ${account.displayName}.`);
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo iniciar la sincronización.');}
+    finally{setBusy(null);}
+  };
+
   const makeDefault=async(account:IntegrationAccount)=>{
     setBusy('default:'+account.id);
     try{
@@ -1141,6 +1151,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
                 </div>
                 <div className="integrationAccountActions">
                   <button type="button" className="secondary" disabled={busy!==null||account.status==='disabled'} onClick={()=>void testAccount(account)}>{busy==='test:'+account.id?'Probando…':'Probar'}</button>
+                  {account.provider==='amazon'&&<button type="button" className="secondary" disabled={busy!==null||account.status!=='connected'} onClick={()=>void syncAccount(account)}>{busy==='sync:'+account.id?'Sincronizando…':'Sincronizar'}</button>}
                   <button type="button" className="secondary" disabled={busy!==null} onClick={()=>resetEditor(account.provider,account)}>Configurar</button>
                   {!account.isDefault&&account.status!=='disabled'&&<button type="button" className="secondary" disabled={busy!==null} onClick={()=>void makeDefault(account)}>Predeterminada</button>}
                   {account.status!=='disabled'&&<button type="button" className="secondary dangerText" disabled={busy!==null} onClick={()=>void disconnect(account)}>Desconectar</button>}
