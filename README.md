@@ -69,7 +69,7 @@ Variables frontend principales:
 
 La rama `main` es la referencia de producción. Los cambios relevantes deben validarse en una rama de trabajo y pasar tests + build antes de integrarse.
 
-El frontend está preparado para Vercel y el backend operativo reside en Supabase.
+La integración de Git con Vercel despliega producción desde `main`. El frontend está preparado para Vercel y el backend operativo reside en Supabase.
 
 ## Convenciones
 
