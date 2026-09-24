@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, FileText, LoaderCircle, Upload, X } from 'lucide-react';
-import { classifyInvoiceCandidate, invoiceCandidateToInput, prepareInvoiceCandidate } from '../services/invoiceImportPipeline';
+import { classifyInvoiceCandidate, invoiceCandidateToInput, prepareInvoiceCandidates } from '../services/invoiceImportPipeline';
 import type { ExpenseCategory, Invoice, InvoiceImportCandidate, NewInvoiceInput } from '../types';
 import { InvoiceCandidateForm } from './InvoiceCandidateForm';
 import { useSettings } from '../context/SettingsContext';
@@ -53,9 +53,11 @@ export function BulkInvoiceImportModal({open,onClose,categories,existingInvoices
         if(index>=initial.length)return;
         const item=initial[index];
         try{
-          const prepared=await prepareInvoiceCandidate(item.file,categories,undefined,item.file,policy);
-          const candidate=classifyInvoiceCandidate(prepared,existingInvoices,policy);
-          patch(item.id,{candidate,status:candidate.status,error:undefined});
+          const prepared=await prepareInvoiceCandidates(item.file,categories,undefined,item.file,policy);
+          const candidates=prepared.map(candidate=>classifyInvoiceCandidate(candidate,existingInvoices,policy));
+          setItems(current=>current.flatMap(existing=>existing.id===item.id
+            ?candidates.map(candidate=>({id:candidate.id,file:item.file,status:candidate.status,candidate,error:undefined}))
+            :[existing]));
         }catch(error){
           patch(item.id,{status:'error',error:error instanceof Error?error.message:'No se pudo analizar la factura.'});
         }
@@ -106,14 +108,14 @@ export function BulkInvoiceImportModal({open,onClose,categories,existingInvoices
   const pendingCount=items.filter(item=>item.status==='analyzing').length;
 
   return <div className="modalBackdrop"><div className="modal bulkInvoiceModal">
-    <div className="modalHead"><div><h3>Importar facturas</h3><p>Selecciona varios PDF. Se analizan de dos en dos y podrás revisar cada factura antes de importarla.</p></div><button onClick={onClose}><X/></button></div>
+    <div className="modalHead"><div><h3>Importar facturas</h3><p>Selecciona uno o varios PDF. Si un PDF contiene varias facturas completas, se separarán en candidatos independientes para revisarlos antes de importar.</p></div><button onClick={onClose}><X/></button></div>
     <input hidden ref={inputRef} type="file" multiple accept="application/pdf" onChange={e=>chooseFiles(Array.from(e.target.files??[]))}/>
     {!items.length?<button className="bulkInvoiceDrop" type="button" onClick={()=>inputRef.current?.click()}><Upload/><strong>Seleccionar PDFs</strong><span>Puedes elegir varios archivos a la vez</span></button>:<>
       <div className="bulkInvoiceSummary"><strong>{analyzed} de {items.length} analizadas</strong><span>{readyCount} listas · {reviewCount} requieren revisión · {pendingCount} pendientes</span><button className="secondary" type="button" disabled={busy} onClick={()=>inputRef.current?.click()}>Cambiar selección</button></div>
       <div className="bulkInvoiceList">{items.map(item=>{
         const candidate=item.candidate;
         return <div key={item.id} className={`bulkInvoiceRow ${item.status} ${item.excluded?'excluded':''}`}>
-          <div className="bulkInvoiceFile"><FileText size={18}/><div><strong>{item.file.name}</strong><span>{statusLabel[item.status]}{item.excluded?' · Excluida':''}</span></div></div>
+          <div className="bulkInvoiceFile"><FileText size={18}/><div><strong>{item.file.name}{candidate?.multiInvoiceSource&&candidate.bundleIndex&&candidate.bundleCount?` · Factura ${candidate.bundleIndex}/${candidate.bundleCount}`:''}</strong><span>{statusLabel[item.status]}{item.excluded?' · Excluida':''}</span></div></div>
           {item.status==='analyzing'?<LoaderCircle className="spin" size={18}/>:candidate?<div className="bulkInvoiceMeta"><span>{candidate.supplierName||'Proveedor sin detectar'}</span><span>{candidate.invoiceNumber||'Sin número'} · {candidate.invoiceDate||'Sin fecha'}</span><span>Base {money(candidate.subtotal)} · IVA {money(candidate.vat)}{candidate.equivalenceSurcharge?` · R.E. ${money(candidate.equivalenceSurcharge)}`:''} · Total {money(candidate.total)}</span><span>{candidate.lines.length} línea{candidate.lines.length===1?'':'s'}</span>{candidate.reviewReason&&<span className="warnText">{candidate.reviewReason}</span>}</div>:<div className="bulkInvoiceMeta"><span className="warnText">{item.error||'No se pudo analizar.'}</span></div>}
           <div className="bulkInvoiceActions">{candidate&&['ready','needs_review'].includes(item.status)&&<button className="secondary" type="button" onClick={()=>setSelectedId(item.id)}>Revisar</button>}<button className="secondary" type="button" disabled={busy||item.status==='importing'||item.status==='imported'} onClick={()=>patch(item.id,{excluded:!item.excluded})}>{item.excluded?'Incluir':'Excluir'}</button></div>
         </div>;
