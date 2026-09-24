@@ -90,7 +90,7 @@ export function reconcileInvoiceFiscalAmounts(text:string,current:FiscalAmounts)
     subtotal:round2(current.subtotal||0),
     vat:round2(current.vat||0),
     total:round2(current.total||0),
-    confidence:consistent(current)?.86:.35,
+    confidence:consistent(current) ? .86 : .35,
     corrected:false,
     reason:consistent(current)?'Los importes actuales cuadran matemáticamente.':'Los importes actuales no cuadran.',
   };
