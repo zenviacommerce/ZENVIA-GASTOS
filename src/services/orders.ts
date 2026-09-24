@@ -187,14 +187,60 @@ export function openLabelForPrint(blob:Blob){
   win.addEventListener('load',()=>window.setTimeout(()=>{try{win.focus();win.print();}catch{/* visor PDF */}},500),{once:true});
   window.setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
-export async function listLocalPrinters():Promise<LocalPrinter[]>{
-  const response=await fetch('http://127.0.0.1:1903/printers',{headers:{Accept:'application/json'}});
-  if(!response.ok)throw new Error('El Print Client de Sendcloud no responde.');
-  return response.json() as Promise<LocalPrinter[]>;
+const ZENVIA_PRINT_AGENT='http://127.0.0.1:17931';
+const LEGACY_SENDCLOUD_PRINT_CLIENT='http://127.0.0.1:1903';
+
+async function zenviaPrinters():Promise<LocalPrinter[]>{
+  const response=await fetch(`${ZENVIA_PRINT_AGENT}/printers`,{
+    headers:{Accept:'application/json','X-Zenvia-Client':'gestion-web'},
+  });
+  if(!response.ok)throw new Error('ZENVIA Print Agent no responde.');
+  const payload=await response.json() as {printers?:Array<{id?:string;name?:string;default?:boolean}>};
+  return (payload.printers||[])
+    .filter(item=>item.id&&item.name)
+    .map(item=>({id:`zenvia:${item.id}`,name:String(item.name),default:Boolean(item.default)}));
 }
+
+async function legacySendcloudPrinters():Promise<LocalPrinter[]>{
+  const response=await fetch(`${LEGACY_SENDCLOUD_PRINT_CLIENT}/printers`,{headers:{Accept:'application/json'}});
+  if(!response.ok)throw new Error('El Print Client de Sendcloud no responde.');
+  const items=await response.json() as LocalPrinter[];
+  return items.map(item=>({...item,id:`sendcloud:${item.id}`}));
+}
+
+export async function listLocalPrinters():Promise<LocalPrinter[]>{
+  try{
+    const printers=await zenviaPrinters();
+    if(printers.length)return printers;
+  }catch{/* fallback temporal */}
+  try{return await legacySendcloudPrinters()}
+  catch{throw new Error('No se detecta ZENVIA Print Agent ni el Print Client de Sendcloud.')}
+}
+
 export async function printLabelWithClient(blob:Blob,printerId:string){
+  const [source,...parts]=printerId.split(':');
+  const rawId=parts.join(':')||printerId;
+  if(source==='zenvia'){
+    const response=await fetch(`${ZENVIA_PRINT_AGENT}/print`,{
+      method:'POST',
+      headers:{
+        Accept:'application/json',
+        'Content-Type':'application/pdf',
+        'X-Zenvia-Client':'gestion-web',
+        'X-Printer-Id':rawId,
+      },
+      body:blob,
+    });
+    if(!response.ok){
+      const payload=await response.json().catch(()=>({})) as {error?:string};
+      throw new Error(payload.error||'ZENVIA Print Agent no pudo imprimir la etiqueta.');
+    }
+    return;
+  }
+
+  const legacyId=source==='sendcloud'?rawId:printerId;
   const form=new FormData();form.append('file',new File([blob],'label.pdf',{type:blob.type||'application/pdf'}));
-  const response=await fetch(`http://127.0.0.1:1903/printers/${encodeURIComponent(printerId)}/print`,{method:'POST',headers:{Accept:'application/json'},body:form});
+  const response=await fetch(`${LEGACY_SENDCLOUD_PRINT_CLIENT}/printers/${encodeURIComponent(legacyId)}/print`,{method:'POST',headers:{Accept:'application/json'},body:form});
   if(!response.ok)throw new Error('El Print Client no pudo imprimir la etiqueta.');
 }
 export function getSavedPrinter(){return window.localStorage.getItem(PRINTER_KEY)||'';}
