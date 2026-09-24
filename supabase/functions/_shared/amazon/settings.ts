@@ -42,7 +42,9 @@ export async function loadAmazonAutomaticSyncSettings(admin:any,ownerId:string,i
   return {
     automaticEnabled,
     activeMarketplaceIds:accountMarketplaces.length?accountMarketplaces:strings(global.activeMarketplaceIds),
-    enabledSources:automaticEnabled?enabledSources:[],
+    // Keep source preferences available to explicit/manual sync. Automatic callers
+    // already gate execution with automaticEnabled before using these sources.
+    enabledSources,
     autoSyncImages:automaticEnabled&&bool(accountConfig.syncImages,bool(global.autoSyncImages,true)),
   };
 }
