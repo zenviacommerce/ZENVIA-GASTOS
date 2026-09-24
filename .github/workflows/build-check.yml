@@ -2,8 +2,6 @@ name: Build check
 on:
   pull_request:
     branches: [main]
-permissions:
-  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,17 +18,3 @@ jobs:
           path: dist
           if-no-files-found: error
           retention-days: 1
-      - name: Publish prebuilt branch
-        run: |
-          rm -rf /tmp/zenvia-dist
-          mkdir -p /tmp/zenvia-dist
-          cp -R dist/. /tmp/zenvia-dist/
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan prebuilt-dist
-          git rm -rf .
-          cp -R /tmp/zenvia-dist/. .
-          touch .nojekyll
-          git add -A
-          git commit -m "Prebuilt dist"
-          git push --force origin HEAD:prebuilt-dist
