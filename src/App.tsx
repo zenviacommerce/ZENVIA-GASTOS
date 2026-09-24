@@ -29,6 +29,7 @@ import { updateInvoiceCategory, updateInvoiceSupplier } from './services/invoice
 import { addProduct, updateProduct, type ProductInput } from './services/productEditor';
 import { deleteInvoiceWithGmailRecovery } from './services/invoiceLifecycle';
 import { errorMessage, showError, showSuccess } from './services/toast';
+import { confirmAction } from './services/actionDialog';
 import { safeStorageGet, safeStorageSet } from './services/browserStorage';
 import { effectiveStartPage, resolveThemePreference } from './services/uiPreferences';
 import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './types';
@@ -160,10 +161,11 @@ export default function App(){
  if(!accessReady) return <><ToastHost/><div className="fullLoader"><LoaderCircle className="spin"/> Comprobando acceso…</div></>;
  if(!access||!access.active||!allowedPages.length) return <><ToastHost/><div className="authPage"><div className="authPanel accessDeniedPanel"><div className="authHeroIcon"><LockKeyhole/></div><h1>{error?'No se pudo cargar el acceso':'Acceso no autorizado'}</h1><p>{error?error:access&&!access.active?'Tu acceso a ZENVIA Gestión está desactivado.':'Esta cuenta no está autorizada para utilizar ZENVIA Gestión. Contacta con el administrador.'}</p><div className="actions">{error&&<button className="primary" onClick={()=>{setAccessReady(false);setError('');withTimeout(loadAccessProfile(session.user.id),12000,'La comprobación de acceso está tardando demasiado.').then(profile=>{setAccess(profile);setAccessReady(true)}).catch(e=>{setAccess(null);setAccessReady(true);setError(errorMessage(e,'No se pudo comprobar tu acceso.'))})}}>Reintentar</button>}<button className="secondary" onClick={()=>supabase.auth.signOut()}>Cerrar sesión</button></div></div></div></>;
 
- const navigate=(next:Page)=>{
+ const navigate=async(next:Page)=>{
    if(!allowedPages.includes(next))return;
    if(page==='settings'&&next!=='settings'&&settingsDirty){
-     if(!window.confirm('Tienes cambios sin guardar en Configuración. ¿Quieres salir y descartarlos?'))return;
+     const confirmed=await confirmAction({title:'Cambios sin guardar',message:'Tienes cambios sin guardar en Configuración.',confirmLabel:'Descartar cambios',tone:'warning',details:['Si continúas, los cambios realizados se perderán.']});
+     if(!confirmed)return;
      setSettingsDirty(false);
    }
    startPageApplied.current=true;
@@ -239,7 +241,7 @@ export default function App(){
    await runAction(async()=>{await deleteSupplier(supplier.id);await refresh()},'No se pudo eliminar el proveedor.');
  };
 
- return <div className="app"><ToastHost/><Sidebar page={page} onChange={navigate} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme} allowedPages={allowedPages} isAdmin={access.role==='admin'} user={{fullName:access.fullName,email:access.email||session.user.email||'',role:access.role}}/><main>
+ return <div className="app"><ToastHost/><Sidebar page={page} onChange={next=>void navigate(next)} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme} allowedPages={allowedPages} isAdmin={access.role==='admin'} user={{fullName:access.fullName,email:access.email||session.user.email||'',role:access.role}}/><main>
    <button className="mobileLogoutButton" onClick={()=>supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut size={19}/></button>
    <button className="mobileThemeToggle" onClick={toggleTheme} title={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'} aria-label={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'}>{theme==='dark'?<Sun size={19}/>:<Moon size={19}/>}</button>
    <PasskeySetup userId={session.user.id}/>
@@ -248,12 +250,12 @@ export default function App(){
      invoices={data.invoices}
      products={data.products}
      suppliers={data.suppliers}
-     onNavigate={next=>navigate(next as Page)}
+     onNavigate={next=>void navigate(next as Page)}
      canNavigate={next=>allowedPages.includes(next as Page)}
    />
    {error&&<div className="globalError">{error}<button onClick={refresh}>Reintentar</button></div>}
    {loading&&<div className="syncBadge"><LoaderCircle className="spin" size={14}/> Sincronizando</div>}
-   {page==='dashboard'&&can('dashboard')&&<Dashboard invoices={data.invoices} products={data.products} suppliers={data.suppliers} onUpload={can('invoices')?()=>setUpload(true):undefined} onProducts={can('products')?()=>navigate('products'):undefined}/>} 
+   {page==='dashboard'&&can('dashboard')&&<Dashboard invoices={data.invoices} products={data.products} suppliers={data.suppliers} onUpload={can('invoices')?()=>setUpload(true):undefined} onProducts={can('products')?()=>void navigate('products'):undefined}/>} 
    {page==='sales'&&can('sales')&&<SalesInvoices/>}
    {page==='orders'&&can('orders')&&<Orders/>}
    {page==='invoices'&&can('invoices')&&<ExpenseInvoicesHub invoices={data.invoices} suppliers={data.suppliers} categories={data.categories} onUpload={()=>setUpload(true)} onBulkUpload={()=>setBulkUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice} onSupplierChange={changeInvoiceSupplier} onCategoryChange={changeInvoiceCategory} onImported={refresh}/>} 
