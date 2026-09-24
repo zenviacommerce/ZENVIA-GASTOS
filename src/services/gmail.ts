@@ -284,8 +284,9 @@ export async function disconnectGmail(email?: string) {
       if (next) sessionStorage.setItem(TOKEN_ACTIVE_STORAGE_KEY, next);
       else sessionStorage.removeItem(TOKEN_ACTIVE_STORAGE_KEY);
     }
-    const legacy = getCachedGmailConnection();
-    if (legacy) sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(legacy));
+    const nextKey = sessionStorage.getItem(TOKEN_ACTIVE_STORAGE_KEY) || Object.keys(map)[0] || '';
+    const nextConnection = nextKey ? map[nextKey] : null;
+    if (nextConnection) sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(nextConnection));
     else sessionStorage.removeItem(TOKEN_STORAGE_KEY);
   } else if (!email) {
     sessionStorage.removeItem(TOKEN_STORAGE_KEY);
