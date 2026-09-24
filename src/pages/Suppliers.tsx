@@ -9,12 +9,11 @@ import { BulkSelectCheckbox, BulkSelectionToolbar } from '../components/BulkSele
 import { SelectField } from '../components/forms/SelectField';
 import { PeriodFilterPanel } from '../components/PeriodFilterPanel';
 import { defaultDateFilter, periodLabel } from '../services/filters';
+import { formatAppDate, formatAppMoney } from '../services/formatting';
 import '../supplier-actions.css';
 import { useSettings } from '../context/SettingsContext';
-import { hiddenTableColumns, persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
+import { orderedTableColumns, persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
 
-const money=(value:number)=>value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
-const dateLabel=(value?:string|null)=>value?new Date(`${value}T12:00:00`).toLocaleDateString('es-ES'):'—';
 const normalize=(value:string)=>value.trim().toLowerCase().replace(/\s+/g,' ');
 type SupplierTypeFilter='all'|'goods'|'service'|'both'|'unclassified';
 type SupplierActivityFilter='all'|'active'|'inactive';
@@ -28,6 +27,9 @@ function supplierTypeLabel(type: Supplier['supplierType']) {
 }
 
 function SupplierDrawer({supplier,metric,period,onClose,onEdit,onDelete,busy}:{supplier:Supplier;metric:SupplierMetric;period:string;onClose:()=>void;onEdit:()=>void;onDelete:()=>void;busy:boolean}){
+  const {settings}=useSettings();
+  const money=(value:number)=>formatAppMoney(value,settings.general.currencyCode,settings.general,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const dateLabel=(value?:string|null)=>formatAppDate(value,settings.general,'—');
   return <div className="masterDrawerBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}>
     <aside className="masterDrawer">
       <div className="masterDrawerHead"><div><div className="eyebrow">PROVEEDOR</div><h2>{supplier.name}</h2><p>{supplier.taxId||'CIF/VAT pendiente'}</p></div><button className="iconBtn" onClick={onClose}><X size={18}/></button></div>
@@ -50,9 +52,11 @@ function SupplierDrawer({supplier,metric,period,onClose,onEdit,onDelete,busy}:{s
 }
 
 export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[];onAdd:()=>void;onEdit:(supplier:Supplier)=>void;onDelete:(supplier:Supplier)=>Promise<void>}){
- const {preferences,updatePreferences}=useSettings();
+ const {settings,preferences,updatePreferences}=useSettings();
+ const money=(value:number)=>formatAppMoney(value,settings.general.currencyCode,settings.general,{minimumFractionDigits:2,maximumFractionDigits:2});
+ const dateLabel=(value?:string|null)=>formatAppDate(value,settings.general,'—');
  const pageSize=preferences.pageSize;
- const hiddenColumns=hiddenTableColumns(preferences,'suppliers');
+ const columns=orderedTableColumns(preferences,'suppliers');
  const remembered=rememberedFilter<{query:string;typeFilter:SupplierTypeFilter;activityFilter:SupplierActivityFilter;categoryFilter:string;dateFilter:ReturnType<typeof defaultDateFilter>}>(preferences,'suppliers.filters',{query:'',typeFilter:'all',activityFilter:'all',categoryFilter:'all',dateFilter:defaultDateFilter(preferences.defaultPeriod)});
  const [busyId,setBusyId]=useState<string|null>(null);
  const [error,setError]=useState('');
@@ -136,6 +140,28 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
    }finally{setBulkBusy(false);}
  };
  const edit=(supplier:Supplier)=>{setSelected(null);onEdit(supplier)};
+ const columnHeader=(key:string)=>{
+   if(key==='supplier')return <th key={key}>Proveedor</th>;
+   if(key==='taxId')return <th key={key}>CIF/VAT</th>;
+   if(key==='type')return <th key={key}>Tipo</th>;
+   if(key==='category')return <th key={key}>Categoría habitual</th>;
+   if(key==='contact')return <th key={key}>Contacto</th>;
+   if(key==='invoiceCount')return <th key={key} className="right">Facturas</th>;
+   if(key==='spend')return <th key={key} className="right">Gasto periodo</th>;
+   if(key==='lastInvoice')return <th key={key}>Última factura</th>;
+   return null;
+ };
+ const columnCell=(key:string,s:Supplier,metric:SupplierMetric)=>{
+   if(key==='supplier')return <td key={key}><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)}</small></div></div></td>;
+   if(key==='taxId')return <td key={key}>{s.taxId||<span className="muted">Pendiente</span>}</td>;
+   if(key==='type')return <td key={key}><span className={`masterTypeTag ${s.supplierType}`}>{supplierTypeLabel(s.supplierType)}</span></td>;
+   if(key==='category')return <td key={key}>{categories.find(category=>category.id===s.defaultCategoryId)?.name||<span className="muted">Sin categoría</span>}</td>;
+   if(key==='contact')return <td key={key}><div className="masterContactCell"><span>{s.email||'—'}</span><small>{s.phone||''}</small></div></td>;
+   if(key==='invoiceCount')return <td key={key} className="right"><strong>{metric.count}</strong></td>;
+   if(key==='spend')return <td key={key} className="right"><strong>{money(metric.total)}</strong></td>;
+   if(key==='lastInvoice')return <td key={key}>{dateLabel(metric.lastDate)}</td>;
+   return null;
+ };
 
  return <div className="page masterPage">
     <div className="pageHead">
@@ -173,18 +199,11 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
 
     <section className="card tableCard masterTableCard">
       {filtered.length?(
-        <table className="masterTable" data-preference-table="suppliers" data-hidden-columns={hiddenColumns}>
-          <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllSuppliers} label={allFilteredSelected?'Deseleccionar proveedores visibles':'Seleccionar proveedores visibles'}/></th><th>Proveedor</th><th>CIF/VAT</th><th>Tipo</th><th>Categoría habitual</th><th>Contacto</th><th className="right">Facturas</th><th className="right">Gasto periodo</th><th>Última factura</th><th></th></tr></thead>
+        <table className="masterTable" data-preference-table="suppliers">
+          <thead><tr><th className="bulkSelectionCell"><BulkSelectCheckbox checked={allFilteredSelected} onChange={toggleAllSuppliers} label={allFilteredSelected?'Deseleccionar proveedores visibles':'Seleccionar proveedores visibles'}/></th>{columns.map(columnHeader)}<th></th></tr></thead>
           <tbody>{paged.map(s=>{const metric=metrics.get(s.id)||{count:0,total:0,lastDate:null,recent:[]};return <tr className={`clickableRow ${checkedIds.has(s.id)?'bulkSelectedRow':''}`} key={s.id} onClick={()=>setSelected(s)}>
               <td className="bulkSelectionCell" onClick={e=>e.stopPropagation()}><BulkSelectCheckbox checked={checkedIds.has(s.id)} onChange={checked=>toggleSupplier(s.id,checked)} label={`Seleccionar ${s.name}`}/></td>
-              <td><div className="masterEntityCell"><div className="masterAvatar"><Building2 size={17}/></div><div><strong>{s.name}</strong><small>{supplierTypeLabel(s.supplierType)}</small></div></div></td>
-              <td>{s.taxId||<span className="muted">Pendiente</span>}</td>
-              <td><span className={`masterTypeTag ${s.supplierType}`}>{supplierTypeLabel(s.supplierType)}</span></td>
-              <td>{categories.find(category=>category.id===s.defaultCategoryId)?.name||<span className="muted">Sin categoría</span>}</td>
-              <td><div className="masterContactCell"><span>{s.email||'—'}</span><small>{s.phone||''}</small></div></td>
-              <td className="right"><strong>{metric.count}</strong></td>
-              <td className="right"><strong>{money(metric.total)}</strong></td>
-              <td>{dateLabel(metric.lastDate)}</td>
+              {columns.map(key=>columnCell(key,s,metric))}
               <td className="right"><ChevronRight size={17}/></td>
             </tr>})}</tbody>
         </table>
