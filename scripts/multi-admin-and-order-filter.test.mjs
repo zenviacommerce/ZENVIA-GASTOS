@@ -4,10 +4,12 @@ import test from 'node:test';
 
 const read=(path)=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 
-test('orders start with all channels unless the user explicitly remembers another filter',async()=>{
+test('orders always open on all channels and do not persist the channel filter',async()=>{
   const orders=await read('src/pages/Orders.tsx');
-  assert.match(orders,/rememberedFilter[\s\S]*channel:'all'/);
+  assert.match(orders,/setChannel\]=useState<'all'\|OrderChannel>\('all'\)/);
   assert.doesNotMatch(orders,/const\s+initialChannel\s*=/);
+  assert.doesNotMatch(orders,/const value=\{query,channel,state/);
+  assert.match(orders,/const value=\{query,state,trackingFilter,countryFilter,carrierFilter,dateFilter\}/);
   assert.match(orders,/value:'all',label:'Todos los canales'/);
 });
 
