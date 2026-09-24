@@ -25,7 +25,7 @@ test('standalone print agent is loopback-only by default and validates origins a
   assert.match(source,/gestion\.zenviacommerce\.com/);
   assert.match(source,/Access-Control-Allow-Private-Network/);
   assert.match(source,/pdf\.subarray\(0,5\)\.toString\('ascii'\)!=='%PDF-'/);
-  assert.match(source,/await print\(file,\{printer:selected\.name,silent:true,scale:'noscale'\}\)/);
+  assert.match(source,/await print\(file,\{printer:selected\.name,silent:true,scale:'noscale',[\s\S]*paperSize/);
 });
 
 test('label size flows from Orders to the local printer driver',async()=>{
