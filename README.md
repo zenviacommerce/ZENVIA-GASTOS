@@ -1,5 +1,7 @@
 # ZENVIA Gestión
 
+Repositorio: `zenviacommerce/ZENVIA-GESTION`.
+
 Aplicación interna de **ZENVIA COMMERCE** para centralizar la operativa administrativa y de ecommerce en una única interfaz.
 
 ## Qué incluye
