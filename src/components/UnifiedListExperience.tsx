@@ -27,7 +27,7 @@ function actionButton(kind:'edit'|'delete',label:string){
 
 function findDrawerButton(kind:'edit'|'delete'){
   const visibleDrawers=Array.from(document.querySelectorAll<HTMLElement>('.masterDrawer,.zenviaDetailDrawer,.invoiceDetailModal,.salesDetailModal'))
-    .filter(drawer=>drawer.offsetParent!==null);
+    .filter(drawer=>drawer.isConnected&&drawer.getClientRects().length>0);
   const drawer=visibleDrawers.at(-1);
   if(!drawer)return null;
   const matcher=kind==='edit'?/editar/i:/eliminar/i;
@@ -53,8 +53,10 @@ function enhanceDetailDrawers(){
 
 function syncSideDrawerPageLock(){
   const selectors='.zenviaDetailDrawerBackdrop,.masterDrawerBackdrop,.ordersDrawerBackdrop';
-  const open=Array.from(document.querySelectorAll<HTMLElement>(selectors))
-    .some(backdrop=>backdrop.offsetParent!==null);
+  // Fixed-position backdrops commonly have offsetParent === null even while
+  // visible. Their presence in the DOM is the reliable open-state signal because
+  // all side drawers are conditionally mounted.
+  const open=document.querySelector(selectors)!==null;
   document.documentElement.classList.toggle('zenviaSideDrawerOpen',open);
   document.body.classList.toggle('zenviaSideDrawerOpen',open);
 }
