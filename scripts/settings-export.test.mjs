@@ -35,7 +35,8 @@ test('Maintenance UI exposes configuration export and confirmed global reset',as
   assert.match(page,/Exportar configuración/);
   assert.match(page,/Restaurar configuración global/);
   assert.match(page,/previewSettingsReset/);
-  assert.match(page,/window\.confirm/);
+  assert.match(page,/confirmAction/);
+  assert.doesNotMatch(page,/window\.confirm/);
 });
 
 
