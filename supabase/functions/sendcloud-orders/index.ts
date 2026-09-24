@@ -206,7 +206,7 @@ Deno.serve(async(req:Request)=>{
         const {data:shopifyAccounts}=account.id?await admin.from('integration_accounts').select('id,external_account_id').eq('owner_id',caller.data_owner_id).eq('provider','shopify').eq('parent_account_id',account.id).neq('status','disabled'):{data:[]};
         const shopifyMap=new Map((shopifyAccounts||[]).map((item:any)=>[String(item.external_account_id),String(item.id)]));
         const amazonByRemote=new Map((amazonAccounts||[]).map((item:any)=>[String(item?.config?.sendcloudIntegrationId||''),String(item.id)]).filter(([key]:any)=>key));
-        const defaultAmazon=(amazonAccounts||[]).find((item:any)=>item.is_default)||(amazonAccounts||[])[0]||null;
+        const defaultAmazon=(amazonAccounts||[]).length===1?(amazonAccounts||[])[0]:null;
         const orders=await fetchOrders(account.credentials,history),now=new Date().toISOString();
         let shipments:any[]=[];try{shipments=await fetchShipments(account.credentials,history)}catch{/* sincronización base continúa */}
         const shipmentMap=new Map<string,any>();for(const shipment of shipments){const key=clean(shipment?.order_number);if(key&&!shipmentMap.has(key))shipmentMap.set(key,shipment)}
