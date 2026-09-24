@@ -94,3 +94,10 @@
   .settingsMaintenanceReprocess{grid-template-columns:1fr}
   .settingsMaintenanceReprocess>.secondary{width:100%}
 }
+
+.settingsColumnOrderList{display:grid;gap:8px;margin-top:10px}
+.settingsColumnPreferenceRow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+.settingsColumnPreferenceRow .settingsInlineCheck{flex:1;min-width:0}
+.settingsColumnMoveActions{display:flex;gap:6px;flex:0 0 auto}
+.settingsColumnMoveActions .iconBtn{width:34px;height:34px}
+@media(max-width:760px){.settingsColumnPreferenceRow{align-items:flex-start}.settingsColumnMoveActions{margin-top:1px}}
