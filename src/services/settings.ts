@@ -49,7 +49,7 @@ export function mergeUserPreferencesPatch(current:UserPreferences,patch:UserPref
     filters:patch.filters?{...current.filters,...patch.filters}:current.filters,
     tableColumns:patch.tableColumns?{...current.tableColumns,...patch.tableColumns}:current.tableColumns,
     tableColumnOrder:patch.tableColumnOrder?{...current.tableColumnOrder,...patch.tableColumnOrder}:current.tableColumnOrder,
-    dismissedAlerts:patch.dismissedAlerts?{...current.dismissedAlerts,...patch.dismissedAlerts}:current.dismissedAlerts,
+    dismissedAlerts:patch.dismissedAlerts?{...patch.dismissedAlerts}:current.dismissedAlerts,
   };
 }
 
