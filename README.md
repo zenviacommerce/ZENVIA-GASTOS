@@ -77,3 +77,5 @@ La integración de Git con Vercel despliega producción desde `main`. El fronten
 - Reutilizar componentes, estilos y motores compartidos antes de introducir variantes específicas por módulo.
 - Los laterales, formularios, listados y acciones masivas deben seguir los patrones globales de interfaz.
 - Las migraciones existentes son histórico inmutable: los cambios de esquema nuevos se añaden mediante nuevas migraciones.
+
+<!-- deploy-retry -->
