@@ -59,6 +59,11 @@ export function AlertCenter({
         integrations,
       },notifications);
       setAlerts(next);
+      const activeIds=new Set(next.map(item=>item.id));
+      const dismissedEntries=Object.entries(preferences.dismissedAlerts).filter(([id])=>activeIds.has(id));
+      if(dismissedEntries.length!==Object.keys(preferences.dismissedAlerts).length){
+        void patchPreferences({dismissedAlerts:Object.fromEntries(dismissedEntries)}).catch(()=>undefined);
+      }
       setLastRefresh(new Date().toISOString());
     }catch{
       // Keep the latest valid set if one source has a transient failure.
@@ -73,7 +78,7 @@ export function AlertCenter({
     return()=>{cancelled=true;window.clearInterval(timer);};
   },[notifications,invoices,products,suppliers,settings.integrations]);
 
-  const visibleAlerts=useMemo(()=>alerts.filter(item=>preferences.dismissedAlerts[item.id]!==alertFingerprint(item)),[alerts,preferences.dismissedAlerts]);
+  const visibleAlerts=useMemo(()=>alerts.filter(item=>!preferences.dismissedAlerts[item.id]),[alerts,preferences.dismissedAlerts]);
   const counts=useMemo(()=>({
     errors:visibleAlerts.filter(item=>item.severity==='error').length,
     warnings:visibleAlerts.filter(item=>item.severity==='warning').length,
