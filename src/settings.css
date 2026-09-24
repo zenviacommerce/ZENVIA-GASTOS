@@ -404,3 +404,16 @@
 .settingsResetPreview span{
   font-size:var(--ui-font-sm,13px);
 }
+
+
+/* Shared alignment for Configuration control rows and maintenance actions. */
+.settingsSubsection .settingsFormGrid{align-items:start}
+.settingsField{align-content:start}
+.settingsField>.searchableSelect,
+.settingsField>.settingsNumberWithSuffix{width:100%;min-height:var(--ui-control-height,42px)}
+.settingsField>.searchableSelect .searchableSelectTrigger{width:100%;min-height:var(--ui-control-height,42px)}
+.settingsField>.settingsNumberWithSuffix>input{min-height:calc(var(--ui-control-height,42px) - 2px)!important}
+.settingsField>small{display:block;margin:0;color:var(--muted,#64748b);font-size:var(--ui-font-xs,12px);line-height:1.45}
+.settingsMaintenanceActions{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));align-items:stretch;gap:9px;margin-top:12px}
+.settingsMaintenanceActions>button{width:100%;min-height:42px;justify-content:center;white-space:normal;text-align:center}
+@media(max-width:760px){.settingsMaintenanceActions{grid-template-columns:1fr}}
