@@ -21,3 +21,12 @@
   .alertCenterTrigger{width:36px;height:36px;border-radius:10px}
   .alertCenterPanel{position:fixed;top:58px;right:10px;left:10px;width:auto;max-height:calc(100dvh - 76px)}
 }
+
+.alertCenterFooterActions{display:flex;align-items:center;gap:6px}
+.alertCenterFooterActions button{display:inline-flex;align-items:center;gap:5px}
+.alertCenterFooterActions .alertCenterClear{color:#b91c1c}
+.alertCenterFooterActions .alertCenterClear:disabled{opacity:.45;cursor:default}
+@media(max-width:520px){
+  .alertCenterFooter{align-items:flex-start;flex-direction:column}
+  .alertCenterFooterActions{width:100%;justify-content:flex-end;flex-wrap:wrap}
+}
