@@ -46,3 +46,12 @@ test('settings exposes controlled automation rule editor without generic scripts
   assert.match(page,/saveAutomationRule/);
   assert.doesNotMatch(page,/script editor|javascript|custom action code/i);
 });
+
+
+test('automation rules resolve workspace from the signed-in access profile, not an existing app_settings row',async()=>{
+  const source=await read('src/services/automationRules.ts');
+  assert.match(source,/supabase\.auth\.getUser\(\)/);
+  assert.match(source,/from\('app_users'\)/);
+  assert.match(source,/data_owner_id/);
+  assert.doesNotMatch(source,/from\('app_settings'\)\.select\('owner_id'\)/);
+});
