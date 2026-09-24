@@ -52,7 +52,7 @@ function SupplierDrawer({supplier,metric,period,onClose,onEdit,onDelete,busy}:{s
 }
 
 export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[];onAdd:()=>void;onEdit:(supplier:Supplier)=>void;onDelete:(supplier:Supplier)=>Promise<void>}){
- const {settings,preferences,updatePreferences}=useSettings();
+ const {settings,preferences,patchPreferences}=useSettings();
  const money=(value:number)=>formatAppMoney(value,settings.general.currencyCode,settings.general,{minimumFractionDigits:2,maximumFractionDigits:2});
  const dateLabel=(value?:string|null)=>formatAppDate(value,settings.general,'—');
  const pageSize=preferences.pageSize;
@@ -110,7 +110,7 @@ export function Suppliers({suppliers,onAdd,onEdit,onDelete}:{suppliers:Supplier[
  const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
  const paged=useMemo(()=>filtered.slice((page-1)*pageSize,page*pageSize),[filtered,page]);
  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,typeFilter,categoryFilter,activityFilter,dateFilter]);
- useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'suppliers.filters',{query,typeFilter,activityFilter,categoryFilter,dateFilter})},350);return()=>window.clearTimeout(timer)},[query,typeFilter,activityFilter,categoryFilter,dateFilter,preferences.rememberFilters]);
+ useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,patchPreferences,'suppliers.filters',{query,typeFilter,activityFilter,categoryFilter,dateFilter})},350);return()=>window.clearTimeout(timer)},[query,typeFilter,activityFilter,categoryFilter,dateFilter,preferences.rememberFilters]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  const totals=useMemo(()=>({spent:filtered.reduce((sum,s)=>sum+(metrics.get(s.id)?.total||0),0),invoices:filtered.reduce((sum,s)=>sum+(metrics.get(s.id)?.count||0),0),active:filtered.filter(s=>(metrics.get(s.id)?.count||0)>0).length}),[filtered,metrics]);
 
