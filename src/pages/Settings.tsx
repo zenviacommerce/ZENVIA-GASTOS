@@ -35,6 +35,7 @@ import { addEntityAlias, deleteEntityAlias, loadEntityAliases, updateEntityAlias
 import { loadSupplierOptions, type SupplierOption } from '../services/supplierEditor';
 import { addShippingRule, deleteShippingRule, loadShippingRules, updateShippingRule, type ShippingRule } from '../services/shippingRules';
 import { AMAZON_KPI_KEYS, loadAmazonStatus, requestAmazonSync, type AmazonMarketplaceStatus } from '../services/amazon';
+import { getSendcloudStatus, syncSendcloudOrders } from '../services/orders';
 import { createIntegrationAccount, disconnectIntegrationAccount, discoverShopifyStores, loadAmazonAccountMarketplaces, loadIntegrationAccounts, setDefaultIntegrationAccount, syncSendcloudIntegrationAccount, testIntegrationAccount, updateIntegrationAccount, type IntegrationAccount, type IntegrationProvider, type ShopifyDiscovery } from '../services/integrationAccounts';
 import { connectGmail, disconnectGmail, getCachedGmailConnection, setActiveGmailConnection, testGmailConnection } from '../services/gmail';
 import { DEFAULT_AUTOMATION_RULES, loadAutomationRules, saveAutomationRule, type AutomationRule } from '../services/automationRules';
@@ -949,6 +950,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
   const toggle=(id:IntegrationProvider,value:boolean)=>{setDraft(current=>({...current,[settingKey[id]]:value}));onDirtyChange(true)};
   const dateTime=(value:string|null)=>formatAppDateTime(value,settings.general,'Sin registro');
   const sendcloudAccounts=accounts.filter(item=>item.provider==='sendcloud'&&item.status!=='disabled');
+  const compatibilityMode=accounts.some(item=>item.legacy);
 
   const resetEditor=(nextProvider:IntegrationProvider,account:IntegrationAccount|null=null)=>{
     setProvider(nextProvider);setEditing(account);setDisplayName(account?.displayName||'');
@@ -1003,7 +1005,27 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
   const saveAccount=async()=>{
     setBusy('save-account');
     try{
-      if(editing){
+      if(editing?.legacy){
+        if(provider==='amazon'){
+          await updateSection('amazon',{
+            ...settings.amazon,
+            activeMarketplaceIds,
+            primaryMarketplaceId:primaryMarketplaceId||null,
+            autoSyncOrders:syncOrders,
+            autoSyncInventory:syncInventory,
+            autoSyncFinance:syncFinance,
+            autoSyncImages:syncImages,
+          });
+          await updateSection('integrations',{...settings.integrations,amazonEnabled:accountEnabled});
+          showSuccess('Configuración de la cuenta actual guardada como valores globales hasta completar la migración multicuenta.');
+        }else{
+          await updateSection('integrations',{
+            ...settings.integrations,
+            [settingKey[provider]]:accountEnabled,
+          } as IntegrationsSettings);
+          showSuccess('Estado de la integración actual guardado. La configuración por cuenta se activará al completar la migración multicuenta.');
+        }
+      }else if(editing){
         const credentials:Record<string,string>={};
         if(provider==='amazon'){
           if(refreshToken.trim())credentials.refreshToken=refreshToken.trim();
@@ -1065,13 +1087,28 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
   const testAccount=async(account:IntegrationAccount)=>{
     setBusy('test:'+account.id);
     try{
-      if(account.provider==='gmail'){
-        await testGmailConnection(account.externalAccountId||undefined);
+      if(account.legacy){
+        if(account.provider==='amazon'){
+          const status=await loadAmazonStatus();
+          if(!status.connected)throw new Error(status.error||'Amazon no está conectado.');
+        }else if(account.provider==='sendcloud'){
+          const status=await getSendcloudStatus();
+          if(!status.configured)throw new Error(status.message||'Sendcloud no está configurado.');
+        }else if(account.provider==='shopify'){
+          const status=await getSendcloudStatus();
+          const remoteId=Number(account.externalAccountId);
+          if(!status.integrations.some(item=>item.channel==='shopify'&&item.id===remoteId))throw new Error('La tienda Shopify ya no aparece en Sendcloud.');
+        }else{
+          await testGmailConnection(account.externalAccountId||undefined);
+        }
+        showSuccess(`${providerMeta[account.provider].name}: conexión actual correcta.`);
+        return;
       }
+      if(account.provider==='gmail')await testGmailConnection(account.externalAccountId||undefined);
       const result=await testIntegrationAccount(account.id);
       showSuccess(`${providerMeta[account.provider].name}: conexión correcta.`);
       setAccounts(current=>current.map(item=>item.id===account.id?result.account:item));
-    }catch(e){showError(e instanceof Error?e.message:'No se pudo comprobar la conexión.');await reload();}
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo comprobar la conexión.');if(!account.legacy)await reload();}
     finally{setBusy(null);}
   };
 
@@ -1080,8 +1117,11 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
     setBusy('sync:'+account.id);
     try{
       if(account.provider==='amazon'){
-        const result=await requestAmazonSync(account.id);
+        const result=await requestAmazonSync(account.legacy?undefined:account.id);
         showSuccess(`Sincronización solicitada: ${result.jobs} trabajos para ${account.displayName}.`);
+      }else if(account.legacy){
+        const result=await syncSendcloudOrders(false,true,false);
+        showSuccess(`Sendcloud sincronizado: ${result.synced} pedidos actualizados.`);
       }else{
         const result=await syncSendcloudIntegrationAccount(account.id);
         showSuccess(`Sendcloud sincronizado: ${result.synced} pedidos, ${result.enriched} enriquecidos.`);
@@ -1091,6 +1131,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
   };
 
   const makeDefault=async(account:IntegrationAccount)=>{
+    if(account.legacy){showSuccess(`${account.displayName} ya es la cuenta actual predeterminada.`);return;}
     setBusy('default:'+account.id);
     try{
       if(account.provider==='gmail'&&account.externalAccountId&&getCachedGmailConnection(account.externalAccountId))setActiveGmailConnection(account.externalAccountId);
@@ -1101,6 +1142,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
   };
 
   const disconnect=async(account:IntegrationAccount)=>{
+    if(account.legacy){showError('La cuenta actual no se desconecta desde el modo de compatibilidad. Se habilitará al completar la migración multicuenta.');return;}
     if(!await confirmAction({title:'Desconectar integración',message:`Se desconectará “${account.displayName}”. El histórico ya importado se conservará.`,confirmLabel:'Desconectar',tone:'danger'}))return;
     setBusy('disconnect:'+account.id);
     try{
@@ -1135,13 +1177,14 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
 
     <div className="settingsSubsection">
       <div className="settingsSubsectionHead"><div><h3>Cuentas conectadas</h3><p>Amazon, Shopify, Sendcloud y Gmail pueden tener varias cuentas dentro del mismo espacio de trabajo.</p></div></div>
+      {compatibilityMode&&<p className="settingsHelpText">Estás viendo las conexiones actuales detectadas en el sistema anterior. Puedes probarlas, sincronizarlas y revisar su configuración; añadir o desconectar cuentas se habilitará cuando activemos el backend multicuenta.</p>}
       {loading?<div className="settingsInlineLoading">Cargando cuentas…</div>:<div className="integrationProviderGrid">
         {ordered.map(id=>{
           const items=accounts.filter(item=>item.provider===id);
           return <div className="integrationProviderCard" key={id}>
             <div className="integrationProviderHead">
               <div><strong>{providerMeta[id].name}</strong><small>{providerMeta[id].description}</small></div>
-              <button type="button" className="secondary" disabled={busy!==null||(id==='shopify'&&!sendcloudAccounts.length)} onClick={()=>resetEditor(id)}><Plus size={14}/> {id==='shopify'?'Añadir tienda':'Añadir cuenta'}</button>
+              <button type="button" className="secondary" disabled={busy!==null||compatibilityMode||(id==='shopify'&&!sendcloudAccounts.length)} onClick={()=>resetEditor(id)}><Plus size={14}/> {id==='shopify'?'Añadir tienda':'Añadir cuenta'}</button>
             </div>
             {id==='shopify'&&!sendcloudAccounts.length&&<p className="settingsHelpText">Conecta primero una cuenta de Sendcloud para detectar sus tiendas Shopify.</p>}
             <div className="integrationAccountList">
@@ -1149,9 +1192,10 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
                 <div className="integrationAccountMain">
                   <span className={`integrationStatusDot status-${account.status}`}/>
                   <div>
-                    <strong>{account.displayName}{account.isDefault&&<em>Predeterminada</em>}</strong>
+                    <strong>{account.displayName}{account.isDefault&&<em>Predeterminada</em>}{account.legacy&&<em>Actual</em>}</strong>
                     <small>{account.externalAccountId||'Sin identificador externo'} · {account.status==='connected'?'Conectada':account.status==='disabled'?'Desconectada':account.status==='error'?'Con error':'Pendiente'}</small>
                     {account.lastSuccessAt&&<small>Último éxito: {dateTime(account.lastSuccessAt)}</small>}
+                    {account.legacy&&<small>Conexión existente detectada automáticamente.</small>}
                     {account.lastError&&<small className="integrationError">{account.lastError}</small>}
                   </div>
                 </div>
@@ -1160,7 +1204,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
                   {(account.provider==='amazon'||account.provider==='sendcloud')&&<button type="button" className="secondary" disabled={busy!==null||account.status!=='connected'} onClick={()=>void syncAccount(account)}>{busy==='sync:'+account.id?'Sincronizando…':'Sincronizar'}</button>}
                   <button type="button" className="secondary" disabled={busy!==null} onClick={()=>resetEditor(account.provider,account)}>Configurar</button>
                   {!account.isDefault&&account.status!=='disabled'&&<button type="button" className="secondary" disabled={busy!==null} onClick={()=>void makeDefault(account)}>Predeterminada</button>}
-                  {account.status!=='disabled'&&<button type="button" className="secondary dangerText" disabled={busy!==null} onClick={()=>void disconnect(account)}>Desconectar</button>}
+                  {account.status!=='disabled'&&!account.legacy&&<button type="button" className="secondary dangerText" disabled={busy!==null} onClick={()=>void disconnect(account)}>Desconectar</button>}
                 </div>
               </div>)}
             </div>
