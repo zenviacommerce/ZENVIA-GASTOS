@@ -113,3 +113,10 @@ export async function loadAmazonAccountMarketplaces(linkedResourceId:string){
     active:Boolean(row.active),
   }));
 }
+
+
+export async function syncSendcloudIntegrationAccount(id:string,history=false){
+  const {data,error}=await supabase.functions.invoke('sendcloud-orders',{body:{action:'sync',integrationAccountId:id,history}});
+  if(error||!data||data.error)throw new Error(message(data,error,'No se pudo sincronizar la cuenta de Sendcloud.'));
+  return data as {ok:true;synced:number;enriched:number;accounts?:Array<{accountId:string|null;displayName:string;synced:number;enriched:number}>};
+}
