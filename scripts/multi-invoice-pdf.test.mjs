@@ -56,3 +56,31 @@ TOTAL FACTURA 121,00
   assert.deepEqual(splitBundledInvoiceText(text),[]);
   assert.equal(structuralInvoiceCount(text),0);
 });
+
+
+test('bulk expense import expands bundled PDFs into separate candidates',async()=>{
+  const modal=await readFile(new URL('../src/components/BulkInvoiceImportModal.tsx',import.meta.url),'utf8');
+  const pipeline=await readFile(new URL('../src/services/invoiceImportPipeline.ts',import.meta.url),'utf8');
+  assert.match(modal,/prepareInvoiceCandidates/);
+  assert.match(modal,/Factura \$\{candidate\.bundleIndex\}\/\$\{candidate\.bundleCount\}/);
+  assert.match(pipeline,/readInvoiceDocumentsEnhanced/);
+  assert.match(pipeline,/multiInvoiceSource:Boolean\(bundle&&bundle\.count>1\)/);
+  assert.match(pipeline,/PDF con varias facturas: revisa e indica el número/);
+});
+
+test('bundled invoices may share the source file hash but still check supplier and invoice number',async()=>{
+  const repository=await readFile(new URL('../src/services/repository.ts',import.meta.url),'utf8');
+  const pipeline=await readFile(new URL('../src/services/invoiceImportPipeline.ts',import.meta.url),'utf8');
+  assert.match(repository,/multiInvoiceSource=input\.extraction\?\.multiInvoiceSource===true/);
+  assert.match(repository,/policy\.detectDuplicates&&!multiInvoiceSource/);
+  assert.match(repository,/\.eq\('supplier_id',supplierId\)/);
+  assert.match(repository,/\.eq\('invoice_number',sanitizeDatabaseSingleLine\(input\.invoiceNumber\)\)/);
+  assert.match(pipeline,/!candidate\.multiInvoiceSource && existing\.fileHash/);
+});
+
+test('single expense upload blocks bundled PDFs and redirects to the normalized bulk flow',async()=>{
+  const modal=await readFile(new URL('../src/components/UploadInvoiceModal.tsx',import.meta.url),'utf8');
+  assert.match(modal,/isMultiInvoiceDocumentError/);
+  assert.match(modal,/Usa “Importar facturas”/);
+  assert.match(modal,/setReaderBlocked\(true\)/);
+});
