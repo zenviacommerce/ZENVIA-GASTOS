@@ -16,7 +16,7 @@ import { formatAppDate, formatAppMoney } from '../services/formatting';
 
 
 export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,onStatusChange,onOpenFile,onDelete,onSupplierChange,onCategoryChange}:{invoices:Invoice[];suppliers:Supplier[];categories:ExpenseCategory[];onUpload:()=>void;onBulkUpload:()=>void;onStatusChange:(id:string,status:'pending'|'reviewed'|'accounted')=>Promise<void>;onOpenFile:(invoice:Invoice)=>Promise<void>;onDelete:(invoice:Invoice)=>Promise<void>;onSupplierChange:(invoiceId:string,supplierId:string)=>Promise<void>;onCategoryChange:(invoiceId:string,categoryId:string)=>Promise<void>}){
- const {settings,preferences,updatePreferences}=useSettings();
+ const {settings,preferences,patchPreferences}=useSettings();
  const money=(value:number)=>formatAppMoney(value,settings.general.currencyCode,settings.general,{minimumFractionDigits:2,maximumFractionDigits:2});
  const pageSize=preferences.pageSize;
  const columns=orderedTableColumns(preferences,'expenses');
@@ -36,7 +36,7 @@ export function Invoices({invoices,suppliers,categories,onUpload,onBulkUpload,on
  const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
  const paged=useMemo(()=>filtered.slice((page-1)*pageSize,page*pageSize),[filtered,page]);
  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,filter]);
- useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'expenses.filters',{query,filter})},350);return()=>window.clearTimeout(timer)},[query,filter,preferences.rememberFilters]);
+ useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,patchPreferences,'expenses.filters',{query,filter})},350);return()=>window.clearTimeout(timer)},[query,filter,preferences.rememberFilters]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  const selectedSupplier=suppliers.find(s=>s.id===filter.supplierId);
  const selectedCategory=categories.find(category=>category.id===filter.categoryId);
