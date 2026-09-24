@@ -21,18 +21,49 @@ function addLengthIssue(issues:OrderValidationIssue[],field:string,label:string,
   if(required&&!text){issues.push({field,severity:'error',message:`${label}: obligatorio.`});return}
   if(text.length>max)issues.push({field,severity:'error',message:`${label}: ${text.length}/${max} caracteres.`});
 }
+function normalizedPhoneDigits(value:unknown){return clean(value).replace(/[^0-9]+/g,'')}
+function addPhoneIssue(issues:OrderValidationIssue[],value:unknown,countryCode:string,required=false,maxChars=20){
+  const raw=clean(value);
+  if(required&&!raw){issues.push({field:'phone',severity:'error',message:'Teléfono: obligatorio para este transportista.'});return}
+  if(!raw)return;
+  if(raw.length>maxChars){issues.push({field:'phone',severity:'error',message:`Teléfono: ${raw.length}/${maxChars} caracteres.`});return}
+  const digits=normalizedPhoneDigits(raw);
+  if(countryCode==='ES'){
+    const national=digits.startsWith('0034')?digits.slice(4):(digits.startsWith('34')&&digits.length===11?digits.slice(2):digits);
+    if(national.length!==9){
+      issues.push({field:'phone',severity:'error',message:`Teléfono: para España debe tener 9 dígitos, o 34 + 9 dígitos. Ahora tiene ${digits.length} dígitos.`});
+    }
+    return;
+  }
+  if(digits.length<7||digits.length>15){
+    issues.push({field:'phone',severity:'error',message:`Teléfono: debe contener entre 7 y 15 dígitos internacionales. Ahora tiene ${digits.length}.`});
+  }
+}
+function addEmailIssue(issues:OrderValidationIssue[],value:unknown,required=false,max=254){
+  const email=clean(value);
+  if(required&&!email){issues.push({field:'email',severity:'error',message:'Email: obligatorio para este transportista.'});return}
+  if(!email)return;
+  if(email.length>max){issues.push({field:'email',severity:'error',message:`Email: ${email.length}/${max} caracteres.`});return}
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))issues.push({field:'email',severity:'error',message:'Email: formato no válido.'});
+}
 
 export function validateOrderForCarrier(order:FulfillmentOrder,carrierCode=''):OrderValidationResult{
   const address=order.shippingAddress||{},issues:OrderValidationIssue[]=[];
+  const carrierHint=clean(carrierCode||order.carrierCode||order.carrierName||order.shippingOptionCode||order.shippingServiceName).toLowerCase();
+  const isMrw=carrierHint.includes('mrw');
+  const country=clean(address.country_code).toUpperCase();
   const name=order.customerName||address.name;
-  addLengthIssue(issues,'name','Nombre',name,carrierCode==='mrw'?50:80,true);
-  addLengthIssue(issues,'address_line_1','Dirección',address.address_line_1,carrierCode==='mrw'?50:80,true);
-  addLengthIssue(issues,'city','Ciudad',address.city,carrierCode==='mrw'?30:80,true);
-  addLengthIssue(issues,'postal_code','Código postal',address.postal_code,carrierCode==='mrw'?8:30,true);
-  addLengthIssue(issues,'country_code','País',address.country_code,2,true);
-  if(carrierCode==='mrw'){
-    addLengthIssue(issues,'phone','Teléfono',order.customerPhone||address.phone_number,20,true);
-    addLengthIssue(issues,'email','Email',order.customerEmail||address.email,50,true);
+  addLengthIssue(issues,'name','Nombre',name,isMrw?50:80,true);
+  addLengthIssue(issues,'address_line_1','Dirección',address.address_line_1,isMrw?50:80,true);
+  addLengthIssue(issues,'city','Ciudad',address.city,isMrw?30:80,true);
+  addLengthIssue(issues,'postal_code','Código postal',address.postal_code,isMrw?8:30,true);
+  addLengthIssue(issues,'country_code','País',country,2,true);
+  if(country&&country.length!==2)issues.push({field:'country_code',severity:'error',message:'País: debe ser un código ISO de 2 letras.'});
+  const postal=clean(address.postal_code).replace(/\s+/g,'');
+  if(country==='ES'&&postal&&!/^\d{5}$/.test(postal))issues.push({field:'postal_code',severity:'error',message:'Código postal: en España debe tener 5 dígitos.'});
+  addPhoneIssue(issues,order.customerPhone||address.phone_number,country,isMrw,isMrw?20:30);
+  addEmailIssue(issues,order.customerEmail||address.email,false,isMrw?50:254);
+  if(isMrw){
     addLengthIssue(issues,'address_line_2','Dirección 2',address.address_line_2,50,false);
     addLengthIssue(issues,'house_number','Número',address.house_number,20,false);
   }
