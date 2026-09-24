@@ -76,7 +76,7 @@ export function AlertCenter({
     void run();
     const timer=window.setInterval(()=>void run(),300000);
     return()=>{cancelled=true;window.clearInterval(timer);};
-  },[notifications,invoices,products,suppliers,settings.integrations]);
+  },[notifications,invoices,products,suppliers,settings.integrations,preferences.dismissedAlerts,patchPreferences]);
 
   const visibleAlerts=useMemo(()=>alerts.filter(item=>!preferences.dismissedAlerts[item.id]),[alerts,preferences.dismissedAlerts]);
   const counts=useMemo(()=>({
