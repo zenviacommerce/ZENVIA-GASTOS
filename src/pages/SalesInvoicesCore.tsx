@@ -270,7 +270,7 @@ export function SalesInvoices({
   onExportSelected?:(ids:string[])=>void;
   onFiltersChange?:(filters:{query:string;status:string;from:string;to:string;clientId:string;country:string;collection:string})=>void;
 }={}){
-  const {settings:appSettings,preferences,updatePreferences}=useSettings();
+  const {settings:appSettings,preferences,patchPreferences}=useSettings();
   const [invoices,setInvoices]=useState<SalesInvoice[]>([]);const [clients,setClients]=useState<Client[]>([]);const [products,setProducts]=useState<BillableProduct[]>([]);const [settings,setSettings]=useState<BusinessSettings>({legalName:'ZENVIA COMMERCE SL',countryCode:'ES'});const [branding,setBranding]=useState<CompanyBranding>({ownerId:'',logoPath:null,logoDataUrl:null});
   const remembered=rememberedFilter<{query:string;status:string;clientId:string;countryFilter:string;collectionFilter:CollectionFilter;dateFilter:ReturnType<typeof defaultDateFilter>}>(preferences,'sales.filters',{query:'',status:'all',clientId:'all',countryFilter:'all',collectionFilter:'all',dateFilter:defaultDateFilter(preferences.defaultPeriod)});
   const [query,setQuery]=useState(remembered.query);const [status,setStatus]=useState(remembered.status);const [clientId,setClientId]=useState(remembered.clientId);const [countryFilter,setCountryFilter]=useState(remembered.countryFilter);const [collectionFilter,setCollectionFilter]=useState<CollectionFilter>(remembered.collectionFilter);const [dateFilter,setDateFilter]=useState(remembered.dateFilter);const [loading,setLoading]=useState(true);const [error,setError]=useState('');
@@ -302,7 +302,7 @@ export function SalesInvoices({
     return true;
   });},[invoices,query,status,clientId,countryFilter,collectionFilter,dateFilter,clientById]);
   useEffect(()=>{onSelectedIdsChange?.([]);},[query,status,clientId,countryFilter,collectionFilter,dateFilter]);
-  useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'sales.filters',{query,status,clientId,countryFilter,collectionFilter,dateFilter})},350);return()=>window.clearTimeout(timer)},[query,status,clientId,countryFilter,collectionFilter,dateFilter,preferences.rememberFilters]);
+  useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,patchPreferences,'sales.filters',{query,status,clientId,countryFilter,collectionFilter,dateFilter})},350);return()=>window.clearTimeout(timer)},[query,status,clientId,countryFilter,collectionFilter,dateFilter,preferences.rememberFilters]);
   useEffect(()=>{onFiltersChange?.({query,status,clientId,country:countryFilter,collection:collectionFilter,from:dateFilter.from,to:dateFilter.to});},[query,status,clientId,countryFilter,collectionFilter,dateFilter,onFiltersChange]);
   const selectedSet=useMemo(()=>new Set(selectedIds),[selectedIds]);
   const selectedVisible=filtered.filter(invoice=>selectedSet.has(invoice.id));
