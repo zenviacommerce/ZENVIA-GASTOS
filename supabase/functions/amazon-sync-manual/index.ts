@@ -38,8 +38,7 @@ Deno.serve(async(req:Request)=>{
       const bootstrap=await ensureAmazonAccountAndMarketplaces(admin,caller.data_owner_id,integrationAccountId);
       const settings=await loadAmazonAutomaticSyncSettings(admin,caller.data_owner_id,integrationAccountId);
       const marketplaces=filterAutomaticMarketplaces(bootstrap.marketplaces,settings.activeMarketplaceIds);
-      const enabledSources=settings.enabledSources.length?settings.enabledSources:undefined;
-      const created=await enqueueHourlySync(admin,bootstrap.account,marketplaces,'manual',new Date(),enabledSources);
+      const created=await enqueueHourlySync(admin,bootstrap.account,marketplaces,'manual',new Date(),settings.enabledSources);
       jobs+=created.length;processed+=1;
     }
     return response({ok:true,accounts:processed,jobs});
