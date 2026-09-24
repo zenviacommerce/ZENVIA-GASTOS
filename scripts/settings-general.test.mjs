@@ -47,3 +47,17 @@ test('General locale and currency settings have visible runtime consumers',async
   assert.match(pdf,/formatAppDate/);
   assert.match(pdf,/formatAppMoney/);
 });
+
+
+test('client supplier and product masters use the configured locale and currency',async()=>{
+  for(const path of ['../src/pages/Clients.tsx','../src/pages/Suppliers.tsx','../src/pages/Products.tsx']){
+    const source=await read(path);
+    assert.match(source,/formatAppMoney/);
+    assert.match(source,/formatAppDate/);
+    assert.match(source,/settings\.general/);
+  }
+  const productModal=await read('../src/components/ProductModal.tsx');
+  assert.match(productModal,/settings\.general\.currencyCode/);
+  assert.doesNotMatch(productModal,/Coste actual \(€/);
+  assert.doesNotMatch(productModal,/Precio de venta \(€/);
+});
