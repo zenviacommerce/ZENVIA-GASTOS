@@ -70,3 +70,22 @@ test('Mis preferencias exposes column ordering controls',async()=>{
   assert.match(source,/Mover columna a la izquierda/);
   assert.match(source,/Mover columna a la derecha/);
 });
+
+
+test('spacious density is a valid persisted preference',async()=>{
+  const schema=await readFile(new URL('../src/services/settingsSchema.ts',import.meta.url),'utf8');
+  const settings=await readFile(new URL('../src/pages/Settings.tsx',import.meta.url),'utf8');
+  const theme=await readFile(new URL('../src/theme-consistency.css',import.meta.url),'utf8');
+  assert.match(schema,/DensityPreference = 'comfortable' \| 'compact' \| 'spacious'/);
+  assert.match(schema,/\['comfortable','compact','spacious'\]/);
+  assert.match(settings,/value:'spacious',label:'Amplia'/);
+  assert.match(theme,/data-density='spacious'/);
+});
+
+test('configurable data tables consume visible columns in saved order',async()=>{
+  for(const path of ['../src/pages/Invoices.tsx','../src/pages/Clients.tsx','../src/pages/Suppliers.tsx','../src/pages/Products.tsx']){
+    const source=await readFile(new URL(path,import.meta.url),'utf8');
+    assert.match(source,/orderedTableColumns/);
+    assert.match(source,/columns\.map/);
+  }
+});
