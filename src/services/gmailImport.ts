@@ -1,6 +1,6 @@
-import type { ExpenseCategory, NewInvoiceInput } from '../types';
+import type { ExpenseCategory, InvoiceImportCandidate, NewInvoiceInput } from '../types';
 import { classifyInvoiceFile } from './invoiceCandidateClassifier';
-import { readInvoiceDocumentEnhanced } from './invoiceReaderEnhanced';
+import { invoiceCandidateToInput, prepareInvoiceCandidate, validateInvoiceCandidateIntegrity } from './invoiceImportPipeline';
 import { createInvoice } from './repository';
 import { supabase } from './supabase';
 import { downloadGmailAttachment, updateGmailImport, type GmailCandidate } from './gmail';
@@ -142,176 +142,197 @@ async function markDuplicateAsImported(candidate: GmailCandidate, invoiceId: str
   return invoiceId;
 }
 
+export type GmailImportOutcome=
+  |{kind:'imported';invoiceId:string}
+  |{kind:'review';candidate:InvoiceImportCandidate};
+
+function gmailExtractionMetadata(candidate:GmailCandidate,file:File,prepared:InvoiceImportCandidate,extra:Record<string,unknown>={}){
+  return {
+    gmailMessageId:candidate.messageId,
+    gmailAttachmentId:candidate.attachmentId,
+    originalMimeType:candidate.mimeType,
+    normalizedMimeType:file.type,
+    sharedPipeline:true,
+    reviewReason:prepared.reviewReason||null,
+    ...extra,
+  };
+}
+
+async function persistPreparedGmailInvoice(
+  gmailCandidate:GmailCandidate,
+  prepared:InvoiceImportCandidate,
+  options:{reviewedByUser?:boolean;onProgress?:(message:string)=>void}={},
+){
+  if(!gmailCandidate.id)throw new Error('El adjunto de Gmail no está registrado todavía.');
+  const duplicateBySupplierNumber=await findInvoiceBySupplierAndNumber(prepared.supplierName,prepared.invoiceNumber);
+  if(duplicateBySupplierNumber)return markDuplicateAsImported(gmailCandidate,duplicateBySupplierNumber,'supplier_invoice_number');
+
+  let invoiceInput:NewInvoiceInput=invoiceCandidateToInput(prepared,'gmail');
+  invoiceInput={
+    ...invoiceInput,
+    extraction:{
+      ...(invoiceInput.extraction||{}),
+      ...gmailExtractionMetadata(gmailCandidate,prepared.file,prepared,{
+        reviewedByUser:Boolean(options.reviewedByUser),
+      }),
+    },
+  };
+
+  let lineImportWarning='';
+  options.onProgress?.('Guardando factura y líneas de producto…');
+  try{
+    await createInvoice(invoiceInput);
+  }catch(firstSaveError){
+    if(isSupplierNumberDuplicate(firstSaveError)){
+      const duplicateId=await findInvoiceBySupplierAndNumber(prepared.supplierName,prepared.invoiceNumber);
+      if(duplicateId)return markDuplicateAsImported(gmailCandidate,duplicateId,'supplier_invoice_number_race');
+    }
+    const firstMessage=errorMessage(firstSaveError);
+    if(!prepared.lines.length)throw new Error(firstMessage);
+
+    options.onProgress?.('Las líneas automáticas dieron un problema. Guardando la cabecera para revisión…');
+    lineImportWarning=firstMessage;
+    try{
+      await createInvoice({
+        ...invoiceInput,
+        lines:[],
+        extraction:{
+          ...(invoiceInput.extraction||{}),
+          detectedLineCount:prepared.lines.length,
+          lineImportWarning:firstMessage,
+        },
+      });
+    }catch(fallbackError){
+      if(isSupplierNumberDuplicate(fallbackError)){
+        const duplicateId=await findInvoiceBySupplierAndNumber(prepared.supplierName,prepared.invoiceNumber);
+        if(duplicateId)return markDuplicateAsImported(gmailCandidate,duplicateId,'supplier_invoice_number_race');
+      }
+      throw new Error(`No se pudo guardar la factura. Primer intento: ${firstMessage}. Reintento sin líneas: ${errorMessage(fallbackError)}`);
+    }
+  }
+
+  const invoiceId=await findInvoiceByHash(prepared.fileHash);
+  if(!invoiceId)throw new Error('La factura se guardó, pero no se pudo recuperar su identificador.');
+
+  await updateGmailImport(gmailCandidate.id,'imported',invoiceId,{
+    importedAt:new Date().toISOString(),
+    confidence:prepared.confidence,
+    lineCount:lineImportWarning?0:prepared.lines.length,
+    detectedLineCount:prepared.lines.length,
+    invoiceNumber:prepared.invoiceNumber,
+    sharedPipeline:true,
+    reviewedByUser:Boolean(options.reviewedByUser),
+    ...(lineImportWarning?{lineImportWarning}:{}),
+  });
+  return invoiceId;
+}
+
+export async function saveReviewedGmailCandidate(
+  gmailCandidate:GmailCandidate,
+  prepared:InvoiceImportCandidate,
+  onProgress?:(message:string)=>void,
+){
+  const integrity=validateInvoiceCandidateIntegrity(prepared);
+  if(!integrity.safe)throw new Error(integrity.reasons.join(' · '));
+  return persistPreparedGmailInvoice(gmailCandidate,prepared,{reviewedByUser:true,onProgress});
+}
+
 export async function importGmailCandidate(
-  accessToken: string,
-  candidate: GmailCandidate,
-  categories: ExpenseCategory[],
-  onProgress?: (message: string) => void,
-) {
-  if (!candidate.id) throw new Error('El adjunto de Gmail no está registrado todavía.');
+  accessToken:string,
+  candidate:GmailCandidate,
+  categories:ExpenseCategory[],
+  onProgress?:(message:string)=>void,
+):Promise<GmailImportOutcome>{
+  if(!candidate.id)throw new Error('El adjunto de Gmail no está registrado todavía.');
   const loadedSettings=await loadAppSettings();
   const policy=expenseImportPolicyFromSettings(loadedSettings.settings.expenses);
 
-  let stage = 'iniciando importación';
-  try {
-    stage = 'descargar el adjunto de Gmail';
+  let stage='iniciando importación';
+  try{
+    stage='descargar el adjunto de Gmail';
     onProgress?.('Descargando adjunto de Gmail…');
-    const downloadedFile = await downloadGmailAttachment(accessToken, candidate);
-    const file = normalizeAttachmentFile(downloadedFile);
+    const downloadedFile=await downloadGmailAttachment(accessToken,candidate);
+    const file=normalizeAttachmentFile(downloadedFile);
     const isPdf=file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf');
     if(policy.gmailPdfOnly&&!isPdf){
       await updateGmailImport(candidate.id,'ignored',null,{ignoredBySetting:'gmailPdfOnly',ignoredAt:new Date().toISOString()});
       throw new NotInvoiceDocumentError('El adjunto se ha ignorado porque Configuración permite importar desde Gmail únicamente archivos PDF.');
     }
-    if(file.size>policy.maxAttachmentMb*1024*1024){
-      throw new Error(`El adjunto supera el máximo configurado de ${policy.maxAttachmentMb} MB.`);
-    }
+    if(file.size>policy.maxAttachmentMb*1024*1024)throw new Error(`El adjunto supera el máximo configurado de ${policy.maxAttachmentMb} MB.`);
 
-    stage = 'comprobar duplicados';
-    const fileHash = await sha256(file);
+    stage='comprobar duplicados';
+    const fileHash=await sha256(file);
     if(policy.detectDuplicates){
-      const existingInvoiceId = await findInvoiceByHash(fileHash);
-      if (existingInvoiceId&&policy.blockHighConfidenceDuplicates) {
-        return markDuplicateAsImported(candidate, existingInvoiceId, 'file_hash');
+      const existingInvoiceId=await findInvoiceByHash(fileHash);
+      if(existingInvoiceId&&policy.blockHighConfidenceDuplicates){
+        const invoiceId=await markDuplicateAsImported(candidate,existingInvoiceId,'file_hash');
+        return {kind:'imported',invoiceId};
       }
     }
 
-    // Los candidatos nuevos ya llegan validados desde la búsqueda. Para registros
-    // antiguos, creados con el filtro permisivo, hacemos la validación antes de
-    // permitir que creen una factura real.
-    if (candidate.metadata?.invoiceClassificationVersion !== 1) {
-      stage = 'validar que el documento sea una factura';
+    if(candidate.metadata?.invoiceClassificationVersion!==1){
+      stage='validar que el documento sea una factura';
       onProgress?.('Comprobando que el documento sea realmente una factura…');
-      const classification = await classifyInvoiceFile(file, {
-        filename: candidate.attachmentName,
-        subject: candidate.subject,
-        snippet: candidate.snippet,
-        sender: candidate.sender,
+      const classification=await classifyInvoiceFile(file,{
+        filename:candidate.attachmentName,
+        subject:candidate.subject,
+        snippet:candidate.snippet,
+        sender:candidate.sender,
       });
-      if (!classification.isInvoice) {
-        await updateGmailImport(candidate.id, 'ignored', null, {
-          autoRejected: true,
-          autoRejectedAt: new Date().toISOString(),
-          invoiceClassificationVersion: 1,
-          invoiceClassificationScore: classification.score,
-          invoiceClassificationSignals: classification.signals,
-          invoiceClassificationNegativeSignals: classification.negativeSignals,
+      if(!classification.isInvoice){
+        await updateGmailImport(candidate.id,'ignored',null,{
+          autoRejected:true,
+          autoRejectedAt:new Date().toISOString(),
+          invoiceClassificationVersion:1,
+          invoiceClassificationScore:classification.score,
+          invoiceClassificationSignals:classification.signals,
+          invoiceClassificationNegativeSignals:classification.negativeSignals,
         });
         throw new NotInvoiceDocumentError('El PDF se ha descartado porque no contiene una estructura suficiente de factura. Puedes recuperarlo desde «Ignoradas» si quieres revisarlo manualmente.');
       }
     }
 
-    stage = 'leer la factura';
-    onProgress?.('Leyendo la factura…');
-    const extraction = await readInvoiceDocumentEnhanced(file, categories, onProgress);
-    const supplierName = extraction.supplierName || senderFallback(candidate.sender);
-    const receivedDate = validIsoDate(candidate.receivedAt?.slice(0, 10));
-    const invoiceDate = validIsoDate(extraction.invoiceDate) || receivedDate || new Date().toISOString().slice(0, 10);
-    const filenameInvoiceNumber = invoiceNumberFromFilename(candidate.attachmentName);
-    const invoiceNumber = filenameInvoiceNumber || extraction.invoiceNumber;
+    stage='analizar la factura con el motor común';
+    onProgress?.('Analizando proveedor, fecha, fiscalidad y líneas…');
+    const prepared=await prepareInvoiceCandidate(file,categories,onProgress,file,policy);
 
     if(policy.detectDuplicates){
-      const duplicateBySupplierNumber = await findInvoiceBySupplierAndNumber(supplierName, invoiceNumber);
-      if (duplicateBySupplierNumber&&policy.blockHighConfidenceDuplicates) {
-        return markDuplicateAsImported(candidate, duplicateBySupplierNumber, 'supplier_invoice_number');
+      const duplicateBySupplierNumber=await findInvoiceBySupplierAndNumber(prepared.supplierName,prepared.invoiceNumber);
+      if(duplicateBySupplierNumber&&policy.blockHighConfidenceDuplicates){
+        const invoiceId=await markDuplicateAsImported(candidate,duplicateBySupplierNumber,'supplier_invoice_number');
+        return {kind:'imported',invoiceId};
       }
     }
 
-    const invoiceInput: NewInvoiceInput = {
-      file,
-      source: 'gmail',
-      supplierName,
-      invoiceNumber,
-      invoiceDate,
-      categoryId: extraction.categoryId,
-      subtotal: extraction.subtotal,
-      vat: extraction.vat,
-      withholding: extraction.withholding,
-      total: extraction.total,
-      ocrText: extraction.text,
-      extraction: {
-        parser: extraction.usedOcr ? 'gmail-browser-ocr-v2' : 'gmail-pdf-text-v2',
-        gmailMessageId: candidate.messageId,
-        gmailAttachmentId: candidate.attachmentId,
-        originalMimeType: candidate.mimeType,
-        normalizedMimeType: file.type,
-        supplierName: extraction.supplierName,
-        extractedInvoiceNumber: extraction.invoiceNumber,
-        filenameInvoiceNumber: filenameInvoiceNumber || null,
-        invoiceNumber,
-        invoiceDate: extraction.invoiceDate,
-        normalizedInvoiceDate: invoiceDate,
-        categoryId: extraction.categoryId ?? null,
-        subtotal: extraction.subtotal,
-        vat: extraction.vat,
-        withholding: extraction.withholding,
-        total: extraction.total,
-        lineCount: extraction.lines.length,
-      },
-      extractionConfidence: extraction.confidence,
-      lines: extraction.lines,
-    };
-
-    let lineImportWarning = '';
-    stage = 'guardar la factura y sus líneas';
-    onProgress?.('Guardando factura y líneas de producto…');
-    try {
-      await createInvoice(invoiceInput);
-    } catch (firstSaveError) {
-      if (isSupplierNumberDuplicate(firstSaveError)) {
-        const duplicateId = await findInvoiceBySupplierAndNumber(supplierName, invoiceNumber);
-        if (duplicateId) return markDuplicateAsImported(candidate, duplicateId, 'supplier_invoice_number_race');
-      }
-
-      const firstMessage = errorMessage(firstSaveError);
-      if (!extraction.lines.length) throw new Error(firstMessage);
-
-      stage = 'guardar la factura sin líneas automáticas';
-      onProgress?.('Las líneas automáticas dieron un problema. Guardando la factura para revisión…');
-      lineImportWarning = firstMessage;
-      try {
-        await createInvoice({
-          ...invoiceInput,
-          lines: [],
-          extraction: {
-            ...(invoiceInput.extraction || {}),
-            detectedLineCount: extraction.lines.length,
-            lineImportWarning: firstMessage,
-          },
-        });
-      } catch (fallbackError) {
-        if (isSupplierNumberDuplicate(fallbackError)) {
-          const duplicateId = await findInvoiceBySupplierAndNumber(supplierName, invoiceNumber);
-          if (duplicateId) return markDuplicateAsImported(candidate, duplicateId, 'supplier_invoice_number_race');
-        }
-        throw new Error(`No se pudo guardar la factura. Primer intento: ${firstMessage}. Reintento sin líneas: ${errorMessage(fallbackError)}`);
-      }
+    if(prepared.status==='needs_review'){
+      await updateGmailImport(candidate.id,'error',null,{
+        reviewRequired:true,
+        reviewReason:prepared.reviewReason||'La extracción necesita revisión manual.',
+        confidence:prepared.confidence,
+        sharedPipeline:true,
+        extractedSupplierName:prepared.supplierName||null,
+        extractedSupplierTaxId:prepared.supplierTaxId||null,
+        extractedInvoiceNumber:prepared.invoiceNumber||null,
+        extractedInvoiceDate:prepared.invoiceDate||null,
+        extractedSubtotal:prepared.subtotal,
+        extractedVat:prepared.vat,
+        extractedTotal:prepared.total,
+      });
+      return {kind:'review',candidate:prepared};
     }
 
-    stage = 'confirmar la importación';
-    const invoiceId = await findInvoiceByHash(fileHash);
-    if (!invoiceId) throw new Error('La factura se guardó, pero no se pudo recuperar su identificador.');
-
-    await updateGmailImport(candidate.id, 'imported', invoiceId, {
-      importedAt: new Date().toISOString(),
-      confidence: extraction.confidence,
-      lineCount: lineImportWarning ? 0 : extraction.lines.length,
-      detectedLineCount: extraction.lines.length,
-      originalMimeType: candidate.mimeType,
-      normalizedMimeType: file.type,
-      invoiceNumber,
-      ...(lineImportWarning ? { lineImportWarning } : {}),
-    });
-    return invoiceId;
-  } catch (error) {
-    if (error instanceof NotInvoiceDocumentError) throw error;
-    const detail = errorMessage(error);
-    const fullMessage = `Error al ${stage}: ${detail}`;
-    await updateGmailImport(candidate.id, 'error', null, {
-      lastError: fullMessage,
-      lastErrorAt: new Date().toISOString(),
-      lastErrorStage: stage,
-    }).catch(() => undefined);
+    stage='guardar la factura validada';
+    const invoiceId=await persistPreparedGmailInvoice(candidate,prepared,{onProgress});
+    return {kind:'imported',invoiceId};
+  }catch(error){
+    if(error instanceof NotInvoiceDocumentError)throw error;
+    const detail=errorMessage(error);
+    const fullMessage=`Error al ${stage}: ${detail}`;
+    await updateGmailImport(candidate.id,'error',null,{
+      lastError:fullMessage,
+      lastErrorAt:new Date().toISOString(),
+      lastErrorStage:stage,
+    }).catch(()=>undefined);
     throw new Error(fullMessage);
   }
 }
