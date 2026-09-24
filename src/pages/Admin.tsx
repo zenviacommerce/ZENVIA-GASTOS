@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Clock3, History, KeyRound, Pencil, RefreshCw, Search, ShieldCheck, Trash2, UserRoundPlus, Users, X } from 'lucide-react';
-import { createManagedUser, deleteManagedUser, listManagedUsers, permissionOptions, updateManagedUser, type ManagedUser, type MenuPermission } from '../services/access';
+import { createManagedUser, deleteManagedUser, listManagedUsers, permissionOptions, updateManagedUser, type AppRole, type ManagedUser, type MenuPermission } from '../services/access';
 import { listAuditLogs, type AuditEntry } from '../services/audit';
 import { errorMessage, showError, showSuccess } from '../services/toast';
 import { confirmAction } from '../services/actionDialog';
@@ -50,6 +50,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
         email: user.email,
         fullName: user.fullName,
         active: !user.active,
+        role: user.role,
         permissions: user.permissions,
       });
       await refresh();
@@ -59,7 +60,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
   };
 
   const remove = async (user: ManagedUser) => {
-    if (user.role === 'admin' || user.userId === currentUserId) return;
+    if (user.userId === currentUserId) return;
     const confirmed=await confirmAction({title:'Eliminar acceso',message:`Se eliminará definitivamente el acceso de ${user.email}.`,confirmLabel:'Eliminar acceso',tone:'danger',details:['Si ha subido archivos, Supabase puede impedir el borrado; en ese caso puedes dejarlo desactivado.']});
     if(!confirmed)return;
     setBusyId(user.userId); setError('');
@@ -103,7 +104,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
               <div className="adminRowActions">
                 <button className="iconAction" title="Editar usuario" onClick={() => setEditor({ user })} disabled={busyId === user.userId}><Pencil size={16}/></button>
                 {user.role !== 'admin' && <button className={user.active ? 'adminAccessButton dangerText' : 'adminAccessButton'} onClick={() => toggleActive(user)} disabled={busyId === user.userId}>{user.active ? 'Desactivar' : 'Activar'}</button>}
-                {user.role !== 'admin' && <button className="iconAction danger" title="Eliminar usuario" onClick={() => remove(user)} disabled={busyId === user.userId}><Trash2 size={16}/></button>}
+                {user.userId !== currentUserId && <button className="iconAction danger" title="Eliminar usuario" onClick={() => remove(user)} disabled={busyId === user.userId}><Trash2 size={16}/></button>}
               </div>
             </div>;
           })}
@@ -113,7 +114,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
       </section>
     </>:<AuditPanel users={users} currentUserId={currentUserId}/>}
 
-    {editor && <UserEditor user={editor.user} onClose={() => setEditor(null)} onSaved={async () => { setEditor(null); await refresh(); }}/>} 
+    {editor && <UserEditor user={editor.user} currentUserId={currentUserId} onClose={() => setEditor(null)} onSaved={async () => { setEditor(null); await refresh(); }}/>} 
   </div>;
 }
 
@@ -199,9 +200,11 @@ function AuditPanel({users,currentUserId}:{users:ManagedUser[];currentUserId:str
   </>;
 }
 
-function UserEditor({ user, onClose, onSaved }: { user: ManagedUser | null; onClose: () => void; onSaved: () => Promise<void> }) {
+function UserEditor({ user, currentUserId, onClose, onSaved }: { user: ManagedUser | null; currentUserId: string; onClose: () => void; onSaved: () => Promise<void> }) {
   const editing = Boolean(user);
-  const isAdmin = user?.role === 'admin';
+  const isSelf = user?.userId === currentUserId;
+  const [role, setRole] = useState<AppRole>(user?.role || 'user');
+  const isAdmin = role === 'admin';
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [email, setEmail] = useState(user?.email || '');
   const [password, setPassword] = useState('');
@@ -216,9 +219,9 @@ function UserEditor({ user, onClose, onSaved }: { user: ManagedUser | null; onCl
     event.preventDefault(); setBusy(true); setError('');
     try {
       if (editing && user) {
-        await updateManagedUser({ userId: user.userId, email, fullName, password: password || undefined, active: isAdmin ? true : active, permissions: isAdmin ? permissionOptions.map(option => option.id) : permissions });
+        await updateManagedUser({ userId: user.userId, email, fullName, password: password || undefined, active: isAdmin ? true : active, role, permissions: isAdmin ? permissionOptions.map(option => option.id) : permissions });
       } else {
-        await createManagedUser({ email, fullName, password, permissions });
+        await createManagedUser({ email, fullName, password, role, permissions: isAdmin ? permissionOptions.map(option => option.id) : permissions });
       }
       await onSaved();
       showSuccess(editing?'Usuario modificado correctamente.':'Usuario creado correctamente.');
@@ -228,10 +231,11 @@ function UserEditor({ user, onClose, onSaved }: { user: ManagedUser | null; onCl
 
   return <div className="modalBackdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <form className="modal adminUserModal" onSubmit={submit}>
-      <div className="modalHead"><div><h3>{editing ? 'Editar acceso' : 'Nuevo usuario'}</h3><p>{isAdmin ? 'Administrador principal de ZENVIA Gestión.' : 'Configura su acceso a los módulos actuales de la aplicación.'}</p></div><button type="button" onClick={onClose}><X size={18}/></button></div>
+      <div className="modalHead"><div><h3>{editing ? 'Editar acceso' : 'Nuevo usuario'}</h3><p>{isAdmin ? 'Administrador con acceso total a ZENVIA Gestión.' : 'Configura su acceso a los módulos actuales de la aplicación.'}</p></div><button type="button" onClick={onClose}><X size={18}/></button></div>
       <div className="stackForm adminUserFields">
         <label>Nombre<input required value={fullName} onChange={event => setFullName(event.target.value)} placeholder="Nombre y apellidos"/></label>
         <label>Email<input required type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="usuario@zenviacommerce.com"/></label>
+        <label>Tipo de usuario<SelectField value={role} options={[{value:'user',label:'Usuario'},{value:'admin',label:'Administrador'}]} onChange={value=>setRole(value as AppRole)} disabled={isSelf} ariaLabel="Tipo de usuario"/></label>
         <label>{editing ? 'Nueva contraseña (opcional)' : 'Contraseña inicial'}<div className="adminPasswordField"><KeyRound size={16}/><input type="password" required={!editing} minLength={8} value={password} onChange={event => setPassword(event.target.value)} placeholder={editing ? 'Dejar en blanco para no cambiar' : 'Mínimo 8 caracteres'}/></div></label>
       </div>
 
@@ -241,7 +245,7 @@ function UserEditor({ user, onClose, onSaved }: { user: ManagedUser | null; onCl
         {editing && <label className="adminActiveToggle"><input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)}/><span><strong>Usuario activo</strong><small>Si lo desactivas, podrá autenticarse pero no acceder a datos ni módulos.</small></span></label>}
       </>}
 
-      {isAdmin && <div className="adminLockedNotice"><ShieldCheck size={18}/><div><strong>Acceso total</strong><span>El administrador principal conserva Resumen, Facturación, Gastos, Clientes, Productos, Proveedores y Administración, y no puede desactivarse desde la aplicación.</span></div></div>}
+      {isAdmin && <div className="adminLockedNotice"><ShieldCheck size={18}/><div><strong>Acceso total</strong><span>Los administradores acceden a todos los módulos y al menú de Administración. No necesitan permisos individuales.</span>{isSelf&&<small>Tu propio rol no puede modificarse desde esta pantalla para evitar dejar el workspace sin administrador activo.</small>}</div></div>}
       {error && <div className="errorBox">{error}</div>}
       <div className="modalActions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear usuario'}</button></div>
     </form>
