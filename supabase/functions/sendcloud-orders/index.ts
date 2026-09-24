@@ -184,9 +184,20 @@ Deno.serve(async(req:Request)=>{
     const requestedIntegrationAccountId=clean(body?.integrationAccountId)||null;
     if(action==='status'){
       try{
-        const account=await loadSendcloudAccount(admin,caller.data_owner_id,requestedIntegrationAccountId);
-        return response({configured:true,accountId:account.id,displayName:account.displayName,integrations:await integrations(account.credentials)});
-      }catch(error){return response({configured:false,integrations:[],message:error instanceof Error?error.message:String(error)})}
+        const accounts=await loadSendcloudAccounts(admin,caller.data_owner_id,requestedIntegrationAccountId);
+        const linked:any[]=[];
+        for(const account of accounts){
+          const items=await integrations(account.credentials);
+          linked.push(...items.map(item=>({...item,sendcloudAccountId:account.id,sendcloudAccountName:account.displayName})));
+        }
+        return response({
+          configured:accounts.length>0,
+          accountId:accounts.length===1?accounts[0].id:null,
+          displayName:accounts.length===1?accounts[0].displayName:null,
+          accounts:accounts.map(account=>({id:account.id,displayName:account.displayName})),
+          integrations:linked,
+        });
+      }catch(error){return response({configured:false,accounts:[],integrations:[],message:error instanceof Error?error.message:String(error)})}
     }
 
     if(action==='sync'){
