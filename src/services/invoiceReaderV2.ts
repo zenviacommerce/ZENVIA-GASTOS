@@ -222,9 +222,21 @@ export function extractServiceTableLines(lines: string[]): NewInvoiceLineInput[]
 }
 
 export function detectMerchandiseCategory(categories: ExpenseCategory[], fullText: string, lines: NewInvoiceLineInput[]): string | undefined {
-  const tableHeader = /(?:(?:n[º°o]?\s*)?art[ií]culo|c[oó]digo)[\s\S]{0,100}descripci[oó]n[\s\S]{0,100}cantidad[\s\S]{0,100}precio(?:[\s\S]{0,80}importe)?/i.test(fullText);
+  const normalized=fullText.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const classicHeader = /(?:(?:n[º°o]?\s*)?art[ií]culo|c[oó]digo)[\s\S]{0,140}(?:descripci[oó]n|concepto|producto|detalle)[\s\S]{0,140}cantidad[\s\S]{0,140}precio(?:[\s\S]{0,100}importe)?/i.test(fullText);
+  const tableMarkers=[
+    /\bcodigo\b/.test(normalized),
+    /\b(?:concepto|descripcion|producto|detalle)\b/.test(normalized),
+    /\bcantidad\b/.test(normalized),
+    /\bprecio\b/.test(normalized),
+    /\b(?:ud\.?|unidad(?:es)?|bultos?)\b/.test(normalized),
+  ].filter(Boolean).length;
   const hasSkus = lines.filter(line => line.supplierSku).length >= 2;
-  if (!tableHeader && !hasSkus) return undefined;
+  const hasMultipleGoodsLines=lines.length>=2&&lines.filter(line=>{
+    const description=(line.description||'').toLowerCase();
+    return /\b(?:caja|pack|bolsa|vaso|plato|servilleta|rollo|papel|film|bandeja|cuchar|tenedor|producto|articulo)\b/.test(description);
+  }).length>=2;
+  if (!classicHeader && tableMarkers<3 && !hasSkus && !hasMultipleGoodsLines) return undefined;
   return categories.find(category => category.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('mercancia'))?.id;
 }
 
