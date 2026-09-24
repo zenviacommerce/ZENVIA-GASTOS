@@ -114,13 +114,13 @@ export function ProductModal({open,product,suppliers,onClose,onSave}:{open:boole
    <FormSection icon={<ShoppingCart size={18}/>} title="Compra y proveedor" subtitle="Corrige el proveedor actual sin alterar facturas ni histórico de compra">
      <FormGrid>
        <label>Proveedor<SearchableSelect value={supplierId} options={supplierOptions} onChange={setSupplierId} allowEmpty emptyLabel="Sin proveedor" placeholder="Sin proveedor" searchPlaceholder="Buscar proveedor…" ariaLabel="Proveedor del producto"/><span className="fieldHint">Cambiarlo aquí no crea una compra ni una variación de coste. Una compra real posterior podrá actualizarlo.</span></label>
-       <label>Coste actual (€ / {unit.trim()||'ud'})<input value={price} onChange={e=>{const next=e.target.value;setPrice(next);if(autoSalePrice)setSalePrice(defaultSalePrice(next,settings.products.targetMarginPct,settings.products.priceRounding))}} inputMode="decimal" placeholder="0,00"/></label>
+       <label>Coste actual ({settings.general.currencyCode} / {unit.trim()||'ud'})<input value={price} onChange={e=>{const next=e.target.value;setPrice(next);if(autoSalePrice)setSalePrice(defaultSalePrice(next,settings.products.targetMarginPct,settings.products.priceRounding))}} inputMode="decimal" placeholder="0,00"/></label>
      </FormGrid>
    </FormSection>
 
    <FormSection icon={<Store size={18}/>} title="Venta" subtitle="Precio comercial e impuestos aplicables al facturar">
      <FormGrid>
-       <label>Precio de venta (€ / {unit.trim()||'ud'})<input value={salePrice} onChange={e=>{setSalePrice(e.target.value);setAutoSalePrice(false)}} inputMode="decimal" placeholder={`Coste + ${settings.products.targetMarginPct} %`}/><span className="fieldHint">Por defecto se calcula con el margen objetivo configurado ({settings.products.targetMarginPct} %) y redondeo de {settings.products.priceRounding}. Si lo modificas manualmente, se respeta tu precio.</span></label>
+       <label>Precio de venta ({settings.general.currencyCode} / {unit.trim()||'ud'})<input value={salePrice} onChange={e=>{setSalePrice(e.target.value);setAutoSalePrice(false)}} inputMode="decimal" placeholder={`Coste + ${settings.products.targetMarginPct} %`}/><span className="fieldHint">Por defecto se calcula con el margen objetivo configurado ({settings.products.targetMarginPct} %) y redondeo de {settings.products.priceRounding}. Si lo modificas manualmente, se respeta tu precio.</span></label>
        <label>IVA de venta<SelectField value={salesTaxRate} options={VAT_OPTIONS} onChange={setSalesTaxRate} ariaLabel="IVA de venta"/></label>
        {metrics.margin!=null&&<div className="formSpan2 aiNote"><div><strong>Margen unitario</strong><span>{metrics.margin.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €{metrics.marginPct!=null?` · ${metrics.marginPct.toLocaleString('es-ES',{minimumFractionDigits:1,maximumFractionDigits:1})} % sobre coste`:''}.</span></div></div>}
      </FormGrid>
