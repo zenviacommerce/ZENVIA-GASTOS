@@ -8,6 +8,7 @@ import { validateInvoiceRecipient } from './invoiceRecipientRules';
 import { extractInvoiceParty, formatInvoicePartyAddress } from './invoicePartyExtractor';
 import { isLikelySameSupplier } from './supplierIdentity';
 import { expenseImportPolicyFromSettings, expenseRequiresReview, type ExpenseImportPolicy } from './expenseImportPolicy';
+import { invoiceAmountsConsistent } from './invoiceFiscalReconciler';
 
 async function sha256File(file:File){
   const buffer=await file.arrayBuffer();
@@ -17,6 +18,55 @@ async function sha256File(file:File){
 
 function normalizeKey(value:string){
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+}
+
+function saneSupplierName(value:string){
+  const name=value.trim();
+  if(name.length<3||name.length>120)return false;
+  if(/zenvia\s+commerce/i.test(name))return false;
+  if(/^(?:proveedor\s+gmail|factura|invoice|cliente|customer|original|copia|proforma)$/i.test(name))return false;
+  if(/\b(?:iban|bic|swift|base\s+imponible|total\s+factura|fecha|date)\b/i.test(name))return false;
+  if(/^(?:calle|c\/|avda\.?|avenida|pol[ií]gono|carretera|ctra\.?|plaza)\b/i.test(name))return false;
+  const letters=(name.match(/[A-Za-zÁÉÍÓÚÑÜáéíóúñü]/g)||[]).length;
+  const digits=(name.match(/\d/g)||[]).length;
+  return letters>=3&&digits<=Math.max(8,Math.round(letters*.8));
+}
+
+function saneInvoiceNumber(value:string){
+  const number=value.trim();
+  if(!number||number.length<2||number.length>60)return false;
+  if(!/\d/.test(number))return false;
+  if(/^(?:factura|invoice|original|copia|proforma)$/i.test(number))return false;
+  if(/^\d{1,2}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*(?:\d{2}|\d{4})$/.test(number))return false;
+  if(/^20\d{2}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{1,2}$/.test(number))return false;
+  return true;
+}
+
+function saneInvoiceDate(value:string){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+  const date=new Date(`${value}T12:00:00Z`);
+  if(Number.isNaN(date.getTime())||date.toISOString().slice(0,10)!==value)return false;
+  const max=new Date();
+  max.setUTCDate(max.getUTCDate()+2);
+  return date.getTime()<=max.getTime();
+}
+
+export function validateInvoiceCandidateIntegrity(candidate:Pick<InvoiceImportCandidate,
+  'supplierName'|'invoiceNumber'|'invoiceDate'|'subtotal'|'vat'|'equivalenceSurcharge'|'withholding'|'total'
+>){
+  const reasons:string[]=[];
+  if(!saneSupplierName(candidate.supplierName))reasons.push('El proveedor no se ha identificado con suficiente seguridad.');
+  if(!saneInvoiceNumber(candidate.invoiceNumber))reasons.push('El número de factura no parece válido.');
+  if(!saneInvoiceDate(candidate.invoiceDate))reasons.push('La fecha de factura no se ha identificado con suficiente seguridad.');
+  if(!(candidate.total>0))reasons.push('El total de factura no es válido.');
+  if(!invoiceAmountsConsistent({
+    subtotal:candidate.subtotal,
+    vat:candidate.vat,
+    equivalenceSurcharge:candidate.equivalenceSurcharge,
+    withholding:candidate.withholding,
+    total:candidate.total,
+  }))reasons.push('El cierre fiscal no cuadra: base, impuestos, retenciones y total no son consistentes.');
+  return {safe:reasons.length===0,reasons};
 }
 
 export async function createManualInvoiceCandidate(file:File):Promise<InvoiceImportCandidate>{
@@ -78,6 +128,21 @@ async function candidateFromRead(
   if(bundle&&bundle.count>1&&!read.invoiceNumber){
     status='needs_review';
     reviewReason=[reviewReason,'PDF con varias facturas: revisa e indica el número de esta factura.'].filter(Boolean).join(' · ');
+  }
+
+  const integrity=validateInvoiceCandidateIntegrity({
+    supplierName:read.supplierName,
+    invoiceNumber:read.invoiceNumber,
+    invoiceDate:read.invoiceDate,
+    subtotal:repairedAmounts.subtotal,
+    vat:repairedAmounts.vat,
+    equivalenceSurcharge,
+    withholding:read.withholding,
+    total:repairedAmounts.total,
+  });
+  if(!integrity.safe){
+    status='needs_review';
+    reviewReason=[reviewReason,...integrity.reasons].filter(Boolean).join(' · ');
   }
 
   return {
