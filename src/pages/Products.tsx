@@ -54,7 +54,7 @@ function ProductDrawer({product,extra,onClose,onEdit,onDelete,busy}:{product:Pro
 }
 
 export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];onAdd:()=>void;onEdit:(product:Product)=>void;onDelete:(product:Product)=>Promise<void>}){
- const {settings,preferences,updatePreferences}=useSettings();
+ const {settings,preferences,patchPreferences}=useSettings();
  const money=(value:number|null,decimals=2,maxDecimals=Math.max(decimals,4))=>value==null?'—':formatAppMoney(value,settings.general.currencyCode,settings.general,{minimumFractionDigits:decimals,maximumFractionDigits:maxDecimals});
  const dateLabel=(value?:string|null)=>formatAppDate(value,settings.general,'—');
  const pageSize=preferences.pageSize;
@@ -127,7 +127,7 @@ export function Products({products,onAdd,onEdit,onDelete}:{products:Product[];on
  const totalPages=Math.max(1,Math.ceil(shown.length/pageSize));
  const paged=useMemo(()=>shown.slice((page-1)*pageSize,page*pageSize),[shown,page]);
  useEffect(()=>{setPage(1);setCheckedIds(new Set())},[query,dateFilter,categoryFilter,supplierFilter,taxFilter,scope]);
- useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'products.filters',{query,dateFilter,categoryFilter,supplierFilter,scope,taxFilter})},350);return()=>window.clearTimeout(timer)},[query,dateFilter,categoryFilter,supplierFilter,scope,taxFilter,preferences.rememberFilters]);
+ useEffect(()=>{const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,patchPreferences,'products.filters',{query,dateFilter,categoryFilter,supplierFilter,scope,taxFilter})},350);return()=>window.clearTimeout(timer)},[query,dateFilter,categoryFilter,supplierFilter,scope,taxFilter,preferences.rememberFilters]);
  useEffect(()=>{setPage(current=>Math.min(current,totalPages))},[totalPages]);
  useEffect(()=>{if(selected&&!products.some(product=>product.id===selected.id))setSelected(null)},[products,selected]);
  const totals=useMemo(()=>{
