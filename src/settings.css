@@ -346,3 +346,38 @@
     justify-content:center;
   }
 }
+
+
+/* Settings uses the same readability scale as the rest of the application.
+   Keep sizes tied to shared --ui-* tokens instead of local one-off values. */
+.settingsPage{font-size:var(--ui-font-md,14px)}
+.settingsNav button strong{font-size:var(--ui-font-sm,13px)}
+.settingsNav button small{font-size:var(--ui-font-xs,12px)}
+.settingsSectionHero p,
+.settingsEmptySection span,
+.settingsInlineLoading{font-size:var(--ui-font-md,14px)}
+.settingsField>span,
+.settingsHelpText,
+.settingsSubsectionHead p,
+.settingsToggleField small,
+.integrationProviderHead small,
+.integrationEditorHead small,
+.integrationAccountMain small{font-size:var(--ui-font-xs,12px)}
+.settingsSubsection h3,
+.settingsSubsectionHead h3,
+.integrationAccountConfigBlock h4{font-size:var(--ui-font-heading-sm,15px)}
+.settingsToggleField strong,
+.settingsFieldGroup>strong,
+.settingsPreferenceColumns>strong,
+.integrationAccountMain strong{font-size:var(--ui-font-sm,13px)}
+.settingsContent input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='color']),
+.settingsContent textarea,
+.settingsContent select,
+.settingsContent .searchableSelectTrigger{font-size:var(--ui-font-md,14px);min-height:var(--ui-control-height,42px)}
+.settingsContent :where(.primary,.secondary,.link),
+.settingsInlineActions button,
+.integrationAccountActions button{font-size:var(--ui-font-control,13.5px)}
+.settingsInlineCheck,
+.settingsInlineChecks label{font-size:var(--ui-font-sm,13px)}
+.integrationProviderHead strong,
+.integrationEditorHead strong{font-size:var(--ui-font-md,14px)}
