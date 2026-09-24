@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  ArrowLeft,
+  ArrowRight,
   BellRing,
   Box,
   Building2,
@@ -1441,6 +1443,21 @@ function PreferencesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
     if(next.size===0){showError('Debe quedar al menos una columna de datos visible.');return;}
     update('tableColumns',{...draft.tableColumns,[table]:TABLE_COLUMN_DEFAULTS[table].filter(item=>next.has(item))});
   };
+  const columnOrder=(table:PreferenceTableKey)=>{
+    const defaults=[...TABLE_COLUMN_DEFAULTS[table]];
+    const allowed=new Set<string>(defaults);
+    const configured=(draft.tableColumnOrder[table]||[]).filter(key=>allowed.has(key));
+    return [...new Set([...configured,...defaults])];
+  };
+  const moveColumn=(table:PreferenceTableKey,key:string,direction:-1|1)=>{
+    const order=columnOrder(table);
+    const index=order.indexOf(key);
+    const target=index+direction;
+    if(index<0||target<0||target>=order.length)return;
+    const next=[...order];
+    [next[index],next[target]]=[next[target],next[index]];
+    update('tableColumnOrder',{...draft.tableColumnOrder,[table]:next});
+  };
 
   const save=async()=>{
     setSaving(true);
@@ -1478,11 +1495,24 @@ function PreferencesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
     </div>
 
     <div className="settingsSubsection">
-      <h3>Columnas visibles</h3>
-      {Object.entries(TABLE_COLUMN_DEFAULTS).map(([rawTable,columns])=>{
+      <h3>Columnas visibles y orden</h3>
+      <p className="settingsHelpText">El orden se aplica en escritorio. Selección y acciones permanecen fijas en los extremos.</p>
+      {Object.entries(TABLE_COLUMN_DEFAULTS).map(([rawTable])=>{
         const table=rawTable as PreferenceTableKey;
         const visible=visibleColumns(table);
-        return <div className="settingsPreferenceColumns" key={table}><strong>{tableLabels[table]}</strong><div className="settingsToggleGrid">{columns.map(key=><label className="settingsToggleField" key={key}><input type="checkbox" checked={visible.includes(key)} onChange={e=>toggleColumn(table,key,e.target.checked)}/><span><strong>{columnLabels[key]||key}</strong></span></label>)}</div></div>;
+        const order=columnOrder(table);
+        return <div className="settingsPreferenceColumns" key={table}>
+          <strong>{tableLabels[table]}</strong>
+          <div className="settingsColumnOrderList">
+            {order.map((key,index)=><div className="settingsColumnPreferenceRow" key={key}>
+              <label className="settingsInlineCheck"><input type="checkbox" checked={visible.includes(key)} onChange={e=>toggleColumn(table,key,e.target.checked)}/><span>{columnLabels[key]||key}</span></label>
+              <div className="settingsColumnMoveActions">
+                <button type="button" className="iconBtn" disabled={index===0} aria-label="Mover columna a la izquierda" title="Mover a la izquierda" onClick={()=>moveColumn(table,key,-1)}><ArrowLeft size={15}/></button>
+                <button type="button" className="iconBtn" disabled={index===order.length-1} aria-label="Mover columna a la derecha" title="Mover a la derecha" onClick={()=>moveColumn(table,key,1)}><ArrowRight size={15}/></button>
+              </div>
+            </div>)}
+          </div>
+        </div>;
       })}
     </div>
 
