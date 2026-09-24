@@ -224,6 +224,7 @@ export type UserPreferences = {
   dashboardKpis: string[];
   filters: Record<string, unknown>;
   labelPrinterId: string | null;
+  dismissedAlerts: Record<string, string>;
 };
 
 const notification = (threshold: number | null = null): NotificationSetting => ({
@@ -411,6 +412,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   dashboardKpis: [],
   filters: {},
   labelPrinterId: null,
+  dismissedAlerts: {},
 };
 
 export type SettingsSection = keyof AppSettings;
@@ -569,6 +571,31 @@ function recordOfStringArraysValue(
       continue;
     }
     result[recordKey] = [...new Set(value.map(item => item.trim()).filter(Boolean))];
+  }
+  return result;
+}
+
+function recordOfStringsValue(
+  input: AnyRecord,
+  key: string,
+  fallback: Record<string, string>,
+  path: string,
+  warnings: SettingsWarning[],
+) {
+  if (!(key in input)) return clone(fallback);
+  const raw = input[key];
+  if (!isRecord(raw)) {
+    warn(warnings, path, 'Se esperaba un objeto.');
+    return clone(fallback);
+  }
+  const result: Record<string, string> = {};
+  for (const [recordKey, value] of Object.entries(raw)) {
+    if (typeof value !== 'string') {
+      warn(warnings, `${path}.${recordKey}`, 'Se esperaba texto.');
+      continue;
+    }
+    const normalized=value.trim();
+    if(normalized)result[recordKey]=normalized;
   }
   return result;
 }
@@ -903,7 +930,7 @@ export function normalizeUserPreferences(input:unknown):{value:UserPreferences;w
     if(input!==undefined)warn(warnings,'$','Las preferencias deben ser un objeto. Se han aplicado los valores predeterminados.');
     return {value:clone(d),warnings};
   }
-  const keys=['theme','density','pageSize','startPage','defaultPeriod','rememberFilters','tableColumns','tableColumnOrder','dashboardKpis','filters','labelPrinterId'];
+  const keys=['theme','density','pageSize','startPage','defaultPeriod','rememberFilters','tableColumns','tableColumnOrder','dashboardKpis','filters','labelPrinterId','dismissedAlerts'];
   unknownKeys(input,keys,'',warnings);
 
   let pageSize=d.pageSize;
@@ -933,6 +960,7 @@ export function normalizeUserPreferences(input:unknown):{value:UserPreferences;w
       dashboardKpis:stringArrayValue(input,'dashboardKpis',d.dashboardKpis,'dashboardKpis',warnings),
       filters:freeRecordValue(input,'filters',d.filters,'filters',warnings),
       labelPrinterId:nullableStringValue(input,'labelPrinterId',d.labelPrinterId,'labelPrinterId',warnings),
+      dismissedAlerts:recordOfStringsValue(input,'dismissedAlerts',d.dismissedAlerts,'dismissedAlerts',warnings),
     },
     warnings,
   };
