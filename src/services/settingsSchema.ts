@@ -94,7 +94,7 @@ export type ShippingSettings = {
   senderCountryCode: string;
   fallbackWeightKg: number;
   weightUnit: 'kg' | 'g';
-  labelSize: 'A4' | 'A6' | '10x15';
+  labelSize: 'AUTO' | 'A4' | 'A5' | 'A6' | '10x15';
   labelOrientation: 'portrait' | 'landscape';
   copies: number;
   autoDownload: boolean;
@@ -728,7 +728,7 @@ function normalizeShipping(input:AnyRecord|null,warnings:SettingsWarning[]):Ship
     senderCountryCode:stringValue(input,'senderCountryCode',d.senderCountryCode,'shipping.senderCountryCode',warnings,{min:2,max:2,upper:true,pattern:/^[A-Za-z]{2}$/}),
     fallbackWeightKg:numberValue(input,'fallbackWeightKg',d.fallbackWeightKg,'shipping.fallbackWeightKg',warnings,0.001,1000),
     weightUnit:enumValue(input,'weightUnit',d.weightUnit,'shipping.weightUnit',warnings,['kg','g']),
-    labelSize:enumValue(input,'labelSize',d.labelSize,'shipping.labelSize',warnings,['A4','A6','10x15']),
+    labelSize:enumValue(input,'labelSize',d.labelSize,'shipping.labelSize',warnings,['AUTO','A4','A5','A6','10x15']),
     labelOrientation:enumValue(input,'labelOrientation',d.labelOrientation,'shipping.labelOrientation',warnings,['portrait','landscape']),
     copies:numberValue(input,'copies',d.copies,'shipping.copies',warnings,1,20,true),
     autoDownload:booleanValue(input,'autoDownload',d.autoDownload,'shipping.autoDownload',warnings),
