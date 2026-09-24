@@ -25,3 +25,18 @@ test('standalone print agent is loopback-only by default and validates origins a
   assert.match(source,/pdf\.subarray\(0,5\)\.toString\('ascii'\)!=='%PDF-'/);
   assert.match(source,/await print\(file,\{printer:selected\.name,silent:true,scale:'noscale'\}\)/);
 });
+
+test('label size flows from Orders to the local printer driver',async()=>{
+  const orders=await read('../src/services/orders.ts');
+  const agent=await read('../tools/print-agent/server.mjs');
+  const page=await read('../src/pages/Orders.tsx');
+  assert.match(orders,/X-Label-Size/);
+  assert.match(orders,/labelSize:ShippingSettings\['labelSize'\]/);
+  assert.match(agent,/x-label-size/);
+  assert.match(agent,/requestedSize==='10X15'\?'4x6'/);
+  assert.match(agent,/\['A4','A5','A6'\]\.includes/);
+  assert.match(agent,/paperSize/);
+  assert.match(page,/ordersQuickLabelFormat/);
+  assert.match(page,/value:'AUTO',label:'Original'/);
+  assert.match(page,/value:'A5',label:'A5'/);
+});
