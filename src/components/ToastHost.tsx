@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react';
 import { TOAST_EVENT, type ToastPayload } from '../services/toast';
 
 type ToastItem = ToastPayload & { id: string };
@@ -25,7 +25,7 @@ export function ToastHost() {
   if (!items.length) return null;
   return <div className="toastHost" aria-live="polite" aria-atomic="false">
     {items.map(item => <div key={item.id} className={`appToast ${item.kind}`} role={item.kind === 'error' ? 'alert' : 'status'}>
-      {item.kind === 'success' ? <CheckCircle2 size={20}/> : <AlertCircle size={20}/>}<span>{item.message}</span>
+      {item.kind === 'success' ? <CheckCircle2 size={20}/> : item.kind === 'info' ? <Info size={20}/> : <AlertCircle size={20}/>}<span>{item.message}</span>
       <button onClick={() => setItems(current => current.filter(toast => toast.id !== item.id))} aria-label="Cerrar aviso"><X size={16}/></button>
     </div>)}
   </div>;
