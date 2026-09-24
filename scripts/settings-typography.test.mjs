@@ -5,9 +5,10 @@ import test from 'node:test';
 const read=path=>readFile(new URL(path,import.meta.url),'utf8');
 
 test('application exposes one shared readability scale',async()=>{
-  const css=await read('../src/theme-consistency.css');
-  for(const token of ['--ui-font-xs:12px','--ui-font-sm:13px','--ui-font-control:13.5px','--ui-font-md:14px','--ui-font-heading-sm:15px','--ui-control-height:42px']) assert.equal(css.includes(token),true,token);
-  assert.match(css,/tableCard table[^}]*font-size:var\(--ui-font-md\)/);
+  const theme=await read('../src/theme-consistency.css');
+  const lists=await read('../src/interface-normalization.css');
+  for(const token of ['--ui-font-xs:12px','--ui-font-sm:13px','--ui-font-control:13.5px','--ui-font-md:14px','--ui-font-heading-sm:15px','--ui-control-height:42px']) assert.equal(theme.includes(token),true,token);
+  assert.match(lists,/tableCard table[^}]*font-size:var\(--ui-font-md,14px\)/);
 });
 
 test('Configuration consumes shared typography tokens instead of its old undersized controls',async()=>{
