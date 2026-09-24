@@ -51,6 +51,14 @@ function enhanceDetailDrawers(){
   });
 }
 
+function syncSideDrawerPageLock(){
+  const selectors='.zenviaDetailDrawerBackdrop,.masterDrawerBackdrop,.ordersDrawerBackdrop';
+  const open=Array.from(document.querySelectorAll<HTMLElement>(selectors))
+    .some(backdrop=>backdrop.offsetParent!==null);
+  document.documentElement.classList.toggle('zenviaSideDrawerOpen',open);
+  document.body.classList.toggle('zenviaSideDrawerOpen',open);
+}
+
 function enhanceExpenseDesktopEdit(){
   document.querySelectorAll<HTMLTableRowElement>('.expenseInvoicesHub .tableCard tbody > tr.clickableRow').forEach(row=>{
     const actions=row.querySelector<HTMLElement>('.invoiceActions');
@@ -338,6 +346,7 @@ export function UnifiedListExperience(){
       enhanceMasterMobileActions();
       document.querySelectorAll<HTMLTableElement>('.page .tableCard table').forEach(buildMobileCards);
       enhanceDetailDrawers();
+      syncSideDrawerPageLock();
     };
     const schedule=()=>{
       if(scheduled)return;
@@ -362,6 +371,8 @@ export function UnifiedListExperience(){
       observer.disconnect();
       hideTooltip();
       tooltip.remove();
+      document.documentElement.classList.remove('zenviaSideDrawerOpen');
+      document.body.classList.remove('zenviaSideDrawerOpen');
       document.removeEventListener('pointerover',onPointerOver);
       document.removeEventListener('pointerout',onPointerOut);
       document.removeEventListener('focusin',onFocusIn);
