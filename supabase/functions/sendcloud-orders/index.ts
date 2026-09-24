@@ -11,7 +11,7 @@ const SENDCLOUD_BASE='https://panel.sendcloud.sc/api/v3';
 type Caller={user_id:string;data_owner_id:string;role:string;active:boolean;permissions:string[]|null};
 type Integration={id:number;shopName:string;type:string;shopUrl:string|null;channel:'amazon'|'shopify'|'other';isApi:boolean};
 type SendcloudCredentials={publicKey:string;secretKey:string};
-type SendcloudAccount={id:string|null;displayName:string;credentialSource:string;credentials:SendcloudCredentials};
+type SendcloudAccount={id:string|null;displayName:string;credentialSource:string;config:Record<string,unknown>;credentials:SendcloudCredentials};
 
 function response(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:jsonHeaders});}
 function fail(message:string,status=400){return response({error:message},status);}
@@ -34,7 +34,7 @@ async function readIntegrationSecret(admin:any,secretId:string|null){
 }
 async function loadSendcloudAccount(admin:any,ownerId:string,requestedId?:string|null):Promise<SendcloudAccount>{
   let query=admin.from('integration_accounts')
-    .select('id,display_name,credential_source,secret_id,status,enabled')
+    .select('id,display_name,credential_source,secret_id,status,enabled,config')
     .eq('owner_id',ownerId).eq('provider','sendcloud');
   if(requestedId)query=query.eq('id',requestedId);
   else query=query.neq('status','disabled').order('is_default',{ascending:false}).order('updated_at',{ascending:false}).limit(1);
@@ -47,16 +47,16 @@ async function loadSendcloudAccount(admin:any,ownerId:string,requestedId?:string
     const publicKey=clean(stored?.publicKey||stored?.public_key||(data.credential_source==='environment'?env?.publicKey:''));
     const secretKey=clean(stored?.secretKey||stored?.secret_key||(data.credential_source==='environment'?env?.secretKey:''));
     if(!publicKey||!secretKey)throw new Error(`Faltan las claves de Sendcloud para ${data.display_name||'la cuenta seleccionada'}.`);
-    return {id:String(data.id),displayName:String(data.display_name||'Sendcloud'),credentialSource:String(data.credential_source||'vault'),credentials:{publicKey,secretKey}};
+    return {id:String(data.id),displayName:String(data.display_name||'Sendcloud'),credentialSource:String(data.credential_source||'vault'),config:(data.config&&typeof data.config==='object'&&!Array.isArray(data.config))?data.config:{},credentials:{publicKey,secretKey}};
   }
   const env=envSendcloudCredentials();
   if(!env)throw new Error('Sendcloud todavía no está conectado.');
-  return {id:null,displayName:'Sendcloud',credentialSource:'environment',credentials:env};
+  return {id:null,displayName:'Sendcloud',credentialSource:'environment',config:{syncOrders:true,shippingEnabled:true},credentials:env};
 }
 async function loadSendcloudAccounts(admin:any,ownerId:string,requestedId?:string|null):Promise<SendcloudAccount[]>{
   if(requestedId)return [await loadSendcloudAccount(admin,ownerId,requestedId)];
   const {data,error}=await admin.from('integration_accounts')
-    .select('id,display_name,credential_source,secret_id,status,enabled')
+    .select('id,display_name,credential_source,secret_id,status,enabled,config')
     .eq('owner_id',ownerId).eq('provider','sendcloud').eq('enabled',true).neq('status','disabled')
     .order('is_default',{ascending:false}).order('updated_at',{ascending:false});
   if(error)throw error;
@@ -199,6 +199,7 @@ Deno.serve(async(req:Request)=>{
       let totalSynced=0,totalEnriched=0;const allIntegrations:any[]=[];const accountResults:any[]=[];
       const {data:amazonAccounts}=await admin.from('integration_accounts').select('id,config,is_default').eq('owner_id',caller.data_owner_id).eq('provider','amazon').eq('enabled',true).neq('status','disabled');
       for(const account of accounts){
+        if(account.config?.syncOrders===false){accountResults.push({accountId:account.id,displayName:account.displayName,synced:0,enriched:0,disabled:true});continue;}
         const linked=await integrations(account.credentials);
         allIntegrations.push(...linked.map(item=>({...item,sendcloudAccountId:account.id,sendcloudAccountName:account.displayName})));
         const integrationMap=new Map(linked.map(i=>[i.id,i]));
