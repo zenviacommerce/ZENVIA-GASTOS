@@ -4,7 +4,7 @@ import type { AmazonSettings } from './settingsSchema';
 export type AmazonMarketplaceStatus={id:string;countryCode:string;name:string;currencyCode:string;active:boolean};
 export type AmazonStatus={
   configured:boolean;connected:boolean;status:'not_configured'|'pending'|'connected'|'error'|'disabled'|string;
-  account:{displayName:string;initialSyncFrom:string;lastSuccessfulSyncAt:string|null}|null;
+  account:{id:string;integrationAccountId:string|null;displayName:string;initialSyncFrom:string;lastSuccessfulSyncAt:string|null}|null;
   marketplaces:AmazonMarketplaceStatus[];
   sync:{latestRun:{source:string;mode:string;status:string;started_at:string;finished_at:string|null;rows_processed:number;error_message:string|null}|null;jobCounts:{queued:number;running:number;success:number;failed:number}};
   error:string|null;
@@ -143,10 +143,10 @@ async function rpc<T>(name:string,params:Record<string,unknown>,fallback:string)
   return result.data as T;
 }
 
-export async function loadAmazonStatus():Promise<AmazonStatus>{
+export async function loadAmazonStatus(integrationAccountId?:string):Promise<AmazonStatus>{
   if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
   try{
-    const {data,error}=await supabase.functions.invoke('amazon-status',{body:{}});
+    const {data,error}=await supabase.functions.invoke('amazon-status',{body:integrationAccountId?{integrationAccountId}:{}});
     if(error||!data||data.error){
       const next=new Error(message(data,error,'No se pudo consultar el estado de Amazon.'));
       notifyAmazonConnectivityError(next);
@@ -155,10 +155,10 @@ export async function loadAmazonStatus():Promise<AmazonStatus>{
     return data as AmazonStatus;
   }catch(error){notifyAmazonConnectivityError(error);throw error;}
 }
-export async function requestAmazonSync(){
+export async function requestAmazonSync(integrationAccountId?:string){
   if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
   try{
-    const {data,error}=await supabase.functions.invoke('amazon-sync-manual',{body:{}});
+    const {data,error}=await supabase.functions.invoke('amazon-sync-manual',{body:integrationAccountId?{integrationAccountId}:{}});
     if(error||!data||data.error){
       const next=new Error(message(data,error,'No se pudo iniciar la sincronización de Amazon.'));
       notifyAmazonConnectivityError(next);
