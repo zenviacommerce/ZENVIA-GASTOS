@@ -51,7 +51,7 @@ export function InvoiceDetailModal({invoice,suppliers,categories,onClose,onOpenF
   const supplierChanged=supplierId!==String(invoice.supplierId||'');
   const categoryChanged=categoryId!==String(invoice.categoryId||'');
 
-  return <div className="modalBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget) onClose()}}><div className="modal invoiceDetailModal">
+  return <div className="modalBackdrop zenviaDetailDrawerBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget) onClose()}}><div className="modal invoiceDetailModal zenviaDetailDrawer">
     <div className="modalHead"><div><h3>{invoice.supplierName}</h3><p>{invoice.invoiceNumber === '—' ? 'Factura sin número' : `Factura ${invoice.invoiceNumber}`}</p></div><button onClick={onClose}><X/></button></div>
 
     <div className="detailFile">
