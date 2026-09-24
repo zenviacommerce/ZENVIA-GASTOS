@@ -4,6 +4,7 @@ import { detectMerchandiseCategory, extractCompactProductLines, extractServiceTa
 import { getRetailInvoiceCorrection } from './invoiceRetailCorrections';
 import { canonicalizeSupplierName, extractExplicitLegalSupplier } from './supplierIdentity';
 import { splitBundledInvoiceText, structuralInvoiceCount } from './invoiceBundle';
+import { reconcileInvoiceFiscalAmounts } from './invoiceFiscalReconciler';
 
 const compact = (value: string) => value.replace(/\s+/g, ' ').trim();
 const moneyToken = /-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2,6}|-?\d+\.\d{2,6}/g;
@@ -301,32 +302,44 @@ function enhanceInvoiceReadResult(
     ?retailCorrection.total
     :fiscalSummary?.total||repaired.total;
   const reverseChargeTotal=Math.round((effectiveSubtotal-base.withholding)*100)/100;
-  const vat=retailCorrection
+  const provisionalVat=retailCorrection
     ?retailCorrection.vat
     :reverseCharge&&effectiveSubtotal>0&&effectiveTotal>0&&Math.abs(reverseChargeTotal-effectiveTotal)<=0.02
       ?0
       :fiscalSummary?.vat??base.vat;
+  const reconciled=retailCorrection||reverseCharge
+    ?null
+    :reconcileInvoiceFiscalAmounts(base.text,{
+        subtotal:effectiveSubtotal,
+        vat:provisionalVat,
+        total:effectiveTotal,
+        withholding:base.withholding,
+      });
+  const finalSubtotal=reconciled?.subtotal??effectiveSubtotal;
+  const vat=reconciled?.vat??provisionalVat;
+  const finalTotal=reconciled?.total??effectiveTotal;
 
   const gainedSupplier=supplierName&&supplierName!==base.supplierName;
   const gainedNumber=invoiceNumber&&invoiceNumber!==base.invoiceNumber;
-  const gainedSubtotal=(fiscalSummary?.subtotal||explicitSubtotal)>0&&Math.abs(effectiveSubtotal-base.subtotal)>0.01;
-  const gainedVat=Boolean(fiscalSummary&&Math.abs(fiscalSummary.vat-base.vat)>0.01);
+  const gainedSubtotal=Math.abs(finalSubtotal-base.subtotal)>0.01;
+  const gainedVat=Math.abs(vat-base.vat)>0.01;
   const gainedLines=retailCorrection?invoiceLines.length>0:specializedLines.length>=2&&specializedLines.length>=base.lines.length;
   const confidenceBoost=(gainedSupplier?0.06:0)
     +(gainedNumber?0.05:0)
     +(gainedSubtotal?0.04:0)
     +(gainedVat?0.08:0)
     +(gainedLines?0.08:0)
-    +(retailCorrection?0.06:0);
+    +(retailCorrection?0.06:0)
+    +(reconciled?.corrected?0.12:0);
 
   return {
     ...base,
     supplierName,
     invoiceNumber,
     categoryId,
-    subtotal:effectiveSubtotal,
+    subtotal:finalSubtotal,
     vat,
-    total:effectiveTotal,
+    total:finalTotal,
     lines:invoiceLines,
     confidence:Math.min(0.99,base.confidence+confidenceBoost),
   };
