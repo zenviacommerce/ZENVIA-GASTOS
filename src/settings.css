@@ -149,3 +149,200 @@
   .integrationEditorBackdrop{padding:8px;align-items:flex-end}.integrationEditor{max-height:94vh;border-radius:15px 15px 0 0}
   .integrationEditorActions{display:grid;grid-template-columns:1fr 1fr}.integrationEditorActions button{width:100%}
 }
+
+
+/* Configuration control normalization.
+   Raw inputs used by repeaters, aliases and maintenance rows must look like
+   the standard settings fields instead of falling back to browser defaults. */
+.settingsContent input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='color']),
+.settingsContent textarea,
+.settingsContent select{
+  min-width:0;
+  min-height:42px;
+  border:1px solid var(--border,#dbe2ea);
+  border-radius:10px;
+  background:var(--surface,#fff);
+  color:var(--text,#172033);
+  padding:9px 11px;
+  font:inherit;
+  font-size:12.5px;
+  line-height:1.35;
+  outline:none;
+  transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease;
+}
+.settingsContent textarea{resize:vertical}
+.settingsContent input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='color'])::placeholder,
+.settingsContent textarea::placeholder{color:var(--muted,#94a3b8);opacity:1}
+.settingsContent input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='color']):focus,
+.settingsContent textarea:focus,
+.settingsContent select:focus{
+  border-color:#14b8a6;
+  box-shadow:0 0 0 3px rgba(20,184,166,.12);
+}
+.settingsContent input:not([type='checkbox']):not([type='radio']):not([type='file']):disabled,
+.settingsContent textarea:disabled,
+.settingsContent select:disabled{
+  cursor:not-allowed;
+  opacity:.72;
+  background:var(--surface-soft,#f8fafc);
+}
+.settingsContent input[type='checkbox'],
+.settingsContent input[type='radio']{
+  accent-color:#0f766e;
+}
+
+.settingsSubsectionHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:12px;
+}
+.settingsSubsectionHead>div{min-width:0}
+.settingsSubsectionHead h3{margin:0}
+.settingsSubsectionHead p{
+  margin:4px 0 0;
+  color:var(--muted,#64748b);
+  font-size:11px;
+  line-height:1.5;
+}
+.settingsSubsectionHead>button{flex:0 0 auto}
+
+.settingsRepeater,
+.settingsAliasList{
+  display:grid;
+  gap:9px;
+  margin-top:12px;
+}
+.settingsRepeaterRow{
+  display:grid;
+  grid-template-columns:minmax(150px,.9fr) minmax(220px,1.35fr) auto 38px;
+  align-items:center;
+  gap:9px;
+  padding:10px;
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:12px;
+  background:var(--surface-soft,#f8fafc);
+}
+.settingsRepeaterRow>.iconBtn{
+  width:36px;
+  height:36px;
+  justify-self:end;
+}
+
+.settingsAliasCreate,
+.settingsAliasRow{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  padding:10px;
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:12px;
+  background:var(--surface-soft,#f8fafc);
+}
+.settingsAliasCreate{margin-top:12px}
+.settingsAliasCreate>input:not([type='checkbox']),
+.settingsAliasRow>input:not([type='checkbox']),
+.settingsAliasCreate>.searchableSelect,
+.settingsAliasRow>.searchableSelect{
+  flex:1 1 145px;
+  min-width:120px;
+}
+.settingsAliasCreate>input[type='number'],
+.settingsAliasRow>input[type='number']{
+  flex:0 1 100px;
+  max-width:120px;
+}
+.settingsAliasCreate>.secondary,
+.settingsAliasRow>.secondary,
+.settingsAliasRow>.iconBtn{flex:0 0 auto}
+.settingsAliasRow>.iconBtn{width:36px;height:36px}
+
+.settingsInlineCheck,
+.settingsInlineChecks label{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:34px;
+  color:var(--text,#334155);
+  font-size:11.5px;
+  font-weight:650;
+  white-space:nowrap;
+}
+.settingsInlineCheck input,
+.settingsInlineChecks input{
+  width:16px;
+  height:16px;
+  min-height:0;
+  margin:0;
+  flex:0 0 auto;
+}
+.settingsFieldGroup{
+  display:grid;
+  gap:9px;
+  margin-top:14px;
+  padding:12px;
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:11px;
+  background:var(--surface-soft,#f8fafc);
+}
+.settingsFieldGroup>strong{
+  font-size:11.5px;
+  color:var(--text,#334155);
+}
+.settingsInlineChecks{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 18px;
+}
+
+.settingsPreferenceColumns{
+  margin-top:14px;
+  padding:12px;
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:12px;
+  background:var(--surface-soft,#f8fafc);
+}
+.settingsPreferenceColumns>strong{
+  display:block;
+  margin-bottom:4px;
+  color:var(--text,#172033);
+  font-size:12px;
+}
+
+@media(max-width:820px){
+  .settingsRepeaterRow{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  }
+  .settingsRepeaterRow>.settingsInlineCheck{justify-self:start}
+  .settingsRepeaterRow>.iconBtn{justify-self:end}
+}
+@media(max-width:620px){
+  .settingsSubsectionHead{display:block}
+  .settingsSubsectionHead>button{width:100%;justify-content:center;margin-top:10px}
+  .settingsRepeaterRow{
+    grid-template-columns:1fr;
+  }
+  .settingsRepeaterRow>.iconBtn{justify-self:start}
+  .settingsAliasCreate,
+  .settingsAliasRow{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .settingsAliasCreate>input:not([type='checkbox']),
+  .settingsAliasRow>input:not([type='checkbox']),
+  .settingsAliasCreate>.searchableSelect,
+  .settingsAliasRow>.searchableSelect,
+  .settingsAliasCreate>input[type='number'],
+  .settingsAliasRow>input[type='number']{
+    width:100%;
+    max-width:none;
+    min-width:0;
+  }
+  .settingsAliasCreate>.secondary,
+  .settingsAliasRow>.secondary{
+    width:100%;
+    justify-content:center;
+  }
+}
