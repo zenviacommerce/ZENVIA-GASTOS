@@ -433,7 +433,8 @@ export async function createInvoice(input: NewInvoiceInput) {
   if (!user) throw new Error('Sesión no válida.');
 
   const fileHash = await sha256(input.file);
-  if(policy.detectDuplicates){
+  const multiInvoiceSource=input.extraction?.multiInvoiceSource===true;
+  if(policy.detectDuplicates&&!multiInvoiceSource){
     const { data: duplicates, error: duplicateError } = await supabase.from('invoices').select('id, invoice_number').eq('file_hash', fileHash).limit(1);
     if (duplicateError) throw duplicateError;
     if (duplicates?.length&&policy.blockHighConfidenceDuplicates) throw new Error(`Esta factura parece estar subida ya (${duplicates[0].invoice_number || 'sin número'}).`);
@@ -457,6 +458,19 @@ export async function createInvoice(input: NewInvoiceInput) {
     website: input.supplierWebsite || extractedDetails.website,
   }, merchandiseSupplier ? 'goods' : undefined, policy, loadedSettings.settings.suppliers);
   const supplierId = supplierResult.id;
+  if(policy.detectDuplicates&&multiInvoiceSource&&sanitizeDatabaseSingleLine(input.invoiceNumber)){
+    const {data:duplicates,error:duplicateError}=await supabase
+      .from('invoices')
+      .select('id,invoice_number')
+      .eq('supplier_id',supplierId)
+      .eq('invoice_number',sanitizeDatabaseSingleLine(input.invoiceNumber))
+      .limit(1);
+    if(duplicateError)throw duplicateError;
+    if(duplicates?.length&&policy.blockHighConfidenceDuplicates){
+      if(supplierResult.created)await cleanupCreatedSupplier(supplierId);
+      throw new Error(`Esta factura parece estar subida ya (${duplicates[0].invoice_number || 'sin número'}).`);
+    }
+  }
   const year = input.invoiceDate ? new Date(`${input.invoiceDate}T12:00:00`).getFullYear() : new Date().getFullYear();
   const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-100);
   const storagePath = `${user.id}/${year}/${crypto.randomUUID()}-${safeName}`;
