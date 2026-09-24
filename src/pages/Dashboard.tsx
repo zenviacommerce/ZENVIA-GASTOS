@@ -27,14 +27,14 @@ function isShippedOrder(order:FulfillmentOrder){
 }
 
 export function Dashboard({invoices,products,suppliers,onUpload,onProducts}:{invoices:Invoice[];products:Product[];suppliers:Supplier[];onUpload?:()=>void;onProducts?:()=>void}){
-  const {settings,preferences,updatePreferences}=useSettings();
+  const {settings,preferences,patchPreferences}=useSettings();
   const money=(value:number,maximumFractionDigits=2)=>formatAppMoney(value,settings.general.currencyCode,settings.general,{minimumFractionDigits:2,maximumFractionDigits});
   const [filter,setFilter]=useState(()=>rememberedFilter(preferences,'dashboard.period',defaultDateFilter(preferences.defaultPeriod)));
   const [sales,setSales]=useState<SalesInvoice[]>(()=>readViewCache<SalesInvoice[]>(DASHBOARD_SALES_CACHE)||[]);
   const [orders,setOrders]=useState<FulfillmentOrder[]>(()=>readViewCache<FulfillmentOrder[]>(DASHBOARD_ORDERS_CACHE)||[]);
 
   useEffect(()=>{
-    const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,updatePreferences,'dashboard.period',filter)},350);
+    const timer=window.setTimeout(()=>{void persistRememberedFilter(preferences,patchPreferences,'dashboard.period',filter)},350);
     return()=>window.clearTimeout(timer);
   },[filter,preferences.rememberFilters]);
 
