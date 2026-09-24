@@ -161,7 +161,7 @@ function extractLines(lines: string[]): NewInvoiceLineInput[] {
   return result;
 }
 
-function parseInvoiceText(text: string, categories: ExpenseCategory[], usedOcr: boolean): InvoiceReadResult {
+export function parseInvoiceText(text: string, categories: ExpenseCategory[], usedOcr: boolean): InvoiceReadResult {
   const lines = text.split(/\r?\n/).map(compact).filter(Boolean);
   const fullText = lines.join('\n');
   const supplierName = extractSupplier(lines);
