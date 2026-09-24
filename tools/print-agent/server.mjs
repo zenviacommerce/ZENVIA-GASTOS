@@ -33,7 +33,7 @@ function cors(req){
   return {
     'Access-Control-Allow-Origin':allow,
     'Access-Control-Allow-Methods':'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers':'Content-Type,X-Zenvia-Client,X-Printer-Id',
+    'Access-Control-Allow-Headers':'Content-Type,X-Zenvia-Client,X-Printer-Id,X-Label-Size',
     'Access-Control-Allow-Private-Network':'true',
     'Access-Control-Max-Age':'86400',
     'Vary':'Origin',
@@ -87,6 +87,8 @@ const server=http.createServer(async(req,res)=>{
       const printers=await printerList();
       const selected=printers.find(item=>item.id===printerId||item.name===printerId);
       if(!selected){json(req,res,404,{error:'La impresora seleccionada ya no está disponible.'});return}
+      const requestedSize=String(req.headers['x-label-size']||'AUTO').trim().toUpperCase();
+      const paperSize=requestedSize==='10X15'?'4x6':(['A4','A5','A6'].includes(requestedSize)?requestedSize:undefined);
       const pdf=await body(req);
       if(pdf.length<5||pdf.subarray(0,5).toString('ascii')!=='%PDF-'){
         json(req,res,400,{error:'El documento recibido no es un PDF válido.'});return;
@@ -95,7 +97,7 @@ const server=http.createServer(async(req,res)=>{
       const file=path.join(dir,`label-${Date.now()}.pdf`);
       try{
         await writeFile(file,pdf);
-        await print(file,{printer:selected.name,silent:true,scale:'noscale'});
+        await print(file,{printer:selected.name,silent:true,scale:'noscale',...(paperSize?{paperSize}: {})});
       }finally{
         await rm(dir,{recursive:true,force:true}).catch(()=>undefined);
       }
