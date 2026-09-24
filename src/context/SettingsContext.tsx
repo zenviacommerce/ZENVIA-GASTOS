@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from '../services/supabase';
+import { safeStorageGet } from '../services/browserStorage';
 import {
   loadAppSettings,
   loadUserPreferences,
@@ -33,13 +34,28 @@ type SettingsContextValue = {
 
 const clone=<T,>(value:T):T=>JSON.parse(JSON.stringify(value)) as T;
 
+const THEME_PREFERENCE_KEY='zenvia-gestion-theme-preference';
+const RESOLVED_THEME_KEY='zenvia-gestion-theme';
+
+function initialUserPreferences(){
+  const next=clone(DEFAULT_USER_PREFERENCES);
+  const cached=safeStorageGet('local',THEME_PREFERENCE_KEY);
+  if(cached==='system'||cached==='light'||cached==='dark'){
+    next.theme=cached;
+    return next;
+  }
+  const resolved=safeStorageGet('local',RESOLVED_THEME_KEY);
+  if(resolved==='light'||resolved==='dark')next.theme=resolved;
+  return next;
+}
+
 const SettingsContext=createContext<SettingsContextValue|undefined>(undefined);
 
 export function SettingsProvider({children,userId}:{children:ReactNode;userId?:string|null}){
   const [authUserId,setAuthUserId]=useState<string|null>(null);
   const effectiveUserId=userId===undefined?authUserId:userId;
   const [settings,setSettings]=useState<AppSettings>(()=>clone(DEFAULT_APP_SETTINGS));
-  const [preferences,setPreferences]=useState<UserPreferences>(()=>clone(DEFAULT_USER_PREFERENCES));
+  const [preferences,setPreferences]=useState<UserPreferences>(initialUserPreferences);
   const [warnings,setWarnings]=useState<SettingsWarning[]>([]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState<string|null>(null);
