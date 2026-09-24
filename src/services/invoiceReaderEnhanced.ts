@@ -1,7 +1,7 @@
 import type { ExpenseCategory } from '../types';
 import { parseInvoiceText, readInvoiceDocument, type InvoiceReadResult } from './invoiceReader';
 import { detectMerchandiseCategory, extractCompactProductLines, extractServiceTableLines, extractStructuredProductLines, extractSupplierV2, repairInvoiceAmounts } from './invoiceReaderV2';
-import { getRetailInvoiceCorrection } from './invoiceRetailCorrections';
+import { getCashSierraNevadaProductLines, getRetailInvoiceCorrection } from './invoiceRetailCorrections';
 import { canonicalizeSupplierName, extractExplicitLegalSupplier } from './supplierIdentity';
 import { splitBundledInvoiceText, structuralInvoiceCount } from './invoiceBundle';
 import { reconcileInvoiceFiscalAmounts } from './invoiceFiscalReconciler';
@@ -277,6 +277,7 @@ function enhanceInvoiceReadResult(
   const baseNumber=normalizeInvoiceNumberCandidate(base.invoiceNumber);
   const invoiceNumber=explicitNumber||filenameNumber||baseNumber;
   const retailCorrection=getRetailInvoiceCorrection(textLines,base.text);
+  const cashSierraLines=getCashSierraNevadaProductLines(textLines,base.text);
   const structuredLines=extractStructuredProductLines(textLines);
   const compactProductLines=extractCompactProductLines(textLines);
   const serviceLines=extractServiceTableLines(textLines);
@@ -287,7 +288,7 @@ function enhanceInvoiceReadResult(
       :serviceLines.length>=2
         ?serviceLines
         :[];
-  const invoiceLines=retailCorrection?retailCorrection.lines:specializedLines.length?specializedLines:base.lines;
+  const invoiceLines=retailCorrection?retailCorrection.lines:cashSierraLines.length?cashSierraLines:specializedLines.length?specializedLines:base.lines;
   const merchandiseCategoryId=detectMerchandiseCategory(categories,base.text,invoiceLines);
   const serviceCategoryId=merchandiseCategoryId?undefined:serviceCategoryByContent(categories,base.text);
   const categoryId=merchandiseCategoryId||serviceCategoryId||base.categoryId;
@@ -323,7 +324,7 @@ function enhanceInvoiceReadResult(
   const gainedNumber=invoiceNumber&&invoiceNumber!==base.invoiceNumber;
   const gainedSubtotal=Math.abs(finalSubtotal-base.subtotal)>0.01;
   const gainedVat=Math.abs(vat-base.vat)>0.01;
-  const gainedLines=retailCorrection?invoiceLines.length>0:specializedLines.length>=2&&specializedLines.length>=base.lines.length;
+  const gainedLines=retailCorrection?invoiceLines.length>0:cashSierraLines.length?cashSierraLines.length>=base.lines.length:specializedLines.length>=2&&specializedLines.length>=base.lines.length;
   const confidenceBoost=(gainedSupplier?0.06:0)
     +(gainedNumber?0.05:0)
     +(gainedSubtotal?0.04:0)
