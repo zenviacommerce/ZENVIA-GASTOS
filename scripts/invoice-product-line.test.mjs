@@ -123,3 +123,22 @@ test('rejects collapsed numeric columns as product descriptions',async()=>{
   ]);
   assert.deepEqual(repaired.map(line=>line.description),['MANTEL ROLLO 1,20X7 MT. ROJO C/25 R-0985']);
 });
+
+test('Cash Sierra reconstructed rows survive generic invoice-line repair',async()=>{
+  const {repairInvoiceProductLines}=await loadModule();
+  const text=`Cash Sierra Nevada, S.L.
+PRECIO IVA
+1,623 1,642
+19,73 10,69 16,91 16,54
+FACTURA VENTA
+MANTEL ROLLO 1,20X7 MT. ROJO C/25 R-0985 MANTEL ROLLO 1,20X7 MT. BURDEOS C/25 R-3279
+área de clientes de https://cashsierranevada.es`;
+  const supplied=[
+    {description:'MANTEL ROLLO 1,20X7 MT. ROJO C/25 R-0985',quantity:1,unitPrice:1.623,lineTotal:1.62},
+    {description:'MANTEL ROLLO 1,20X7 MT. BURDEOS C/25 R-3279',quantity:1,unitPrice:1.642,lineTotal:1.64},
+  ];
+  const repaired=repairInvoiceProductLines(text,supplied);
+  assert.deepEqual(repaired.map(line=>line.description),supplied.map(line=>line.description));
+  assert.deepEqual(repaired.map(line=>line.unitPrice),[1.623,1.642]);
+});
+
