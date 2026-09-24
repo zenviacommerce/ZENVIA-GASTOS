@@ -67,3 +67,19 @@ test('automatic Amazon sync honors the global integration enable switch',async()
   const orchestrator=await read('supabase/functions/amazon-sync-orchestrator/index.ts');
   assert.match(orchestrator,/automaticSettings\.automaticEnabled/);
 });
+
+
+test('Amazon configuration is consolidated inside Integrations instead of a separate navigation section',async()=>{
+  const page=await read('src/pages/Settings.tsx');
+  assert.doesNotMatch(page,/{id:'amazon',label:'Amazon'/);
+  assert.doesNotMatch(page,/active&&active\.id==='amazon'/);
+  assert.match(page,/integrationAmazonSettings/);
+  assert.match(page,/<AmazonSection onDirtyChange=\{onDirtyChange\}\/>/);
+});
+
+test('legacy compatibility no longer disables adding another integration account',async()=>{
+  const page=await read('src/pages/Settings.tsx');
+  assert.match(page,/Añadir cuenta/);
+  assert.doesNotMatch(page,/disabled=\{busy!==null\|\|compatibilityMode/);
+  assert.match(page,/backend multicuenta todavía no está activado/i);
+});
