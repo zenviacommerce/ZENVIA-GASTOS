@@ -24,10 +24,12 @@ test('alert fingerprint stays stable until the alert changes',async()=>{
 
 test('AlertCenter persists cleared alerts and filters them after refresh',async()=>{
   const source=await read('../src/components/AlertCenter.tsx');
-  assert.match(source,/preferences\.dismissedAlerts\[item\.id\]!==alertFingerprint\(item\)/);
+  assert.match(source,/alerts\.filter\(item=>!preferences\.dismissedAlerts\[item\.id\]\)/);
   assert.match(source,/dismissed\[alert\.id\]=alertFingerprint\(alert\)/);
   assert.match(source,/patchPreferences\(\{dismissedAlerts:dismissed\}\)/);
   assert.match(source,/Limpiar alertas/);
+  assert.match(source,/const activeIds=new Set\(next\.map\(item=>item\.id\)\)/);
+  assert.match(source,/Object\.fromEntries\(dismissedEntries\)/);
 });
 
 test('user preferences schema keeps dismissed alert fingerprints',async()=>{
@@ -36,5 +38,5 @@ test('user preferences schema keeps dismissed alert fingerprints',async()=>{
   assert.match(schema,/dismissedAlerts: Record<string, string>/);
   assert.match(schema,/dismissedAlerts: \{\}/);
   assert.match(schema,/recordOfStringsValue\(input,'dismissedAlerts'/);
-  assert.match(settings,/dismissedAlerts:patch\.dismissedAlerts\?\{\.\.\.current\.dismissedAlerts,\.\.\.patch\.dismissedAlerts\}:current\.dismissedAlerts/);
+  assert.match(settings,/dismissedAlerts:patch\.dismissedAlerts\?\{\.\.\.patch\.dismissedAlerts\}:current\.dismissedAlerts/);
 });
