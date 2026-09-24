@@ -86,6 +86,10 @@ export function hoursBetween(from:Date|string,to:Date|string){
 export function stableAlertId(type:AlertType,entityId:string){
   return `${type}:${entityId}`;
 }
+export function alertFingerprint(alert:Pick<AppAlert,'severity'|'title'|'message'|'page'>){
+  return [alert.severity,alert.page,alert.title,alert.message].join('|');
+}
+
 
 function settingEnabled(setting:NotificationSetting){
   return setting.enabled&&setting.inApp;
