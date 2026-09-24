@@ -189,7 +189,6 @@ body.zenviaSideDrawerOpen{
 :where(.zenviaDetailDrawerBackdrop,.masterDrawerBackdrop,.ordersDrawerBackdrop){
   overflow:hidden!important;
   overscroll-behavior:contain!important;
-  touch-action:none;
 }
 
 :where(.zenviaDetailDrawer,.masterDrawer,.ordersDrawer){
