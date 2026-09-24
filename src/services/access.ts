@@ -119,12 +119,12 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
   return result.users || [];
 }
 
-export async function createManagedUser(input: { email: string; fullName: string; password: string; permissions: MenuPermission[] }) {
+export async function createManagedUser(input: { email: string; fullName: string; password: string; role: AppRole; permissions: MenuPermission[] }) {
   validateManagedUser(input.email, input.fullName, input.password);
   return invokeAdmin<{ ok: true; userId: string }>({ action: 'create', ...input, email: normalizeEmail(input.email), fullName: input.fullName.trim() });
 }
 
-export async function updateManagedUser(input: { userId: string; email: string; fullName: string; password?: string; active: boolean; permissions: MenuPermission[] }) {
+export async function updateManagedUser(input: { userId: string; email: string; fullName: string; password?: string; active: boolean; role: AppRole; permissions: MenuPermission[] }) {
   validateManagedUser(input.email, input.fullName, input.password);
   return invokeAdmin<{ ok: true }>({ action: 'update', ...input, email: normalizeEmail(input.email), fullName: input.fullName.trim() });
 }
