@@ -50,7 +50,6 @@ type SettingsSectionId =
   | 'expenses'
   | 'orders'
   | 'shipping'
-  | 'amazon'
   | 'products'
   | 'clients'
   | 'suppliers'
@@ -73,7 +72,6 @@ const sections:SettingsSection[]=[
   {id:'expenses',label:'Gastos e importación',description:'Importación, duplicados y reglas de facturas recibidas.',icon:FileInput,adminOnly:true},
   {id:'orders',label:'Pedidos',description:'Comportamiento general de pedidos, etiquetas y tracking.',icon:ShoppingBag,adminOnly:true},
   {id:'shipping',label:'Envíos',description:'Transportistas, servicios y preferencias logísticas.',icon:Truck,adminOnly:true},
-  {id:'amazon',label:'Amazon',description:'Marketplaces, sincronización y comportamiento analítico.',icon:Gauge,adminOnly:true},
   {id:'products',label:'Productos',description:'IVA, costes, márgenes y creación automática.',icon:Box,adminOnly:true},
   {id:'clients',label:'Clientes',description:'Defaults, identidad y enriquecimiento de clientes.',icon:Users,adminOnly:true},
   {id:'suppliers',label:'Proveedores',description:'Defaults, alias, identidad y categorización.',icon:Building2,adminOnly:true},
@@ -1081,7 +1079,12 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
         showSuccess('Tienda Shopify añadida.');
       }
       await reload();setEditorOpen(false);setEditing(null);
-    }catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la integración.');}
+    }catch(e){
+      const detail=e instanceof Error?e.message:'';
+      showError(/integration-accounts|edge function|functionsrelay|not found/i.test(detail)
+        ?'El backend multicuenta todavía no está activado en este entorno. La pantalla ya permite añadir cuentas; falta activar la migración y la función segura del backend.'
+        :(detail||'No se pudo guardar la integración.'));
+    }
     finally{setBusy(null);}
   };
 
@@ -1178,14 +1181,14 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
 
     <div className="settingsSubsection">
       <div className="settingsSubsectionHead"><div><h3>Cuentas conectadas</h3><p>Amazon, Shopify, Sendcloud y Gmail pueden tener varias cuentas dentro del mismo espacio de trabajo.</p></div></div>
-      {compatibilityMode&&<p className="settingsHelpText">Estás viendo las conexiones actuales detectadas en el sistema anterior. Puedes probarlas, sincronizarlas y revisar su configuración; añadir o desconectar cuentas se habilitará cuando activemos el backend multicuenta.</p>}
+      {compatibilityMode&&<p className="settingsHelpText">Estás viendo conexiones actuales detectadas automáticamente. Ya puedes abrir el alta de nuevas cuentas; si este entorno todavía no tiene activado el backend multicuenta, al guardar se indicará de forma explícita.</p>}
       {loading?<div className="settingsInlineLoading">Cargando cuentas…</div>:<div className="integrationProviderGrid">
         {ordered.map(id=>{
           const items=accounts.filter(item=>item.provider===id);
           return <div className="integrationProviderCard" key={id}>
             <div className="integrationProviderHead">
               <div><strong>{providerMeta[id].name}</strong><small>{providerMeta[id].description}</small></div>
-              <button type="button" className="secondary" disabled={busy!==null||compatibilityMode||(id==='shopify'&&!sendcloudAccounts.length)} onClick={()=>resetEditor(id)}><Plus size={14}/> {id==='shopify'?'Añadir tienda':'Añadir cuenta'}</button>
+              <button type="button" className="secondary" disabled={busy!==null||(id==='shopify'&&!sendcloudAccounts.length)} onClick={()=>resetEditor(id)}><Plus size={14}/> {id==='shopify'?'Añadir tienda':'Añadir cuenta'}</button>
             </div>
             {id==='shopify'&&!sendcloudAccounts.length&&<p className="settingsHelpText">Conecta primero una cuenta de Sendcloud para detectar sus tiendas Shopify.</p>}
             <div className="integrationAccountList">
@@ -1220,6 +1223,10 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
       <div className="settingsToggleGrid">
         {ordered.map(id=><label className="settingsToggleField" key={id}><input type="checkbox" checked={enabled(id)} onChange={e=>toggle(id,e.target.checked)}/><span><strong>{providerMeta[id].name}</strong><small>{enabled(id)?'Automatismos globales permitidos.':'Automatismos globales desactivados.'}</small></span></label>)}
       </div>
+    </div>
+
+    <div className="integrationAmazonSettings">
+      <AmazonSection onDirtyChange={onDirtyChange}/>
     </div>
 
     <div className="settingsSectionActions"><button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores globales</button><button type="button" className="primary" disabled={saving} onClick={()=>void saveGlobal()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
@@ -2170,7 +2177,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='amazon'?<AmazonSection onDirtyChange={setDirty}/>:active&&active.id==='integrations'?<IntegrationsSection onDirtyChange={setDirty}/>:active&&active.id==='automations'?<AlertsSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&active.id==='maintenance'?<MaintenanceSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='integrations'?<IntegrationsSection onDirtyChange={setDirty}/>:active&&active.id==='automations'?<AlertsSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&active.id==='maintenance'?<MaintenanceSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
