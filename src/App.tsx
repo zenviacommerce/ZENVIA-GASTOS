@@ -53,7 +53,7 @@ function initialTheme(): ThemeMode {
     try{return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';}
     catch{return 'light';}
   }
-  const stored=safeStorageGet('local',THEME_KEY) || safeStorageGet('local','zenvia-gastos-theme');
+  const stored=safeStorageGet('local',THEME_KEY);
   if(stored==='dark'||stored==='light') return stored;
   try{return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';}
   catch{return 'light';}
