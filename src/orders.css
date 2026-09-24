@@ -43,3 +43,79 @@ html[data-theme='dark'] .ordersSetup{background:#2b2110;border-color:#854d0e}htm
   .ordersQuickLabelFormat .selectField,
   .ordersQuickLabelFormat .searchableSelect{flex:1;max-width:180px}
 }
+
+
+/* Order preflight validation and detail product identity. */
+.ordersFieldInvalid input,
+.ordersFieldInvalid textarea,
+.ordersFieldInvalid .searchableSelectTrigger{
+  border-color:#dc2626!important;
+  box-shadow:0 0 0 2px rgba(220,38,38,.10)!important;
+}
+.ordersFieldError{
+  display:block;
+  margin-top:5px;
+  color:#dc2626;
+  font-size:var(--ui-font-xs,12px);
+  font-weight:700;
+  line-height:1.35;
+}
+.ordersItemMain{
+  display:flex!important;
+  flex-direction:row!important;
+  align-items:center;
+  gap:10px!important;
+  min-width:0;
+  flex:1;
+}
+.ordersItemText{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+.ordersDrawerProductThumb{
+  width:46px;
+  height:46px;
+  flex:0 0 46px;
+  object-fit:contain;
+  border:1px solid var(--border,#e2e8f0);
+  border-radius:9px;
+  background:#fff;
+}
+.ordersDrawerProductThumb.ordersProductThumbPlaceholder{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--text-secondary,#64748b);
+  background:var(--surface-soft,#f8fafc);
+}
+html[data-theme='dark'] .ordersDrawerProductThumb{background:#fff}
+html[data-theme='dark'] .ordersFieldError{color:#fca5a5}
+
+/* Quick label format is an active control, not a disabled-looking badge. */
+.ordersQuickLabelFormat{
+  color:var(--text,#172033);
+  background:var(--surface,#fff);
+  border-color:#cbd5e1;
+}
+.ordersQuickLabelFormat>span{
+  color:var(--text,#172033);
+  font-weight:800;
+}
+.ordersQuickLabelFormat .searchableSelectTrigger{
+  opacity:1!important;
+  cursor:pointer!important;
+  color:var(--text,#172033)!important;
+  background:var(--surface,#fff)!important;
+  border:1px solid #94a3b8!important;
+  box-shadow:0 1px 2px rgba(15,23,42,.06);
+}
+.ordersQuickLabelFormat .searchableSelectTrigger:hover{
+  border-color:#0f766e!important;
+  background:var(--surface-soft,#f8fafc)!important;
+}
+.ordersQuickLabelFormat .searchableSelectTrigger:focus-visible{
+  outline:2px solid rgba(20,184,166,.28);
+  outline-offset:1px;
+}
