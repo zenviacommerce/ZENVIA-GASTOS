@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/configuration-center
+      - feature/configuration-integrations
   workflow_dispatch:
 
 jobs:
