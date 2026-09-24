@@ -53,7 +53,7 @@ function initialTheme(): ThemeMode {
 }
 
 export default function App(){
- const {settings,preferences,updatePreferences,loading:settingsLoading}=useSettings();
+ const {settings,preferences,patchPreferences,loading:settingsLoading}=useSettings();
  const [session,setSession]=useState<Session|null>(null);
  const [authReady,setAuthReady]=useState(false);
  const [access,setAccess]=useState<AccessProfile|null>(null);
@@ -174,7 +174,7 @@ export default function App(){
  const toggleTheme=()=>{
    const next:ThemeMode=theme==='dark'?'light':'dark';
    setTheme(next);
-   void updatePreferences({...preferences,theme:next}).catch(e=>showError(errorMessage(e,'No se pudo guardar el tema.')));
+   void patchPreferences({theme:next}).catch(e=>showError(errorMessage(e,'No se pudo guardar el tema.')));
  };
  const runAction=async(work:()=>Promise<void>,fallback:string)=>{
    try{await work()}
