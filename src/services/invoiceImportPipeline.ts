@@ -1,5 +1,6 @@
 import type { ExpenseCategory, Invoice, InvoiceImportCandidate, InvoiceSource, NewInvoiceInput } from '../types';
-import { readInvoiceDocumentEnhanced } from './invoiceReaderEnhanced';
+import { readInvoiceDocumentEnhanced, readInvoiceDocumentsEnhanced } from './invoiceReaderEnhanced';
+import type { InvoiceReadResult } from './invoiceReader';
 import { repairInvoiceAmounts, repairInvoiceProductLines } from './invoiceProductLine';
 import { extractSupplierContactData } from './supplierContactExtractor';
 import { extractSupplierInvoiceDetails } from './supplierInvoiceDetails';
@@ -40,24 +41,20 @@ export async function createManualInvoiceCandidate(file:File):Promise<InvoiceImp
   };
 }
 
-export async function prepareInvoiceCandidate(
+async function candidateFromRead(
   file:File,
-  categories:ExpenseCategory[],
-  onProgress?:(message:string)=>void,
-  analysisFile:File=file,
-  policy:ExpenseImportPolicy=expenseImportPolicyFromSettings(undefined),
+  fileHash:string,
+  read:InvoiceReadResult,
+  policy:ExpenseImportPolicy,
+  bundle?:{index:number;count:number},
 ):Promise<InvoiceImportCandidate>{
-  const [read,fileHash]=await Promise.all([
-    readInvoiceDocumentEnhanced(analysisFile,categories,onProgress),
-    sha256File(file),
-  ]);
   const repairedAmounts=repairInvoiceAmounts(read.text,{subtotal:read.subtotal,vat:read.vat,total:read.total});
   const repairedLines=repairInvoiceProductLines(read.text,read.lines);
   const party=extractInvoiceParty(read.text,{role:'supplier',nameHint:read.supplierName,invoiceNumber:read.invoiceNumber,invoiceDate:read.invoiceDate});
   const contact=extractSupplierContactData(read.text,read.supplierName);
   const details=extractSupplierInvoiceDetails(read.text,read.supplierName);
   const recipient=validateInvoiceRecipient(read.text,read.invoiceDate);
-  const equivalenceSurcharge='equivalenceSurcharge' in repairedAmounts ? Number(repairedAmounts.equivalenceSurcharge||0) : 0;
+  const equivalenceSurcharge='equivalenceSurcharge' in repairedAmounts?Number(repairedAmounts.equivalenceSurcharge||0):0;
 
   let status:InvoiceImportCandidate['status']='ready';
   let reviewReason:string|undefined;
@@ -77,6 +74,10 @@ export async function prepareInvoiceCandidate(
   }else if(recipient.needsReview){
     status='needs_review';
     reviewReason=recipient.reason;
+  }
+  if(bundle&&bundle.count>1&&!read.invoiceNumber){
+    status='needs_review';
+    reviewReason=[reviewReason,'PDF con varias facturas: revisa e indica el número de esta factura.'].filter(Boolean).join(' · ');
   }
 
   return {
@@ -105,7 +106,45 @@ export async function prepareInvoiceCandidate(
     confidence:read.confidence,
     usedOcr:read.usedOcr,
     lines:repairedLines,
+    multiInvoiceSource:Boolean(bundle&&bundle.count>1),
+    bundleIndex:bundle?.index,
+    bundleCount:bundle?.count,
   };
+}
+
+export async function prepareInvoiceCandidate(
+  file:File,
+  categories:ExpenseCategory[],
+  onProgress?:(message:string)=>void,
+  analysisFile:File=file,
+  policy:ExpenseImportPolicy=expenseImportPolicyFromSettings(undefined),
+):Promise<InvoiceImportCandidate>{
+  const [read,fileHash]=await Promise.all([
+    readInvoiceDocumentEnhanced(analysisFile,categories,onProgress),
+    sha256File(file),
+  ]);
+  return candidateFromRead(file,fileHash,read,policy);
+}
+
+export async function prepareInvoiceCandidates(
+  file:File,
+  categories:ExpenseCategory[],
+  onProgress?:(message:string)=>void,
+  analysisFile:File=file,
+  policy:ExpenseImportPolicy=expenseImportPolicyFromSettings(undefined),
+):Promise<InvoiceImportCandidate[]>{
+  const [reads,fileHash]=await Promise.all([
+    readInvoiceDocumentsEnhanced(analysisFile,categories,onProgress),
+    sha256File(file),
+  ]);
+  const count=reads.length;
+  return Promise.all(reads.map((read,index)=>candidateFromRead(
+    file,
+    fileHash,
+    read,
+    policy,
+    count>1?{index:index+1,count}:undefined,
+  )));
 }
 
 export function classifyInvoiceCandidate(candidate:InvoiceImportCandidate,existingInvoices:Invoice[],policy:ExpenseImportPolicy=expenseImportPolicyFromSettings(undefined)):InvoiceImportCandidate{
@@ -113,7 +152,7 @@ export function classifyInvoiceCandidate(candidate:InvoiceImportCandidate,existi
   const supplierName=normalizeKey(candidate.supplierName);
   const invoiceNumber=normalizeKey(candidate.invoiceNumber);
   const duplicate=existingInvoices.find(existing=>
-    Boolean(existing.fileHash && existing.fileHash === candidate.fileHash)
+    Boolean(!candidate.multiInvoiceSource && existing.fileHash && existing.fileHash === candidate.fileHash)
     || Boolean(
       invoiceNumber
       && supplierName
@@ -157,6 +196,9 @@ export function invoiceCandidateToInput(candidate:InvoiceImportCandidate,source:
       recipientName:candidate.recipientName??null,
       equivalenceSurcharge:candidate.equivalenceSurcharge,
       lineCount:candidate.lines.length,
+      multiInvoiceSource:candidate.multiInvoiceSource||false,
+      bundleIndex:candidate.bundleIndex??null,
+      bundleCount:candidate.bundleCount??null,
     },
     extractionConfidence:candidate.confidence,
     lines:candidate.lines,

@@ -142,4 +142,7 @@ export interface InvoiceImportCandidate {
   confidence: number;
   usedOcr: boolean;
   lines: NewInvoiceLineInput[];
+  multiInvoiceSource?: boolean;
+  bundleIndex?: number;
+  bundleCount?: number;
 }

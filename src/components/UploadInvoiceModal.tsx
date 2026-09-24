@@ -51,7 +51,7 @@ export function UploadInvoiceModal({open,onClose,onSave,categories,existingInvoi
       if(isMultiInvoiceDocumentError(e)) {
         setReaderBlocked(true);
         setError(e.message);
-        setReaderMessage('Documento bloqueado: contiene varias facturas o abonos y no debe contabilizarse como una sola factura.');
+        setReaderMessage('Documento bloqueado: contiene varias facturas o abonos. Usa “Importar facturas” para separarlas y revisarlas individualmente.');
       } else {
         const manualCandidate=classifyInvoiceCandidate(await createManualInvoiceCandidate(prepared),existingInvoices,policy);
         setCandidate(manualCandidate);

@@ -1,8 +1,9 @@
 import type { ExpenseCategory } from '../types';
-import { readInvoiceDocument, type InvoiceReadResult } from './invoiceReader';
+import { parseInvoiceText, readInvoiceDocument, type InvoiceReadResult } from './invoiceReader';
 import { detectMerchandiseCategory, extractCompactProductLines, extractServiceTableLines, extractStructuredProductLines, extractSupplierV2, repairInvoiceAmounts } from './invoiceReaderV2';
 import { getRetailInvoiceCorrection } from './invoiceRetailCorrections';
 import { canonicalizeSupplierName, extractExplicitLegalSupplier } from './supplierIdentity';
+import { splitBundledInvoiceText, structuralInvoiceCount } from './invoiceBundle';
 
 const compact = (value: string) => value.replace(/\s+/g, ' ').trim();
 const moneyToken = /-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2,6}|-?\d+\.\d{2,6}/g;
@@ -258,80 +259,125 @@ function serviceCategoryByContent(categories: ExpenseCategory[], text: string) {
   return undefined;
 }
 
-export async function readInvoiceDocumentEnhanced(
-  file: File,
-  categories: ExpenseCategory[],
-  onProgress?: (message: string) => void,
-): Promise<InvoiceReadResult> {
-  const base = await readInvoiceDocument(file, categories, onProgress);
-  const textLines = base.text.split(/\r?\n/).map(compact).filter(Boolean);
-
-  const bundledInvoiceNumbers = detectBundledInvoiceNumbers(textLines, base.text);
-  if (bundledInvoiceNumbers.length >= 2) throw new MultiInvoiceDocumentError(bundledInvoiceNumbers);
-
-  onProgress?.('Reconstruyendo proveedor, fiscalidad y líneas de producto…');
-  const supplierName = canonicalizeSupplierName(
+function enhanceInvoiceReadResult(
+  base:InvoiceReadResult,
+  file:File,
+  categories:ExpenseCategory[],
+  options:{allowFilenameNumber?:boolean}={},
+):InvoiceReadResult{
+  const textLines=base.text.split(/\r?\n/).map(compact).filter(Boolean);
+  const supplierName=canonicalizeSupplierName(
     extractExplicitLegalSupplier(textLines)
-      || extractSupplierV2(textLines, base.text)
+      || extractSupplierV2(textLines,base.text)
       || base.supplierName,
   );
-  const explicitNumber = explicitInvoiceNumber(base.text, textLines);
-  const filenameNumber = invoiceNumberFromFilename(file.name);
-  const baseNumber = normalizeInvoiceNumberCandidate(base.invoiceNumber);
-  const invoiceNumber = explicitNumber || filenameNumber || baseNumber;
-  const retailCorrection = getRetailInvoiceCorrection(textLines, base.text);
-  const structuredLines = extractStructuredProductLines(textLines);
-  const compactProductLines = extractCompactProductLines(textLines);
-  const serviceLines = extractServiceTableLines(textLines);
-  const specializedLines = structuredLines.length >= 2
-    ? structuredLines
-    : compactProductLines.length >= 2
-      ? compactProductLines
-      : serviceLines.length >= 2
-        ? serviceLines
-        : [];
-  const invoiceLines = retailCorrection ? retailCorrection.lines : specializedLines.length ? specializedLines : base.lines;
-  const merchandiseCategoryId = detectMerchandiseCategory(categories, base.text, invoiceLines);
-  const serviceCategoryId = merchandiseCategoryId ? undefined : serviceCategoryByContent(categories, base.text);
-  const categoryId = merchandiseCategoryId || serviceCategoryId || base.categoryId;
-  const repaired = repairInvoiceAmounts(base.subtotal, base.vat, base.withholding, base.total, textLines);
-  const explicitSubtotal = explicitTaxBase(base.text);
-  const reverseCharge = /inv\.?\s*pasivo|reverse\s+charge|inversi[oó]n\s+del\s+sujeto\s+pasivo/i.test(base.text);
-  const fiscalSummary = reverseCharge ? null : extractFiscalSummary(textLines) || extractLooseFiscalSummary(textLines);
-  const effectiveSubtotal = retailCorrection
-    ? retailCorrection.subtotal
-    : fiscalSummary?.subtotal || explicitSubtotal || repaired.subtotal;
-  const effectiveTotal = retailCorrection
-    ? retailCorrection.total
-    : fiscalSummary?.total || repaired.total;
-  const reverseChargeTotal = Math.round((effectiveSubtotal - base.withholding) * 100) / 100;
-  const vat = retailCorrection
-    ? retailCorrection.vat
-    : reverseCharge && effectiveSubtotal > 0 && effectiveTotal > 0 && Math.abs(reverseChargeTotal - effectiveTotal) <= 0.02
-      ? 0
-      : fiscalSummary?.vat ?? base.vat;
+  const explicitNumber=explicitInvoiceNumber(base.text,textLines);
+  const filenameNumber=options.allowFilenameNumber===false?'':invoiceNumberFromFilename(file.name);
+  const baseNumber=normalizeInvoiceNumberCandidate(base.invoiceNumber);
+  const invoiceNumber=explicitNumber||filenameNumber||baseNumber;
+  const retailCorrection=getRetailInvoiceCorrection(textLines,base.text);
+  const structuredLines=extractStructuredProductLines(textLines);
+  const compactProductLines=extractCompactProductLines(textLines);
+  const serviceLines=extractServiceTableLines(textLines);
+  const specializedLines=structuredLines.length>=2
+    ?structuredLines
+    :compactProductLines.length>=2
+      ?compactProductLines
+      :serviceLines.length>=2
+        ?serviceLines
+        :[];
+  const invoiceLines=retailCorrection?retailCorrection.lines:specializedLines.length?specializedLines:base.lines;
+  const merchandiseCategoryId=detectMerchandiseCategory(categories,base.text,invoiceLines);
+  const serviceCategoryId=merchandiseCategoryId?undefined:serviceCategoryByContent(categories,base.text);
+  const categoryId=merchandiseCategoryId||serviceCategoryId||base.categoryId;
+  const repaired=repairInvoiceAmounts(base.subtotal,base.vat,base.withholding,base.total,textLines);
+  const explicitSubtotal=explicitTaxBase(base.text);
+  const reverseCharge=/inv\.?\s*pasivo|reverse\s+charge|inversi[oó]n\s+del\s+sujeto\s+pasivo/i.test(base.text);
+  const fiscalSummary=reverseCharge?null:extractFiscalSummary(textLines)||extractLooseFiscalSummary(textLines);
+  const effectiveSubtotal=retailCorrection
+    ?retailCorrection.subtotal
+    :fiscalSummary?.subtotal||explicitSubtotal||repaired.subtotal;
+  const effectiveTotal=retailCorrection
+    ?retailCorrection.total
+    :fiscalSummary?.total||repaired.total;
+  const reverseChargeTotal=Math.round((effectiveSubtotal-base.withholding)*100)/100;
+  const vat=retailCorrection
+    ?retailCorrection.vat
+    :reverseCharge&&effectiveSubtotal>0&&effectiveTotal>0&&Math.abs(reverseChargeTotal-effectiveTotal)<=0.02
+      ?0
+      :fiscalSummary?.vat??base.vat;
 
-  const gainedSupplier = supplierName && supplierName !== base.supplierName;
-  const gainedNumber = invoiceNumber && invoiceNumber !== base.invoiceNumber;
-  const gainedSubtotal = (fiscalSummary?.subtotal || explicitSubtotal) > 0 && Math.abs(effectiveSubtotal - base.subtotal) > 0.01;
-  const gainedVat = Boolean(fiscalSummary && Math.abs(fiscalSummary.vat - base.vat) > 0.01);
-  const gainedLines = retailCorrection ? invoiceLines.length > 0 : specializedLines.length >= 2 && specializedLines.length >= base.lines.length;
-  const confidenceBoost = (gainedSupplier ? 0.06 : 0)
-    + (gainedNumber ? 0.05 : 0)
-    + (gainedSubtotal ? 0.04 : 0)
-    + (gainedVat ? 0.08 : 0)
-    + (gainedLines ? 0.08 : 0)
-    + (retailCorrection ? 0.06 : 0);
+  const gainedSupplier=supplierName&&supplierName!==base.supplierName;
+  const gainedNumber=invoiceNumber&&invoiceNumber!==base.invoiceNumber;
+  const gainedSubtotal=(fiscalSummary?.subtotal||explicitSubtotal)>0&&Math.abs(effectiveSubtotal-base.subtotal)>0.01;
+  const gainedVat=Boolean(fiscalSummary&&Math.abs(fiscalSummary.vat-base.vat)>0.01);
+  const gainedLines=retailCorrection?invoiceLines.length>0:specializedLines.length>=2&&specializedLines.length>=base.lines.length;
+  const confidenceBoost=(gainedSupplier?0.06:0)
+    +(gainedNumber?0.05:0)
+    +(gainedSubtotal?0.04:0)
+    +(gainedVat?0.08:0)
+    +(gainedLines?0.08:0)
+    +(retailCorrection?0.06:0);
 
   return {
     ...base,
     supplierName,
     invoiceNumber,
     categoryId,
-    subtotal: effectiveSubtotal,
+    subtotal:effectiveSubtotal,
     vat,
-    total: effectiveTotal,
-    lines: invoiceLines,
-    confidence: Math.min(0.99, base.confidence + confidenceBoost),
+    total:effectiveTotal,
+    lines:invoiceLines,
+    confidence:Math.min(0.99,base.confidence+confidenceBoost),
   };
+}
+
+function detectBundledDocument(base:InvoiceReadResult){
+  const textLines=base.text.split(/\r?\n/).map(compact).filter(Boolean);
+  const numbers=detectBundledInvoiceNumbers(textLines,base.text);
+  const blocks=splitBundledInvoiceText(base.text);
+  const count=Math.max(numbers.length,blocks.length,structuralInvoiceCount(base.text));
+  return {numbers,blocks,count};
+}
+
+export async function readInvoiceDocumentsEnhanced(
+  file:File,
+  categories:ExpenseCategory[],
+  onProgress?:(message:string)=>void,
+):Promise<InvoiceReadResult[]>{
+  const base=await readInvoiceDocument(file,categories,onProgress);
+  const bundled=detectBundledDocument(base);
+
+  if(bundled.blocks.length>=2){
+    onProgress?.(`Separando ${bundled.blocks.length} facturas detectadas…`);
+    return bundled.blocks.map(text=>
+      enhanceInvoiceReadResult(
+        parseInvoiceText(text,categories,base.usedOcr),
+        file,
+        categories,
+        {allowFilenameNumber:false},
+      )
+    );
+  }
+
+  if(bundled.count>=2){
+    throw new MultiInvoiceDocumentError(
+      bundled.numbers.length?bundled.numbers:Array.from({length:bundled.count},(_,index)=>`Factura ${index+1}`),
+    );
+  }
+
+  onProgress?.('Reconstruyendo proveedor, fiscalidad y líneas de producto…');
+  return [enhanceInvoiceReadResult(base,file,categories)];
+}
+
+export async function readInvoiceDocumentEnhanced(
+  file:File,
+  categories:ExpenseCategory[],
+  onProgress?:(message:string)=>void,
+):Promise<InvoiceReadResult>{
+  const results=await readInvoiceDocumentsEnhanced(file,categories,onProgress);
+  if(results.length!==1){
+    throw new MultiInvoiceDocumentError(results.map(result=>result.invoiceNumber).filter(Boolean));
+  }
+  return results[0];
 }
