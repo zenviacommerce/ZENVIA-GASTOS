@@ -12,7 +12,7 @@ export type LabelFilenameStrategy = 'order_number' | 'sku' | 'product' | 'custom
 export type ProductCostMethod = 'last_purchase' | 'average' | 'manual';
 export type DefaultPeriod = 'today' | 'current_month' | 'current_quarter' | 'current_year' | 'all';
 export type ThemePreference = 'system' | 'light' | 'dark';
-export type DensityPreference = 'comfortable' | 'compact';
+export type DensityPreference = 'comfortable' | 'compact' | 'spacious';
 
 export type PaymentMethodSetting = {
   id: string;
@@ -923,7 +923,7 @@ export function normalizeUserPreferences(input:unknown):{value:UserPreferences;w
   return {
     value:{
       theme:enumValue(input,'theme',d.theme,'theme',warnings,['system','light','dark']),
-      density:enumValue(input,'density',d.density,'density',warnings,['comfortable','compact']),
+      density:enumValue(input,'density',d.density,'density',warnings,['comfortable','compact','spacious']),
       pageSize,
       startPage,
       defaultPeriod:enumValue(input,'defaultPeriod',d.defaultPeriod,'defaultPeriod',warnings,['today','current_month','current_quarter','current_year','all']),
