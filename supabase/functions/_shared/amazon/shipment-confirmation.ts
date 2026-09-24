@@ -1,15 +1,16 @@
 import { sanitizeAmazonError } from './http.ts';
 import { spApiRequest } from './sp-api.ts';
+import { loadAmazonSpApiCredentials, type AmazonSpApiCredentials } from './config.ts';
 
 type FulfillmentOrderRow={
-  id:string;owner_id:string;order_id?:string|null;order_number?:string|null;source_channel?:string|null;
+  id:string;owner_id:string;order_id?:string|null;order_number?:string|null;source_channel?:string|null;source_integration_account_id?:string|null;
   tracking_number?:string|null;sendcloud_parcel_id?:number|string|null;carrier_code?:string|null;carrier_name?:string|null;
   shipping_service_name?:string|null;label_created_at?:string|null;fulfilled_at?:string|null;tracking_updated_at?:string|null;
   order_updated_at?:string|null;amazon_tracking_synced_at?:string|null;amazon_tracking_sync_error?:string|null;
   amazon_tracking_sync_attempts?:number|null;amazon_tracking_last_attempt_at?:string|null;
 };
 
-type AmazonOrderContext={amazonOrderId:string;marketplaceId:string;orderItems:Array<{orderItemId:string;quantity:number}>};
+type AmazonOrderContext={amazonOrderId:string;marketplaceId:string;amazonAccountId:string;orderItems:Array<{orderItemId:string;quantity:number}>};
 export type AmazonTrackingSyncResult={orderId:string;amazonOrderId:string;status:'confirmed'|'already_synced';trackingNumber:string;packageReferenceId:string|null};
 export type AmazonTrackingOverride={trackingNumber?:string|null;trackingUrl?:string|null;parcelId?:number|string|null;carrierCode?:string|null;carrierName?:string|null;shippingServiceName?:string|null;labelCreatedAt?:string|null};
 
@@ -86,19 +87,31 @@ async function markFailure(admin:any,order:FulfillmentOrderRow,errorValue:unknow
 }
 async function loadContext(admin:any,order:FulfillmentOrderRow):Promise<AmazonOrderContext>{
   const orderId=amazonOrderId(order);
-  const {data:amazonRows,error:amazonError}=await admin.from('amazon_orders').select('marketplace_id,fulfillment_channel').eq('owner_id',order.owner_id).eq('amazon_order_id',orderId).limit(2);
+  let expectedAmazonAccountId='';
+  if(order.source_integration_account_id){
+    const {data:integration,error:integrationError}=await admin.from('integration_accounts')
+      .select('linked_resource_id').eq('owner_id',order.owner_id).eq('provider','amazon').eq('id',order.source_integration_account_id).maybeSingle();
+    if(integrationError)throw integrationError;
+    expectedAmazonAccountId=clean(integration?.linked_resource_id);
+  }
+  let orderQuery=admin.from('amazon_orders').select('amazon_account_id,marketplace_id,fulfillment_channel')
+    .eq('owner_id',order.owner_id).eq('amazon_order_id',orderId);
+  if(expectedAmazonAccountId)orderQuery=orderQuery.eq('amazon_account_id',expectedAmazonAccountId);
+  const {data:amazonRows,error:amazonError}=await orderQuery.limit(2);
   if(amazonError)throw amazonError;
   if(!amazonRows?.length)throw new Error(`Amazon todavía no ha sincronizado el pedido ${orderId}.`);
-  if(amazonRows.length!==1)throw new Error(`El pedido ${orderId} aparece en más de un marketplace de Amazon.`);
+  if(amazonRows.length!==1)throw new Error(`El pedido ${orderId} aparece en más de una cuenta o marketplace de Amazon.`);
+  const amazonAccountId=clean(amazonRows[0].amazon_account_id);if(!amazonAccountId)throw new Error(`El pedido ${orderId} no tiene cuenta Amazon asociada.`);
   const marketplaceId=clean(amazonRows[0].marketplace_id);if(!marketplaceId)throw new Error(`El pedido ${orderId} no tiene marketplace asociado.`);
-  const {data:itemRows,error:itemError}=await admin.from('amazon_order_items').select('order_item_id,quantity_ordered').eq('owner_id',order.owner_id).eq('amazon_order_id',orderId).eq('marketplace_id',marketplaceId).gt('quantity_ordered',0);
+  const {data:itemRows,error:itemError}=await admin.from('amazon_order_items').select('order_item_id,quantity_ordered')
+    .eq('owner_id',order.owner_id).eq('amazon_account_id',amazonAccountId).eq('amazon_order_id',orderId).eq('marketplace_id',marketplaceId).gt('quantity_ordered',0);
   if(itemError)throw itemError;
   const orderItems=(itemRows||[]).map((item:any)=>({orderItemId:clean(item.order_item_id),quantity:Math.max(1,Math.trunc(Number(item.quantity_ordered)||0))})).filter((item:any)=>item.orderItemId);
   if(!orderItems.length)throw new Error(`Amazon todavía no ha sincronizado las líneas del pedido ${orderId}.`);
-  return {amazonOrderId:orderId,marketplaceId,orderItems};
+  return {amazonOrderId:orderId,marketplaceId,amazonAccountId,orderItems};
 }
-async function currentPackages(orderId:string){
-  const data:any=await spApiRequest(`/orders/2026-01-01/orders/${encodeURIComponent(orderId)}`,{query:{includedData:['PACKAGES']}});
+async function currentPackages(orderId:string,credentials:AmazonSpApiCredentials){
+  const data:any=await spApiRequest(`/orders/2026-01-01/orders/${encodeURIComponent(orderId)}`,{query:{includedData:['PACKAGES']}},credentials);
   const current=data?.order||data?.Order||data||{};
   return Array.isArray(current?.packages)?current.packages:[];
 }
@@ -133,13 +146,14 @@ export async function syncAmazonTracking(admin:any,order:FulfillmentOrderRow,ove
   let context:AmazonOrderContext|undefined;
   try{
     context=await loadContext(admin,claimed);
-    const packages=await currentPackages(context.amazonOrderId);
+    const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:context.amazonAccountId,integrationAccountId:claimed.source_integration_account_id});
+    const packages=await currentPackages(context.amazonOrderId,credentials);
     const selectedPackage=packageReference(packages,trackingNumber,claimed.sendcloud_parcel_id);
     if(selectedPackage.alreadySynced){await markSuccess(admin,claimed);return {orderId:claimed.id,amazonOrderId:context.amazonOrderId,status:'already_synced',trackingNumber,packageReferenceId:selectedPackage.packageReferenceId};}
     const carrierData=carrier(claimed),shipDate=claimed.label_created_at||claimed.fulfilled_at||claimed.tracking_updated_at||claimed.order_updated_at||new Date().toISOString();
     const packageDetail:any={packageReferenceId:selectedPackage.packageReferenceId,carrierCode:carrierData.carrierCode,carrierName:carrierData.carrierName,trackingNumber,shipDate:new Date(shipDate).toISOString(),orderItems:context.orderItems};
     const shippingMethod=clean(claimed.shipping_service_name);if(shippingMethod)packageDetail.shippingMethod=shippingMethod;
-    await spApiRequest(`/orders/v0/orders/${encodeURIComponent(context.amazonOrderId)}/shipmentConfirmation`,{method:'POST',body:{marketplaceId:context.marketplaceId,packageDetail}});
+    await spApiRequest(`/orders/v0/orders/${encodeURIComponent(context.amazonOrderId)}/shipmentConfirmation`,{method:'POST',body:{marketplaceId:context.marketplaceId,packageDetail}},credentials);
     await markSuccess(admin,claimed);
     return {orderId:claimed.id,amazonOrderId:context.amazonOrderId,status:'confirmed',trackingNumber,packageReferenceId:selectedPackage.packageReferenceId};
   }catch(error){
