@@ -349,3 +349,74 @@ html[data-theme='dark'] .aiNote.done{
   border-color:#0f766e!important;
   color:#99f6e4!important;
 }
+
+
+/* iPad/tablet list ergonomics and expense hub clearance.
+   Keep wide business tables scrollable instead of clipping their last columns. */
+@media (max-width:1180px){
+  .page :where(.tableCard,.masterTableCard,.ordersTableCard){
+    max-width:100%;
+    overflow-x:auto!important;
+    overflow-y:visible;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
+    touch-action:pan-x pan-y;
+  }
+  .page .tableCard>table{
+    min-width:980px!important;
+    width:max-content!important;
+  }
+  .page .masterTableCard>.masterTable{
+    min-width:980px!important;
+  }
+  .page .ordersTableCard>.ordersTable{
+    min-width:1900px!important;
+  }
+}
+
+@media (max-width:900px), (max-height:600px) and (max-width:1100px){
+  .expenseHubNavShell{
+    padding:calc(92px + env(safe-area-inset-top)) 15px 0!important;
+  }
+  .expenseHubNav{
+    display:flex!important;
+    width:100%;
+    max-width:100%;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
+  }
+  .expenseHubNav button{
+    flex:1 0 220px;
+  }
+  .expenseInvoicesHub>.page{
+    padding-top:18px!important;
+  }
+}
+
+/* Amazon no longer has a standalone Configuration destination.
+   Its global defaults live visually inside Integrations. */
+.integrationAmazonSettings{
+  margin-top:16px;
+}
+.integrationAmazonSettings>.settingsSectionCard{
+  border:0;
+  box-shadow:none;
+  padding:0;
+  background:transparent;
+}
+.integrationAmazonSettings>.settingsSectionCard>.settingsSectionHero{
+  margin-bottom:10px;
+}
+.integrationAmazonSettings>.settingsSectionCard>.settingsSectionHero>div:first-child{
+  display:none;
+}
+.integrationAmazonSettings>.settingsSectionCard>.settingsSectionHero h2{
+  font-size:15px;
+}
+.integrationAmazonSettings>.settingsSectionCard>.settingsSectionHero h2::before{
+  content:'Amazon · ';
+}
+.integrationAmazonSettings>.settingsSectionCard>.settingsSectionHero p{
+  margin-top:3px;
+}
