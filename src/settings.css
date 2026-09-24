@@ -381,3 +381,26 @@
 .settingsInlineChecks label{font-size:var(--ui-font-sm,13px)}
 .integrationProviderHead strong,
 .integrationEditorHead strong{font-size:var(--ui-font-md,14px)}
+
+
+/* Complete readability normalization for secondary Configuration surfaces. */
+.settingsNumberWithSuffix em,
+.settingsAlertCardHead small,
+.settingsMiniToggle,
+.settingsAlertThreshold>span,
+.settingsMaintenanceCandidate small,
+.settingsEmptyMini,
+.settingsPreviewCounts small,
+.settingsDiagnosticResult,
+.settingsResetPreview small,
+.integrationAccountMain strong em{
+  font-size:var(--ui-font-xs,12px);
+}
+.settingsMaintenanceGroups h4,
+.settingsResetPreview strong{
+  font-size:var(--ui-font-heading-sm,15px);
+}
+.settingsMaintenanceCandidate strong,
+.settingsResetPreview span{
+  font-size:var(--ui-font-sm,13px);
+}
