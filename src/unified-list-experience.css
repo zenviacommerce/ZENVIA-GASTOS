@@ -202,6 +202,13 @@ body.zenviaSideDrawerOpen{
   touch-action:pan-y;
 }
 
+/* A flex drawer must let its content keep its natural height. Otherwise the
+   children shrink to the viewport and there is nothing for the drawer itself
+   to scroll, which makes wheel events fall through to the page behind it. */
+:where(.zenviaDetailDrawer,.masterDrawer,.ordersDrawer)>*{
+  flex-shrink:0;
+}
+
 :where(.zenviaDetailDrawer>.modalHead,.masterDrawerHead,.ordersDrawerHead){
   position:sticky!important;
   top:0!important;
