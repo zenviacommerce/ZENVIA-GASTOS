@@ -185,7 +185,7 @@ function LabelModal({order,options,loading,onClose,onCreate}:{order:FulfillmentO
 function ManualOrderModal({status,saving,defaultCountryCode,fallbackWeightKg,weightUnit,onClose,onSave}:{status:SendcloudStatus;saving:boolean;defaultCountryCode:string;fallbackWeightKg:number;weightUnit:ShippingSettings['weightUnit'];onClose:()=>void;onSave:(value:any)=>void}){
   const apiIntegrations=status.integrations.filter(item=>item.channel==='other');
   const suggested=apiIntegrations.find(item=>item.isApi)||apiIntegrations[0];
-  const integrationKey=(item:typeof apiIntegrations[number])=>`${item.sendcloudAccountId||'legacy'}::${item.id}`;
+  const integrationKey=(item:(typeof apiIntegrations)[number])=>`${item.sendcloudAccountId||'legacy'}::${item.id}`;
   const [selectedIntegrationKey,setSelectedIntegrationKey]=useState(suggested?integrationKey(suggested):'');
   const selectedIntegration=apiIntegrations.find(item=>integrationKey(item)===selectedIntegrationKey)||null;
   const [orderNumber,setOrderNumber]=useState(`MAN-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${String(Date.now()).slice(-5)}`);
