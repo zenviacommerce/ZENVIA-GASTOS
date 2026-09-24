@@ -49,3 +49,24 @@ test('application resolves theme and start page from effective preferences',asyn
   assert.match(source,/preferences\.startPage/);
   assert.match(source,/settings\.general\.startPage/);
 });
+
+
+test('visible table columns honor saved order and ignore unknown keys',async()=>{
+  const {orderedTableColumns}=await transpiled('../src/services/uiPreferences.ts');
+  const preferences={
+    theme:'system',density:'comfortable',pageSize:20,startPage:null,defaultPeriod:'current_quarter',
+    rememberFilters:true,
+    tableColumns:{clients:['client','country','pending']},
+    tableColumnOrder:{clients:['pending','unknown','client']},
+    dashboardKpis:[],filters:{},labelPrinterId:null,
+  };
+  assert.deepEqual(orderedTableColumns(preferences,'clients'),['pending','client','country']);
+});
+
+test('Mis preferencias exposes column ordering controls',async()=>{
+  const source=await readFile(new URL('../src/pages/Settings.tsx',import.meta.url),'utf8');
+  assert.match(source,/tableColumnOrder/);
+  assert.match(source,/moveColumn/);
+  assert.match(source,/Mover columna a la izquierda/);
+  assert.match(source,/Mover columna a la derecha/);
+});
