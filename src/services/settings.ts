@@ -40,6 +40,18 @@ export type LoadedUserPreferences = {
   warnings: SettingsWarning[];
 };
 
+export type UserPreferencesPatch = Partial<UserPreferences>;
+
+export function mergeUserPreferencesPatch(current:UserPreferences,patch:UserPreferencesPatch):UserPreferences{
+  return {
+    ...current,
+    ...patch,
+    filters:patch.filters?{...current.filters,...patch.filters}:current.filters,
+    tableColumns:patch.tableColumns?{...current.tableColumns,...patch.tableColumns}:current.tableColumns,
+    tableColumnOrder:patch.tableColumnOrder?{...current.tableColumnOrder,...patch.tableColumnOrder}:current.tableColumnOrder,
+  };
+}
+
 const clone=<T>(value:T):T=>JSON.parse(JSON.stringify(value)) as T;
 const isRecord=(value:unknown):value is Record<string,unknown>=>typeof value==='object'&&value!==null&&!Array.isArray(value);
 
@@ -187,4 +199,9 @@ export async function saveUserPreferences(value:UserPreferences):Promise<LoadedU
     },{onConflict:'user_id,owner_id'});
   if(error)throw error;
   return loadUserPreferences();
+}
+
+export async function patchUserPreferences(patch:UserPreferencesPatch):Promise<LoadedUserPreferences>{
+  const current=await loadUserPreferences();
+  return saveUserPreferences(mergeUserPreferencesPatch(current.preferences,patch));
 }
