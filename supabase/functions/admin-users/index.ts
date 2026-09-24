@@ -116,11 +116,12 @@ Deno.serve(async (req: Request) => {
       const email = String(body?.email || '').trim().toLowerCase();
       const fullName = String(body?.fullName || '').trim();
       const password = String(body?.password || '');
-      const permissions = sanitizePermissions(body?.permissions);
+      const role = body?.role === 'admin' ? 'admin' : 'user';
+      const permissions = role === 'admin' ? [...allowedPermissions] : sanitizePermissions(body?.permissions);
       const identityError = validateIdentity(email, fullName);
       if (identityError) return fail(identityError);
       if (password.length < 8) return fail('La contraseña debe tener al menos 8 caracteres.');
-      if (!permissions.length) return fail('Selecciona al menos un permiso.');
+      if (role === 'user' && !permissions.length) return fail('Selecciona al menos un permiso.');
 
       const { data: created, error: createError } = await admin.auth.admin.createUser({
         email,
@@ -135,7 +136,7 @@ Deno.serve(async (req: Request) => {
         user_id: created.user.id,
         email,
         full_name: fullName || null,
-        role: 'user',
+        role,
         active: true,
         data_owner_id: caller.data_owner_id,
         permissions,
@@ -144,7 +145,7 @@ Deno.serve(async (req: Request) => {
         await admin.auth.admin.deleteUser(created.user.id).catch(() => undefined);
         throw profileError;
       }
-      await writeAudit(admin, caller, userData.user.email, 'create_user', created.user.id, email, `Creó el usuario ${email}`, { full_name: fullName, permissions, active: true });
+      await writeAudit(admin, caller, userData.user.email, 'create_user', created.user.id, email, `Creó el usuario ${email}`, { full_name: fullName, role, permissions, active: true });
       return new Response(JSON.stringify({ ok: true, userId: created.user.id }), { headers: jsonHeaders });
     }
 
@@ -163,12 +164,14 @@ Deno.serve(async (req: Request) => {
       const fullName = typeof body?.fullName === 'string' ? body.fullName.trim() : target.full_name || '';
       const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : target.email;
       const password = typeof body?.password === 'string' ? body.password : '';
-      const isAdmin = target.role === 'admin';
-      const permissions = isAdmin ? [...allowedPermissions] : sanitizePermissions(body?.permissions ?? target.permissions);
-      const active = isAdmin ? true : (typeof body?.active === 'boolean' ? body.active : target.active);
+      const requestedRole = body?.role === 'admin' || body?.role === 'user' ? body.role : target.role;
+      const role = targetId === callerId ? 'admin' : requestedRole;
+      if (targetId === callerId && requestedRole !== 'admin') return fail('No puedes quitarte tu propio rol de administrador.');
+      const permissions = role === 'admin' ? [...allowedPermissions] : sanitizePermissions(body?.permissions ?? target.permissions);
+      const active = role === 'admin' ? true : (typeof body?.active === 'boolean' ? body.active : target.active);
       const identityError = validateIdentity(email, fullName);
       if (identityError) return fail(identityError);
-      if (!isAdmin && !permissions.length) return fail('Selecciona al menos un permiso.');
+      if (role === 'user' && !permissions.length) return fail('Selecciona al menos un permiso.');
       if (password && password.length < 8) return fail('La nueva contraseña debe tener al menos 8 caracteres.');
 
       const authUpdate: Record<string, unknown> = {
@@ -182,6 +185,7 @@ Deno.serve(async (req: Request) => {
       const { error: profileError } = await admin.from('app_users').update({
         email,
         full_name: fullName || null,
+        role,
         active,
         permissions,
         updated_at: new Date().toISOString(),
@@ -195,6 +199,8 @@ Deno.serve(async (req: Request) => {
         email,
         previous_full_name: target.full_name,
         full_name: fullName,
+        previous_role: target.role,
+        role,
         previous_active: target.active,
         active,
         previous_permissions: target.permissions,
@@ -205,7 +211,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === 'delete') {
-      if (target.role === 'admin' || targetId === callerId) return fail('El administrador principal no se puede eliminar.');
+      if (targetId === callerId) return fail('No puedes eliminar tu propio acceso de administrador.');
       const { error } = await admin.auth.admin.deleteUser(targetId);
       if (error) return fail(error.message);
       await writeAudit(admin, caller, userData.user.email, 'delete_user', targetId, target.email, `Eliminó el usuario ${target.email}`, { full_name: target.full_name, permissions: target.permissions, active: target.active });
