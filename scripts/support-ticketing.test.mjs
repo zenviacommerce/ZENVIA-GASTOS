@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+
+const read=path=>readFile(new URL('../'+path,import.meta.url),'utf8');
+
+test('Support module exposes incident/request ticket lifecycle with replies and attachments',async()=>{
+  const [page,service,migration]=await Promise.all([
+    read('src/pages/Support.tsx'),
+    read('src/services/support.ts'),
+    read('supabase/migrations/20260925121000_support_ticketing.sql'),
+  ]);
+  for(const label of ['Incidencia','Petición','Nuevo ticket','Gestión de tickets','Responder'])assert.match(page,new RegExp(label));
+  assert.match(service,/support_tickets/);
+  assert.match(service,/support_messages/);
+  assert.match(service,/support-attachments/);
+  assert.match(service,/support-notify/);
+  assert.match(migration,/support_ticket_number_seq/);
+  assert.match(migration,/app_support_ticket_access/);
+  assert.match(migration,/support_storage_insert/);
+  assert.match(migration,/file_size_limit,allowed_mime_types/);
+});
+
+test('Support email notifications target the support mailbox and the ticket creator',async()=>{
+  const fn=await read('supabase/functions/support-notify/index.ts');
+  assert.match(fn,/info@zenviacommerce\.com/);
+  assert.match(fn,/RESEND_API_KEY/);
+  assert.match(fn,/ticket\.created_by_email/);
+  assert.match(fn,/support_email_events/);
+  assert.match(fn,/event==='reply'/);
+  assert.match(fn,/event==='status'/);
+});
+
+test('Support is available to every active user and admin gets the management view',async()=>{
+  const [app,sidebar]=await Promise.all([read('src/App.tsx'),read('src/components/Sidebar.tsx')]);
+  assert.match(app,/'support','settings'/);
+  assert.match(app,/SupportPage/);
+  assert.match(sidebar,/LifeBuoy/);
+  assert.match(sidebar,/Soporte/);
+});
