@@ -29,3 +29,9 @@ test('Amazon chart Y axis reserves enough space for full monetary values',async(
   assert.match(summary,/<YAxis width=\{86\}/);
   assert.match(summary,/margin=\{\{top:8,right:16,bottom:0,left:10\}\}/);
 });
+
+
+test('Amazon listing metadata prefers the Spanish marketplace for the canonical display name',async()=>{
+  const sync=await read('supabase/functions/amazon-sync-product-images/index.ts');
+  assert.match(sync,/\[esMarketplaceId,product\.marketplaceId,\.\.\.activeMarketplaceIds\]/);
+});
