@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, Building2, FileText, LogOut, Menu, Moon, Package, ReceiptText, Settings2, ShieldCheck, ShoppingBag, Store, Sun, Users, X } from 'lucide-react';
+import { BarChart3, Building2, FileText, LogOut, Menu, Moon, Package, ReceiptText, Settings2, ShieldCheck, ShoppingBag, Store, Sun, Users, X, type LucideIcon } from 'lucide-react';
 import { ZENVIA_LOGO } from '../branding';
 
 export type Page = 'dashboard' | 'sales' | 'orders' | 'invoices' | 'clients' | 'products' | 'suppliers' | 'amazon' | 'settings' | 'admin';
@@ -11,7 +11,10 @@ type SidebarUser = {
   role: 'admin' | 'user';
 };
 
-const navGroups = [
+type NavItem = readonly [Page,string,string,LucideIcon];
+type NavGroup = { label:string; items:NavItem[] };
+
+const navGroups:NavGroup[] = [
   {
     label:'Inicio',
     items:[
@@ -40,9 +43,9 @@ const navGroups = [
       ['amazon','Amazon','Amazon',Store],
     ],
   },
-] as const;
+];
 
-const items=navGroups.flatMap(group=>group.items);
+const items:NavItem[]=navGroups.flatMap(group=>group.items);
 
 function initials(fullName: string, email: string) {
   const source = fullName.trim() || email.split('@')[0] || 'U';
