@@ -90,11 +90,28 @@ test('integration UI shows provider logos and models Shopify honestly as a Sendc
     read('src/pages/Settings.tsx'),
     read('src/settings.css'),
   ]);
-  for(const brand of ['simpleicons.org/amazon','simpleicons.org/shopify','simpleicons.org/sendcloud','simpleicons.org/gmail'])assert.match(page,new RegExp(brand));
+  assert.match(page,/function IntegrationBrandLogo/);
+  assert.match(page,/provider==='amazon'/);
+  assert.match(page,/provider==='shopify'/);
+  assert.match(page,/provider==='sendcloud'/);
+  assert.match(page,/provider==='gmail'/);
+  assert.doesNotMatch(page,/cdn\.simpleicons\.org/);
   assert.match(page,/primaryProviders:IntegrationProvider\[\]=\['amazon','sendcloud','gmail'\]/);
   assert.match(page,/Shopify vía Sendcloud/);
   assert.match(page,/no usa credenciales Shopify|no se solicita una contraseña de Shopify/i);
   assert.match(page,/Conexión directa con Amazon SP-API/i);
   assert.match(css,/\.integrationProviderLogo/);
   assert.match(css,/\.integrationDerivedChannels/);
+});
+
+
+test('Integrations has one explicit save area: Amazon settings; global switches persist immediately',async()=>{
+  const page=await read('src/pages/Settings.tsx');
+  const start=page.indexOf('function IntegrationsSection');
+  const end=page.indexOf('function AlertsSection',start);
+  const block=page.slice(start,end>start?end:undefined);
+  assert.match(block,/Estos interruptores se guardan al instante/);
+  assert.match(block,/await updateSection\('integrations',next\)/);
+  assert.doesNotMatch(block,/saveGlobal/);
+  assert.doesNotMatch(block,/Restaurar valores globales/);
 });

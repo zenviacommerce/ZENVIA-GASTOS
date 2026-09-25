@@ -66,6 +66,37 @@ type SettingsSection = {
   adminOnly: boolean;
 };
 
+
+function IntegrationBrandLogo({provider,small=false}:{provider:IntegrationProvider;small?:boolean}){
+  return <span className={`integrationProviderLogo ${small?'isSmall':''}`} aria-hidden="true">
+    {provider==='amazon'&&<svg viewBox="0 0 32 32" role="img">
+      <rect width="32" height="32" rx="8" fill="#fff"/>
+      <text x="11.4" y="20.8" fontSize="18" fontWeight="800" fontFamily="Arial,Helvetica,sans-serif" fill="#232f3e">a</text>
+      <path d="M7.5 23.2c5.2 3.2 11.2 3.7 16.8.7" fill="none" stroke="#ff9900" strokeWidth="2.2" strokeLinecap="round"/>
+      <path d="M22.4 22.9l3.2.1-1.3 2.7" fill="none" stroke="#ff9900" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>}
+    {provider==='sendcloud'&&<svg viewBox="0 0 32 32" role="img">
+      <rect width="32" height="32" rx="8" fill="#3155d9"/>
+      <path d="M9.2 19.6h13.2a4.1 4.1 0 0 0 .4-8.2 6.8 6.8 0 0 0-12.8 1.7 3.3 3.3 0 0 0-.8 6.5Z" fill="#fff"/>
+      <path d="M12 15.8h8M14 12.8l-3 3 3 3M18 18.8l3-3-3-3" fill="none" stroke="#3155d9" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>}
+    {provider==='shopify'&&<svg viewBox="0 0 32 32" role="img">
+      <rect width="32" height="32" rx="8" fill="#95bf47"/>
+      <path d="M9.2 10.9 11 25.3l13.6 2.1 1.8-16.5-5.3-.4c-.6-2.7-2-4.2-4-4.2-2 0-3.7 1.5-4.7 4.1l-3.2.5Z" fill="#fff"/>
+      <path d="M14.1 10.3c.7-1.6 1.7-2.5 2.8-2.5 1.1 0 1.9.9 2.4 2.6" fill="none" stroke="#5e8e3e" strokeWidth="1.5" strokeLinecap="round"/>
+      <text x="14" y="21.8" fontSize="10.5" fontWeight="800" fontFamily="Arial,Helvetica,sans-serif" fill="#5e8e3e">S</text>
+    </svg>}
+    {provider==='gmail'&&<svg viewBox="0 0 32 32" role="img">
+      <rect width="32" height="32" rx="8" fill="#fff"/>
+      <path d="M6.5 10.2 16 17.3l9.5-7.1v12.1c0 1.1-.9 2-2 2h-15a2 2 0 0 1-2-2V10.2Z" fill="#f1f3f4"/>
+      <path d="M6.5 10.2 16 17.4l9.5-7.2" fill="none" stroke="#ea4335" strokeWidth="3.2" strokeLinejoin="round"/>
+      <path d="M6.5 10.2v12.4" stroke="#4285f4" strokeWidth="3.2"/>
+      <path d="M25.5 10.2v12.4" stroke="#34a853" strokeWidth="3.2"/>
+      <path d="M6.5 10.2 10 12.8" stroke="#fbbc04" strokeWidth="3.2"/>
+    </svg>}
+  </span>;
+}
+
 const sections:SettingsSection[]=[
   {id:'general',label:'General',description:'Identidad, moneda y comportamiento general de la empresa.',icon:Building2,adminOnly:true},
   {id:'sales',label:'Facturación',description:'Valores predeterminados, cobros y documentos de venta.',icon:ReceiptText,adminOnly:true},
@@ -934,29 +965,25 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
   };
   useEffect(()=>{void reload()},[]);
 
-  const providerMeta:Record<IntegrationProvider,{name:string;description:string;logo:string;addLabel:string}>={
+  const providerMeta:Record<IntegrationProvider,{name:string;description:string;addLabel:string}>={
     amazon:{
       name:'Amazon',
       description:'Conexión directa con Seller Central mediante SP-API. Admite varias cuentas y marketplaces.',
-      logo:'https://cdn.simpleicons.org/amazon/FF9900',
       addLabel:'Conectar Amazon',
     },
     shopify:{
       name:'Shopify',
       description:'Tienda de venta conectada a través de una cuenta de Sendcloud.',
-      logo:'https://cdn.simpleicons.org/shopify/7AB55C',
       addLabel:'Añadir Shopify',
     },
     sendcloud:{
       name:'Sendcloud',
       description:'Conexión logística para etiquetas, transportistas, seguimiento y canales vinculados.',
-      logo:'https://cdn.simpleicons.org/sendcloud/4D67FF',
       addLabel:'Conectar Sendcloud',
     },
     gmail:{
       name:'Gmail',
       description:'Cuenta de Google autorizada para importar facturas recibidas.',
-      logo:'https://cdn.simpleicons.org/gmail/EA4335',
       addLabel:'Autorizar Gmail',
     },
   };
@@ -969,7 +996,21 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
     gmail:'gmailEnabled',amazon:'amazonEnabled',sendcloud:'sendcloudEnabled',shopify:'shopifyEnabled',
   };
   const enabled=(id:IntegrationProvider)=>Boolean(draft[settingKey[id]]);
-  const toggle=(id:IntegrationProvider,value:boolean)=>{setDraft(current=>({...current,[settingKey[id]]:value}));onDirtyChange(true)};
+  const toggle=async(id:IntegrationProvider,value:boolean)=>{
+    const previous=draft;
+    const next={...draft,[settingKey[id]]:value} as IntegrationsSettings;
+    setDraft(next);
+    setSaving(true);
+    try{
+      await updateSection('integrations',next);
+      onDirtyChange(false);
+      showSuccess(`${providerMeta[id].name}: comportamiento global actualizado.`);
+    }catch(e){
+      setDraft(previous);
+      onDirtyChange(false);
+      showError(e instanceof Error?e.message:'No se pudo actualizar la integración.');
+    }finally{setSaving(false);}
+  };
   const dateTime=(value:string|null)=>formatAppDateTime(value,settings.general,'Sin registro');
   const sendcloudAccounts=accounts.filter(item=>item.provider==='sendcloud'&&item.status!=='disabled');
   const compatibilityMode=accounts.some(item=>item.legacy);
@@ -1181,12 +1222,6 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
     finally{setBusy(null);}
   };
 
-  const saveGlobal=async()=>{
-    setSaving(true);
-    try{await updateSection('integrations',draft);onDirtyChange(false);showSuccess('Comportamiento global de integraciones guardado.');}
-    catch(e){showError(e instanceof Error?e.message:'No se pudo guardar la configuración global.');}
-    finally{setSaving(false);}
-  };
   const restore=async()=>{
     if(!await confirmAction({title:'Restaurar Integraciones',message:'Se restaurarán los interruptores globales de Integraciones. Las cuentas conectadas no se modificarán.',confirmLabel:'Restaurar',tone:'warning'}))return;
     setSaving(true);
@@ -1212,7 +1247,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
           return <div className="integrationProviderCard" key={id}>
             <div className="integrationProviderHead">
               <div className="integrationProviderIdentity">
-                <span className="integrationProviderLogo"><img src={providerMeta[id].logo} alt="" aria-hidden="true"/></span>
+                <IntegrationBrandLogo provider={id}/>
                 <div><strong>{providerMeta[id].name}</strong><small>{providerMeta[id].description}</small></div>
               </div>
               <button type="button" className="secondary" disabled={busy!==null} onClick={()=>resetEditor(id)}><Plus size={14}/> {providerMeta[id].addLabel}</button>
@@ -1241,7 +1276,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
             {id==='sendcloud'&&<div className="integrationDerivedChannels">
               <div className="integrationDerivedHead">
                 <div className="integrationProviderIdentity">
-                  <span className="integrationProviderLogo isSmall"><img src={providerMeta.shopify.logo} alt="" aria-hidden="true"/></span>
+                  <IntegrationBrandLogo provider="shopify" small/>
                   <div><strong>Shopify vía Sendcloud</strong><small>Estas tiendas no usan credenciales Shopify en ZENVIA: Sendcloud es el conector que entrega los pedidos.</small></div>
                 </div>
                 <button type="button" className="secondary" disabled={busy!==null||!sendcloudAccounts.length} onClick={()=>resetEditor('shopify')}><Plus size={14}/> Añadir tienda</button>
@@ -1272,10 +1307,9 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
     </div>
 
     <div className="settingsSubsection">
-      <h3>Comportamiento global</h3>
-      <p className="settingsHelpText">Estos interruptores afectan al servicio completo. La conexión, marketplaces y reglas concretas pertenecen a cada cuenta.</p>
+      <div className="settingsSubsectionHead"><div><h3>Comportamiento global</h3><p>Estos interruptores se guardan al instante. La conexión, marketplaces y reglas concretas pertenecen a cada cuenta.</p></div><button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar interruptores</button></div>
       <div className="settingsToggleGrid">
-        {globalProviders.map(id=><label className="settingsToggleField" key={id}><input type="checkbox" checked={enabled(id)} onChange={e=>toggle(id,e.target.checked)}/><span><strong>{providerMeta[id].name}</strong><small>{enabled(id)?'Automatismos globales permitidos.':'Automatismos globales desactivados.'}</small></span></label>)}
+        {globalProviders.map(id=><label className="settingsToggleField" key={id}><input type="checkbox" disabled={saving} checked={enabled(id)} onChange={e=>void toggle(id,e.target.checked)}/><span><strong>{providerMeta[id].name}</strong><small>{enabled(id)?'Automatismos globales permitidos.':'Automatismos globales desactivados.'}</small></span></label>)}
       </div>
     </div>
 
@@ -1283,11 +1317,10 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
       <AmazonSection onDirtyChange={onDirtyChange}/>
     </div>
 
-    <div className="settingsSectionActions"><button type="button" className="secondary" disabled={saving} onClick={()=>void restore()}>Restaurar valores globales</button><button type="button" className="primary" disabled={saving} onClick={()=>void saveGlobal()}>{saving?'Guardando…':'Guardar cambios'}</button></div>
 
     {editorOpen&&<div className="integrationEditorBackdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)closeEditor()}}>
       <div className="integrationEditor" role="dialog" aria-modal="true" aria-label={editing?'Configurar integración':'Añadir integración'}>
-        <div className="integrationEditorHead"><div className="integrationEditorTitle"><span className="integrationProviderLogo"><img src={providerMeta[provider].logo} alt="" aria-hidden="true"/></span><div><strong>{editing?'Configurar':provider==='shopify'?'Añadir':'Conectar'} {providerMeta[provider].name}</strong><small>{provider==='shopify'
+        <div className="integrationEditorHead"><div className="integrationEditorTitle"><IntegrationBrandLogo provider={provider}/><div><strong>{editing?'Configurar':provider==='shopify'?'Añadir':'Conectar'} {providerMeta[provider].name}</strong><small>{provider==='shopify'
           ?'Shopify se añade como canal de venta de Sendcloud. No se solicita una contraseña de Shopify porque ZENVIA recibe esos pedidos desde Sendcloud.'
           :editing?.legacy?'Cuenta actual detectada en el sistema existente. Los secretos se mantienen en el backend actual hasta completar la migración multicuenta.'
           :editing?'Los secretos guardados nunca se vuelven a mostrar. Déjalos vacíos para conservarlos.'

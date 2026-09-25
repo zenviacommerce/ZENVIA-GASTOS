@@ -439,13 +439,15 @@
   box-shadow:0 3px 10px rgba(15,23,42,.06);
 }
 .integrationProviderLogo.isSmall{width:30px;height:30px;flex-basis:30px;border-radius:9px}
-.integrationProviderLogo img{
+.integrationProviderLogo img,
+.integrationProviderLogo svg{
   display:block;
   width:20px;
   height:20px;
   object-fit:contain;
 }
-.integrationProviderLogo.isSmall img{width:17px;height:17px}
+.integrationProviderLogo.isSmall img,
+.integrationProviderLogo.isSmall svg{width:17px;height:17px}
 .integrationDerivedChannels{
   margin-top:14px;
   padding-top:13px;
