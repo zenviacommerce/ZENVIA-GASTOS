@@ -31,11 +31,31 @@ test('Support email notifications target the support mailbox and the ticket crea
   assert.match(fn,/event==='status'/);
 });
 
-test('Support is available to every active user and admin gets the management view',async()=>{
-  const [app,sidebar]=await Promise.all([read('src/App.tsx'),read('src/components/Sidebar.tsx')]);
-  assert.match(app,/'support','settings'/);
-  assert.match(app,/SupportPage/);
+test('Support is permission-aware and admin gets the management view',async()=>{
+  const [app,sidebar,access]=await Promise.all([read('src/App.tsx'),read('src/components/Sidebar.tsx'),read('src/services/access.ts')]);
+  assert.match(app,/regularPages:[^\n]*support|regularPages[^\n]*support/);
+  assert.match(app,/page==='support'&&can\('support'\)/);
+  assert.match(access,/MenuPermission[\s\S]*support/);
+  assert.match(access,/id: 'support', label: 'Soporte'/);
   assert.match(sidebar,/CircleHelp/);
   assert.match(sidebar,/label:'Ayuda'/);
   assert.match(sidebar,/Soporte/);
+});
+
+test('Support administrators can edit/delete tickets and every change is audited',async()=>{
+  const [page,service,migration,admin]=await Promise.all([
+    read('src/pages/Support.tsx'),
+    read('src/services/support.ts'),
+    read('supabase/migrations/20260925123000_support_admin_permissions_audit.sql'),
+    read('src/pages/Admin.tsx'),
+  ]);
+  assert.match(page,/Editar ticket/);
+  assert.match(page,/Eliminar ticket/);
+  assert.match(service,/deleteSupportTicket/);
+  assert.match(service,/description\?:string/);
+  assert.match(migration,/support_tickets_admin_delete/);
+  assert.match(migration,/audit_support_change/);
+  assert.match(migration,/'support','reply'/);
+  assert.match(admin,/support:'Soporte'/);
+  assert.match(admin,/reply:'Respuesta'/);
 });

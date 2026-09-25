@@ -62,7 +62,7 @@ test('orchestrator and worker are internal-only and worker claims bounded jobs a
   assert.match(orchestrator,/requireInternalSecret/);
   assert.match(worker,/requireInternalSecret/);
   assert.match(worker,/rpc\('amazon_claim_sync_jobs'/);
-  assert.match(worker,/limit_count:\s*3/);
+  assert.match(worker,/limit_count:\s*6/);
   assert.match(worker,/markJobFailed/);
 });
 
@@ -97,4 +97,14 @@ test('manual sync authenticates a real user and requires admin role',async()=>{
   assert.match(manual,/role\s*!==\s*'admin'/);
   assert.match(manual,/enqueueHourlySync/);
   assert.doesNotMatch(`${manual}\n${backend}`,/user_metadata/);
+});
+
+
+test('production Amazon worker cron uses direct pg_net invocation instead of a missing helper',async()=>{
+  const migration=await source('supabase/migrations/20260925124100_amazon_worker_direct_cron.sql');
+  assert.match(migration,/amazon-sync-worker/);
+  assert.match(migration,/net\.http_post/);
+  assert.match(migration,/amazon_cron_secret_key/);
+  const command=migration.slice(migration.indexOf('select cron.schedule'));
+  assert.doesNotMatch(command,/amazon_invoke_internal_function/);
 });

@@ -117,7 +117,11 @@ export async function normalizeFinanceComponents(transaction:any,persistedTransa
       marketplace_id:persistedTransaction.marketplace_id?String(persistedTransaction.marketplace_id):null,amazon_order_id:persistedTransaction.amazon_order_id?String(persistedTransaction.amazon_order_id):null,
       seller_sku:persistedTransaction.seller_sku?String(persistedTransaction.seller_sku):null,asin:persistedTransaction.asin?String(persistedTransaction.asin):null,
       posted_date:persistedTransaction.posted_date?String(persistedTransaction.posted_date):null,component_key:componentKey,component_type:entry.componentType,
-      component_category:entry.category,amount_original:amount(entry.node),currency_code:currency(entry.node),tax_amount_original:entry.tax,
+      component_category:entry.category,
+      // Persist the normalized component as gross amount plus its tax share.
+      // amazon_finance_transactions.metadata keeps Amazon's original payload for audit.
+      amount_original:amount(entry.node)+(entry.tax!==null&&(!entry.taxCurrency||entry.taxCurrency===currency(entry.node))?entry.tax:0),
+      currency_code:currency(entry.node),tax_amount_original:entry.tax,
       amount_eur:null,tax_amount_eur:null,fx_rate:null,updated_at:now,
     });
   }

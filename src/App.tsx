@@ -38,7 +38,7 @@ import type { AppData, Invoice, NewInvoiceInput, Product, Supplier } from './typ
 const emptyData: AppData = { invoices: [], products: [], suppliers: [], categories: [] };
 const THEME_KEY = 'zenvia-gestion-theme';
 const THEME_PREFERENCE_KEY = 'zenvia-gestion-theme-preference';
-const regularPages: MenuPermission[] = ['dashboard','sales','orders','invoices','clients','products','suppliers','amazon'];
+const regularPages: MenuPermission[] = ['dashboard','sales','orders','invoices','clients','products','suppliers','amazon','support'];
 
 function withTimeout<T>(promise:Promise<T>,ms:number,message:string):Promise<T>{
   return new Promise<T>((resolve,reject)=>{
@@ -84,7 +84,7 @@ export default function App(){
  const allowedPages=useMemo<Page[]>(()=>{
    if(!access?.active) return [];
    const visible:Page[]=access.role==='admin'?regularPages:regularPages.filter(item=>access.permissions.includes(item));
-   return access.role==='admin'?[...visible,'support','settings','admin']:[...visible,'support','settings'];
+   return access.role==='admin'?[...visible,'settings','admin']:[...visible,'settings'];
  },[access]);
  const can=(permission:MenuPermission)=>Boolean(access?.active&&(access.role==='admin'||access.permissions.includes(permission)));
 
@@ -274,7 +274,7 @@ export default function App(){
    {page==='products'&&can('products')&&<Products products={data.products} onAdd={openNewProduct} onEdit={openEditProduct} onDelete={removeProduct}/>} 
    {page==='suppliers'&&can('suppliers')&&<Suppliers suppliers={data.suppliers} onAdd={openNewSupplier} onEdit={openEditSupplier} onDelete={removeSupplier}/>} 
    {page==='amazon'&&can('amazon')&&<AmazonPage isAdmin={access.role==='admin'}/>} 
-   {page==='support'&&<SupportPage isAdmin={access.role==='admin'} currentUserId={session.user.id}/>} 
+   {page==='support'&&can('support')&&<SupportPage isAdmin={access.role==='admin'} currentUserId={session.user.id}/>} 
    {page==='settings'&&<SettingsPage isAdmin={access.role==='admin'}/>} 
    {page==='admin'&&access.role==='admin'&&<AdminPage currentUserId={session.user.id}/>} 
  </main>

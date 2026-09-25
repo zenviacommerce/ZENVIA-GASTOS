@@ -48,10 +48,11 @@ test('Finances sync persists normalized components after transaction upsert', as
 });
 
 
-test('Finance components preserve raw Amazon Base and Tax values',async()=>{
+test('Finance components persist normalized gross amount and explicit tax',async()=>{
   const parser=await source('supabase/functions/_shared/amazon/finance-components.ts');
-  assert.match(parser,/amount_original:amount\(entry\.node\)/);
+  assert.match(parser,/amount_original:amount\(entry\.node\)\+\(entry\.tax!==null/);
   assert.match(parser,/tax_amount_original:entry\.tax/);
+  assert.match(parser,/normalized component as gross amount plus its tax share/i);
 });
 
 test('Amazon finance normalization deduplicates lifecycle rows and normalizes fee VAT in one analytics view',async()=>{
@@ -65,4 +66,16 @@ test('Amazon finance normalization deduplicates lifecycle rows and normalizes fe
   assert.match(migration,/1\.21/);
   assert.match(migration,/ReserveDebit/);
   assert.match(migration,/replace\(definition,'public\.amazon_finance_components','private\.amazon_finance_components_analytics'\)/);
+});
+
+
+test('Amazon finance fast path removes the transaction join bottleneck and preserves ledger audit',async()=>{
+  const migration=await source('supabase/migrations/20260925124000_amazon_finance_analytics_fast_path.sql');
+  assert.match(migration,/delete from public\.amazon_finance_components c[\s\S]*superseded/i);
+  assert.match(migration,/amazon_prepare_finance_component_fast/);
+  assert.match(migration,/return null/);
+  assert.match(migration,/create or replace view private\.amazon_finance_components_analytics[\s\S]*from public\.amazon_finance_components c;/i);
+  assert.doesNotMatch(migration,/from public\.amazon_finance_components c\s+join public\.amazon_finance_transactions/i);
+  assert.match(migration,/if v_source='EUR' then return 1/);
+  assert.match(migration,/amazon_finance_components_order_analytics_idx/);
 });

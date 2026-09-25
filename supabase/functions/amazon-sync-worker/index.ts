@@ -18,7 +18,7 @@ Deno.serve(async(req:Request)=>{
   try{
     requireInternalSecret(req);
     const admin=createAdminClient();
-    const {data:jobs,error}=await admin.rpc('amazon_claim_sync_jobs',{limit_count:3});
+    const {data:jobs,error}=await admin.rpc('amazon_claim_sync_jobs',{limit_count:6});
     if(error)throw error;
     const results:any[]=[];
     for(const job of jobs||[]){
