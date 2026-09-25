@@ -92,7 +92,7 @@ export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:
         <tbody>
           {data.items.map(row=><tr key={`${row.sellerSku}-${row.asin}`}>
             <td className="amazonSkuCell"><strong>{row.sellerSku}</strong><small>{row.asin||'—'}</small>{row.businessOrders>0&&<span className="amazonB2bBadge">{row.businessOrders} B2B</span>}</td>
-            <td className="amazonProductNameCell"><div className="amazonProductIdentity">{row.asin&&metadata[row.asin]?.imageUrl?<img className="amazonProductThumb" src={metadata[row.asin].imageUrl!} alt="" loading="lazy" referrerPolicy="no-referrer"/>:<span className="amazonProductThumb amazonProductThumbPlaceholder"><ImageOff size={18}/></span>}<div><strong>{(row.asin&&metadata[row.asin]?.productName)||'Nombre Amazon pendiente'}</strong>{row.productName?<small className="amazonInternalProduct">ZENVIA: {row.productName}</small>:<small className="amazonIncomplete">Sin vincular</small>}</div></div></td>
+            <td className="amazonProductNameCell"><div className="amazonProductIdentity">{row.asin&&metadata[row.asin]?.imageUrl?<img className="amazonProductThumb" src={metadata[row.asin].imageUrl!} alt="" loading="lazy" referrerPolicy="no-referrer"/>:<span className="amazonProductThumb amazonProductThumbPlaceholder"><ImageOff size={18}/></span>}<div><strong>{(row.asin&&metadata[row.asin]?.productName)||'Nombre Amazon pendiente'}</strong>{row.productName?<small className="amazonInternalProduct">ZENVIA: {row.productName}{row.productMappings?.length>1?` · ${row.productMappings.length} componentes`:''}</small>:<small className="amazonIncomplete">Sin vincular</small>}</div></div></td>
             <td>{integer.format(row.orders)}</td>
             <td>{integer.format(row.units)}</td>
             <td>{money.format(row.grossSales)}</td>
@@ -104,13 +104,13 @@ export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:
             <td className={row.marginPct!=null&&row.marginPct>=0?'amazonPositive':'amazonNegative'}>{row.marginPct==null?'—':`${row.marginPct.toFixed(1)} %`}</td>
             <td>{money.format(row.salesVat)}</td>
             <td>{money.format(row.amazonFeeVat)}</td>
-            <td><button className="amazonInlineAction" onClick={()=>setEditing(editing===row.sellerSku?null:row.sellerSku)}><Link2 size={14}/>{row.productId?'Cambiar vínculo':'Vincular'}</button></td>
+            <td><button className="amazonInlineAction" onClick={()=>setEditing(editing===row.sellerSku?null:row.sellerSku)}><Link2 size={14}/>{(row.productMappings?.length||row.productId)?'Gestionar vínculos':'Vincular'}</button></td>
           </tr>)}
           {!data.items.length&&<tr><td colSpan={14} className="amazonEmptyCell">{loading?'Cargando productos de Amazon…':'No hay productos para este periodo.'}</td></tr>}
         </tbody>
       </table>
     </div>
-    {editing&&<AmazonMappingModal sellerSku={editing} asin={editingRow?.asin} imageUrl={editingRow?.asin?metadata[editingRow.asin]?.imageUrl||null:null} initialProductId={editingRow?.productId} initialFactor={editingRow?.consumptionFactor||1} allowDelete={Boolean(editingRow?.productId)} onSaved={()=>{setEditing(null);void refresh();}} onClose={()=>setEditing(null)}/>}
+    {editing&&<AmazonMappingModal sellerSku={editing} asin={editingRow?.asin} imageUrl={editingRow?.asin?metadata[editingRow.asin]?.imageUrl||null:null} defaultFactor={1} onChanged={()=>{void refresh();}} onClose={()=>setEditing(null)}/>}
     <div className="amazonPagination"><span>{loading&&!data.items.length?'Cargando productos…':`${data.total} productos · ${Math.min((page-1)*pageSize+1,data.total)}–${Math.min(page*pageSize,data.total)}`}</span><div><button disabled={page<=1} onClick={()=>setPage(value=>value-1)}>Anterior</button><span>Página {page}</span><button disabled={page*pageSize>=data.total} onClick={()=>setPage(value=>value+1)}>Siguiente</button></div></div>
   </section>;
 }
