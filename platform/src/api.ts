@@ -1,10 +1,18 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
-export type PlatformRole='super_admin'|'support_admin'|'billing_admin';
+export type PlatformRole='super_admin'|'support_admin'|'billing_admin'|'operations_admin';
 export type WorkspaceStatus='active'|'trialing'|'suspended'|'cancelled';
 export type PlatformStats={workspaces:number;subscriptions:number;openTickets:number;activePlans:number};
-export type Bootstrap={actor:{id:string;email:string;role:PlatformRole};stats:PlatformStats};
+export type Bootstrap={actor:{id:string;email:string;name:string;role:PlatformRole;permissions:string[]};stats:PlatformStats};
+
+export type PlatformPermission={permission_key:string;module:string;name:string;description?:string|null};
+export type PlatformRoleDefinition={role_key:PlatformRole;name:string;description?:string|null;active:boolean};
+export type PlatformUser={
+  user_id:string;email:string;full_name?:string|null;role_key:PlatformRole;active:boolean;
+  last_login_at?:string|null;created_at:string;updated_at:string;
+  permission_overrides:Array<{permission_key:string;allowed:boolean}>;
+};
 
 export type Workspace={
   id:string;slug:string;name:string;legal_name?:string|null;status:WorkspaceStatus;created_at:string;updated_at:string;
@@ -35,13 +43,13 @@ export type TicketMessage={id:string;ticket_id:string;author_user_id:string;auth
 export type TicketAttachment={id:string;ticket_id:string;message_id?:string|null;file_name:string;mime_type?:string|null;file_size:number;storage_path:string;created_at:string};
 export type AuditEntry={id:string;actor_user_id:string;workspace_id?:string|null;action:string;entity_type:string;entity_id?:string|null;summary:string;details:Record<string,unknown>;created_at:string};
 
-async function invoke<T>(action:string,payload:Record<string,unknown>={}):Promise<T>{
-  const {data,error}=await supabase.functions.invoke('platform-admin',{body:{action,...payload}});
+async function invokeFunction<T>(functionName:string,body:Record<string,unknown>):Promise<T>{
+  const {data,error}=await supabase.functions.invoke(functionName,{body});
   if(error){
     if(error instanceof FunctionsHttpError){
       try{
-        const body=await error.context.clone().json();
-        const message=String(body?.error||body?.message||'').trim();
+        const payload=await error.context.clone().json();
+        const message=String(payload?.error||payload?.message||'').trim();
         if(message)throw new Error(message);
       }catch(parsedError){
         if(parsedError instanceof Error&&parsedError.message&&parsedError.message!==error.message)throw parsedError;
@@ -53,8 +61,13 @@ async function invoke<T>(action:string,payload:Record<string,unknown>={}):Promis
   return data as T;
 }
 
+async function invoke<T>(action:string,payload:Record<string,unknown>={}):Promise<T>{
+  return invokeFunction<T>('platform-admin',{action,...payload});
+}
+
 export const platformApi={
   bootstrap:()=>invoke<Bootstrap>('bootstrap'),
+  bootstrapInitial:(input:{email:string;fullName:string;password:string;code:string})=>invokeFunction<{ok:true}>('platform-bootstrap',input),
   listWorkspaces:()=>invoke<{workspaces:Workspace[]}>('list_workspaces'),
   createWorkspace:(input:{name:string;legalName:string;ownerEmail:string;ownerFullName:string;planKey:string})=>invoke<{ok:true;workspaceId:string}>('create_workspace',input),
   listPlans:()=>invoke<{plans:BillingPlan[]}>('list_plans'),
@@ -65,6 +78,9 @@ export const platformApi={
   ticketDetail:(ticketId:string)=>invoke<{ticket:Ticket;messages:TicketMessage[];attachments:TicketAttachment[]}>('ticket_detail',{ticketId}),
   updateTicket:(ticketId:string,patch:{status?:Ticket['status'];priority?:Ticket['priority'];assignedTo?:string|null})=>invoke<{ok:true}>('update_ticket',{ticketId,...patch}),
   replyTicket:(ticketId:string,message:string)=>invoke<{ok:true;messageId:string;notified:boolean;notificationReason?:string}>('reply_ticket',{ticketId,message}),
+  listUsers:()=>invoke<{users:PlatformUser[];roles:PlatformRoleDefinition[];permissions:PlatformPermission[]}>('list_users'),
+  inviteUser:(input:{email:string;fullName:string;roleKey:PlatformRole})=>invoke<{ok:true;userId:string}>('invite_user',input),
+  updateUser:(input:{userId:string;roleKey?:PlatformRole;active?:boolean;permissionOverrides?:Array<{permissionKey:string;allowed:boolean}>})=>invoke<{ok:true}>('update_user',input),
   listAudit:()=>invoke<{entries:AuditEntry[]}>('list_platform_audit'),
 };
 
