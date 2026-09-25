@@ -132,9 +132,9 @@ create table if not exists public.billing_plans (
 insert into public.billing_plans(plan_key,name,description,is_public,active,sort_order)
 values
   ('internal','Interno','Plan interno para ZENVIA y cuentas de plataforma.',false,true,0),
-  ('starter','Starter','Plan base para vendedores que empiezan a centralizar su gestión.',false,true,10),
-  ('pro','Pro','Plan para vendedores con más volumen e integraciones avanzadas.',false,true,20),
-  ('business','Business','Plan para operaciones con varios usuarios y mayor volumen.',false,true,30)
+  ('starter','Starter','Plan base para vendedores que empiezan a centralizar su gestión.',false,false,10),
+  ('pro','Pro','Plan para vendedores con más volumen e integraciones avanzadas.',false,false,20),
+  ('business','Business','Plan para operaciones con varios usuarios y mayor volumen.',false,false,30)
 on conflict(plan_key) do nothing;
 
 create table if not exists public.plan_entitlements (
