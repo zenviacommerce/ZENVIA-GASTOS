@@ -49,9 +49,7 @@ async function loadSendcloudAccount(admin:any,ownerId:string,requestedId?:string
     if(!publicKey||!secretKey)throw new Error(`Faltan las claves de Sendcloud para ${data.display_name||'la cuenta seleccionada'}.`);
     return {id:String(data.id),displayName:String(data.display_name||'Sendcloud'),credentialSource:String(data.credential_source||'vault'),config:(data.config&&typeof data.config==='object'&&!Array.isArray(data.config))?data.config:{},credentials:{publicKey,secretKey}};
   }
-  const env=envSendcloudCredentials();
-  if(!env)throw new Error('Sendcloud todavía no está conectado.');
-  return {id:null,displayName:'Sendcloud',credentialSource:'environment',config:{syncOrders:true,shippingEnabled:true},credentials:env};
+  throw new Error('Sendcloud todavía no está conectado para este workspace.');
 }
 async function loadSendcloudAccounts(admin:any,ownerId:string,requestedId?:string|null):Promise<SendcloudAccount[]>{
   if(requestedId)return [await loadSendcloudAccount(admin,ownerId,requestedId)];

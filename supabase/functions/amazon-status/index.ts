@@ -33,7 +33,7 @@ Deno.serve(async(req:Request)=>{
     }
 
     const envConfigured=Boolean((Deno.env.get('AMAZON_SPAPI_CREDENTIALS')||'').trim());
-    const configured=Boolean(integration?.secret_id)||Boolean(integration&&integration.credential_source==='environment'&&envConfigured)||(!integration&&envConfigured);
+    const configured=Boolean(integration?.secret_id)||Boolean(integration&&integration.credential_source==='environment'&&envConfigured);
     let connectionError:string|null=null;
     let transientWarning:string|null=null;
 

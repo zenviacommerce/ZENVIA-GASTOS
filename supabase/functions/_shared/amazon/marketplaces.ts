@@ -28,7 +28,7 @@ async function resolveIntegrationAccount(admin:any,ownerId:string,sellerId:strin
 }
 
 export async function ensureAmazonAccountAndMarketplaces(admin:any,ownerId:string,integrationAccountId?:string|null){
-  const credentials=await loadAmazonSpApiCredentials(admin,{integrationAccountId});
+  const credentials=await loadAmazonSpApiCredentials(admin,{integrationAccountId,ownerId});
   const integration=await resolveIntegrationAccount(admin,ownerId,credentials.sellerId,integrationAccountId);
   if(integration&&(integration.status==='disabled'||integration.enabled===false))throw new Error('La cuenta de Amazon está deshabilitada.');
   const now=new Date().toISOString();

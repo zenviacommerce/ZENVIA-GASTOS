@@ -113,7 +113,7 @@ export async function syncOrdersJob(admin:any,job:any){
     baseQuery.lastUpdatedAfter=job.window_from;
     baseQuery.lastUpdatedBefore=before;
   }
-  const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:job.amazon_account_id});
+  const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:job.amazon_account_id,ownerId:job.owner_id});
   let paginationToken:string|undefined;
   let processed=0;
   do{

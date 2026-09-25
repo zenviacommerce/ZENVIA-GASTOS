@@ -146,7 +146,7 @@ export async function syncAmazonTracking(admin:any,order:FulfillmentOrderRow,ove
   let context:AmazonOrderContext|undefined;
   try{
     context=await loadContext(admin,claimed);
-    const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:context.amazonAccountId,integrationAccountId:claimed.source_integration_account_id});
+    const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:context.amazonAccountId,integrationAccountId:claimed.source_integration_account_id,ownerId:claimed.owner_id});
     const packages=await currentPackages(context.amazonOrderId,credentials);
     const selectedPackage=packageReference(packages,trackingNumber,claimed.sendcloud_parcel_id);
     if(selectedPackage.alreadySynced){await markSuccess(admin,claimed);return {orderId:claimed.id,amazonOrderId:context.amazonOrderId,status:'already_synced',trackingNumber,packageReferenceId:selectedPackage.packageReferenceId};}

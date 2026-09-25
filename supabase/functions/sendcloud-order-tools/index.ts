@@ -45,7 +45,7 @@ async function credentialsForOrder(admin:any,ownerId:string,integrationAccountId
     .eq('enabled',true).neq('status','disabled').order('is_default',{ascending:false}).order('updated_at',{ascending:false}).limit(1).maybeSingle();
   if(error)throw error;
   if(data)return credentialsForOrder(admin,ownerId,String(data.id));
-  const env=envCredentials();if(!env)throw new Error('Sendcloud todavía no está conectado.');return env;
+  throw new Error('Sendcloud todavía no está conectado para este workspace.');
 }
 function remoteSendcloudId(order:any){
   const explicit=clean(order?.sendcloud_remote_id);if(explicit)return explicit;

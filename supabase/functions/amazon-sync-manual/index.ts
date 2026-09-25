@@ -49,7 +49,7 @@ Deno.serve(async(req:Request)=>{
       const {data,error}=await admin.from('integration_accounts').select('id').eq('owner_id',caller.data_owner_id).eq('provider','amazon').eq('enabled',true).neq('status','disabled').order('is_default',{ascending:false});
       if(error)throw error;
       integrationIds=(data||[]).map((row:any)=>String(row.id));
-      if(!integrationIds.length)integrationIds=[null];
+      if(!integrationIds.length)return response({error:'Amazon todavía no está conectado para este workspace.'},409);
     }
 
     let jobs=0,processed=0;

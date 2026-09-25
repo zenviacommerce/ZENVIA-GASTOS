@@ -59,7 +59,7 @@ async function persistInventoryPage(admin:any,summaries:any[],job:any){
 
 export async function syncInventoryJob(admin:any,job:any){
   if(!job?.marketplace_id)throw new Error('Job de inventario incompleto.');
-  const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:job.amazon_account_id});
+  const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:job.amazon_account_id,ownerId:job.owner_id});
   let nextToken:string|undefined;
   let processed=0;
   do{
