@@ -18,6 +18,16 @@ const statusLabels:Record<string,string>={
 };
 const priorityLabels:Record<string,string>={low:'Baja',normal:'Normal',high:'Alta',urgent:'Urgente'};
 
+function usageText(value:number,limit:number|null){
+  return limit===null?`${value} / ∞`:`${value} / ${limit}`;
+}
+function usageClass(value:number,limit:number|null){
+  if(limit===null)return 'usageBadge';
+  if(limit===0||value>=limit)return 'usageBadge atLimit';
+  if(value/limit>=0.8)return 'usageBadge nearLimit';
+  return 'usageBadge';
+}
+
 export function App(){
   const [session,setSession]=useState<Session|null>(null);
   const [authReady,setAuthReady]=useState(false);
@@ -188,15 +198,16 @@ function Clients({role}:{role:string}){
     {error&&<div className="errorBox">{error}</div>}
     <section className="card tableCard">
       <div className="dataTable">
-        <div className="tableRow tableHead"><div>Empresa</div><div>Estado</div><div>Plan</div><div>Usuarios</div><div>Amazon</div><div>Alta</div></div>
+        <div className="tableRow tableHead"><div>Empresa</div><div>Estado</div><div>Plan</div><div>Usuarios</div><div>Amazon</div><div>Pedidos/mes</div><div>Alta</div></div>
         {shown.map(w=><div className="tableRow" key={w.id}>
           <div className="entityCell"><strong>{w.name}</strong><span>{w.legal_name||w.slug}</span></div>
           <div><span className={`pill ${w.status}`}>{statusLabels[w.status]||w.status}</span></div>
           <div>{role==='super_admin'||role==='billing_admin'
             ?<select value={w.subscription?.plan_key||'internal'} onChange={e=>void assign(w,e.target.value)}>{plans.map(p=><option value={p.plan_key} key={p.plan_key}>{p.name}</option>)}</select>
             :<span>{plans.find(p=>p.plan_key===w.subscription?.plan_key)?.name||w.subscription?.plan_key||'—'}</span>}</div>
-          <div>{w.users.active} / {w.users.total}</div>
-          <div>{w.amazonAccounts}</div>
+          <div><span className={usageClass(w.usage.users.value,w.usage.users.limit)}>{usageText(w.usage.users.value,w.usage.users.limit)}</span></div>
+          <div><span className={usageClass(w.usage.amazonAccounts.value,w.usage.amazonAccounts.limit)}>{usageText(w.usage.amazonAccounts.value,w.usage.amazonAccounts.limit)}</span></div>
+          <div><span className={usageClass(w.usage.monthlyOrders.value,w.usage.monthlyOrders.limit)}>{usageText(w.usage.monthlyOrders.value,w.usage.monthlyOrders.limit)}</span></div>
           <div>{formatDate(w.created_at)}</div>
         </div>)}
         {!loading&&!shown.length&&<div className="emptyState">No hay clientes para mostrar.</div>}

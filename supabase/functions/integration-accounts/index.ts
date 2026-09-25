@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { enforceWorkspaceLimit, requireWorkspaceEntitlement } from '../_shared/saas/entitlements.ts';
 
 const corsHeaders={
   'Access-Control-Allow-Origin':'*',
@@ -253,6 +254,32 @@ Deno.serve(async(req:Request)=>{
     if(action==='create'){
       const provider=clean(body?.provider) as Provider;
       if(!PROVIDERS.has(provider))throw new Error('Proveedor de integración no válido.');
+
+      const providerEntitlement:Record<string,{key:string;message:string}>={
+        amazon:{key:'integration.amazon',message:'Tu plan no incluye la integración con Amazon.'},
+        sendcloud:{key:'integration.sendcloud',message:'Tu plan no incluye la integración con Sendcloud.'},
+        gmail:{key:'integration.gmail',message:'Tu plan no incluye la integración con Gmail.'},
+      };
+      const configuredEntitlement=providerEntitlement[provider];
+      if(configuredEntitlement){
+        await requireWorkspaceEntitlement(admin,caller.data_owner_id,configuredEntitlement.key,configuredEntitlement.message);
+      }
+      if(provider==='amazon'){
+        const {count,error:amazonCountError}=await admin.from('integration_accounts')
+          .select('id',{count:'exact',head:true})
+          .eq('owner_id',caller.data_owner_id)
+          .eq('provider','amazon')
+          .neq('status','disabled');
+        if(amazonCountError)throw amazonCountError;
+        await enforceWorkspaceLimit(
+          admin,
+          caller.data_owner_id,
+          'amazon_accounts',
+          Number(count||0),
+          'Tu plan no permite conectar cuentas de Amazon.',
+          limit=>`Has alcanzado el límite de ${limit} cuentas Amazon de tu plan.`,
+        );
+      }
       let displayName=clean(body?.displayName);
       let externalAccountId=clean(body?.externalAccountId)||null;
       let credentialSource='vault';
@@ -320,6 +347,34 @@ Deno.serve(async(req:Request)=>{
       return response({accounts:await listAccounts(admin,caller.data_owner_id)});
     }
     if(action==='update'){
+      if(body?.enabled===true&&account.enabled===false){
+        const providerEntitlement:Record<string,{key:string;message:string}>={
+          amazon:{key:'integration.amazon',message:'Tu plan no incluye la integración con Amazon.'},
+          sendcloud:{key:'integration.sendcloud',message:'Tu plan no incluye la integración con Sendcloud.'},
+          gmail:{key:'integration.gmail',message:'Tu plan no incluye la integración con Gmail.'},
+        };
+        const configuredEntitlement=providerEntitlement[account.provider];
+        if(configuredEntitlement){
+          await requireWorkspaceEntitlement(admin,caller.data_owner_id,configuredEntitlement.key,configuredEntitlement.message);
+        }
+        if(account.provider==='amazon'){
+          const {count,error:amazonCountError}=await admin.from('integration_accounts')
+            .select('id',{count:'exact',head:true})
+            .eq('owner_id',caller.data_owner_id)
+            .eq('provider','amazon')
+            .eq('enabled',true)
+            .neq('status','disabled');
+          if(amazonCountError)throw amazonCountError;
+          await enforceWorkspaceLimit(
+            admin,
+            caller.data_owner_id,
+            'amazon_accounts',
+            Number(count||0),
+            'Tu plan no permite conectar cuentas de Amazon.',
+            limit=>`Has alcanzado el límite de ${limit} cuentas Amazon de tu plan.`,
+          );
+        }
+      }
       const patch:any={updated_at:new Date().toISOString()};
       if(typeof body?.displayName==='string'&&clean(body.displayName))patch.display_name=clean(body.displayName);
       if(typeof body?.enabled==='boolean')patch.enabled=body.enabled;
