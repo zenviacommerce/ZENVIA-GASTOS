@@ -16,6 +16,9 @@ export type ActivityRecord=ActivityInput&{
 export type ActivityPatch=Partial<Omit<ActivityRecord,'id'|'startedAt'|'updatedAt'>>;
 
 export const ACTIVITY_EVENT='zenvia:activity';
+const activeActivities=new Map<string,ActivityRecord>();
+
+export function getActiveActivities(){return Array.from(activeActivities.values());}
 
 type ActivityEventDetail=
   |{type:'upsert';activity:ActivityRecord}
@@ -46,6 +49,7 @@ export function startActivity(input:ActivityInput){
     updatedAt:Date.now(),
   };
   let finished=false;
+  activeActivities.set(id,state);
   emit({type:'upsert',activity:state});
 
   return {
@@ -53,11 +57,13 @@ export function startActivity(input:ActivityInput){
     update(patch:ActivityPatch){
       if(finished)return;
       state={...state,...patch,updatedAt:Date.now()};
+      activeActivities.set(id,state);
       emit({type:'upsert',activity:state});
     },
     finish(){
       if(finished)return;
       finished=true;
+      activeActivities.delete(id);
       emit({type:'remove',id});
     },
   };
