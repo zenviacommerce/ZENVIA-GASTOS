@@ -33,3 +33,18 @@ test('customer app blocks suspended and cancelled workspaces before rendering bu
   assert.match(app,/Servicio cancelado/);
   assert.match(app,/Contacta con soporte/);
 });
+
+
+test('privileged tenant Edge Functions reject inactive workspaces',async()=>{
+  const sources=await Promise.all([
+    read('supabase/functions/_shared/amazon/supabase.ts'),
+    read('supabase/functions/admin-users/index.ts'),
+    read('supabase/functions/integration-accounts/index.ts'),
+    read('supabase/functions/sendcloud-orders/index.ts'),
+    read('supabase/functions/sendcloud-order-tools/index.ts'),
+  ]);
+  for(const source of sources){
+    assert.match(source,/\['active','trialing'\]\.includes\(workspace\.status\)/);
+    assert.match(source,/El acceso de tu empresa está suspendido/);
+  }
+});
