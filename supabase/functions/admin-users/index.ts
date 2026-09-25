@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
-const allowedPermissions = ['dashboard', 'sales', 'orders', 'invoices', 'clients', 'products', 'suppliers', 'amazon'] as const;
+const allowedPermissions = ['dashboard', 'sales', 'orders', 'invoices', 'clients', 'products', 'suppliers', 'amazon', 'support'] as const;
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 
 type Permission = typeof allowedPermissions[number];
@@ -78,11 +78,13 @@ Deno.serve(async (req: Request) => {
     const callerId = userData.user.id;
     const { data: caller, error: callerError } = await admin
       .from('app_users')
-      .select('user_id, data_owner_id, role, active')
+      .select('user_id, workspace_id, data_owner_id, role, active')
       .eq('user_id', callerId)
       .maybeSingle();
     if (callerError) throw callerError;
     if (!caller?.active || caller.role !== 'admin') return fail('Solo un administrador puede gestionar usuarios.', 403);
+    const workspaceId = caller.workspace_id || caller.data_owner_id;
+    if (!workspaceId) return fail('Workspace no configurado.', 403);
 
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || 'list');
@@ -91,7 +93,7 @@ Deno.serve(async (req: Request) => {
       const { data: rows, error } = await admin
         .from('app_users')
         .select('user_id,email,full_name,role,active,permissions,created_at,updated_at')
-        .eq('data_owner_id', caller.data_owner_id)
+        .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: true });
       if (error) throw error;
 
@@ -138,7 +140,8 @@ Deno.serve(async (req: Request) => {
         full_name: fullName || null,
         role,
         active: true,
-        data_owner_id: caller.data_owner_id,
+        workspace_id: workspaceId,
+        data_owner_id: workspaceId,
         permissions,
       });
       if (profileError) {
@@ -153,9 +156,9 @@ Deno.serve(async (req: Request) => {
     if (!targetId) return fail('Falta el usuario.');
     const { data: target, error: targetError } = await admin
       .from('app_users')
-      .select('user_id,email,full_name,role,active,permissions,data_owner_id')
+      .select('user_id,email,full_name,role,active,permissions,workspace_id,data_owner_id')
       .eq('user_id', targetId)
-      .eq('data_owner_id', caller.data_owner_id)
+      .eq('workspace_id', workspaceId)
       .maybeSingle();
     if (targetError) throw targetError;
     if (!target) return fail('Usuario no encontrado.', 404);
