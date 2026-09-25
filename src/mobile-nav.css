@@ -157,7 +157,26 @@
 
   .sidebar nav button .navLabelDesktop{display:block!important}
   .sidebar nav button .navLabelMobile{display:none!important}
-  .adminNavMobile{display:flex!important}
+
+  .sidebar .sidebarNav{
+    gap:18px!important;
+  }
+  .sidebar .sidebarNavGroup{
+    display:grid!important;
+    gap:5px!important;
+    width:100%!important;
+  }
+  .sidebar .sidebarNavItems{
+    display:grid!important;
+    gap:4px!important;
+    width:100%!important;
+  }
+  .sidebar .sidebarSectionLabel{
+    display:block!important;
+    padding:0 13px!important;
+    font-size:9px!important;
+    letter-spacing:.13em!important;
+  }
 
   .sidebarBottom{
     display:grid!important;
@@ -177,8 +196,9 @@
     justify-content:flex-start!important;
   }
 
-  /* Admin already lives in the main drawer navigation on small screens. */
-  .sidebarBottom .adminSidebarButton{display:none!important}
+  /* System actions stay grouped at the bottom of the mobile drawer too. */
+  .sidebarBottom .adminSidebarButton{display:flex!important}
+  .sidebarBottom .sidebarSystemLabel{display:block!important;margin:2px 0 5px!important}
 
   /* Session/theme controls now live safely inside the scrollable drawer. */
   .mobileLogoutButton,.mobileThemeToggle{display:none!important}
