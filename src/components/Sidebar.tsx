@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, Building2, FileText, LogOut, Menu, Moon, Package, ReceiptText, Settings2, ShieldCheck, ShoppingBag, Store, Sun, Users, X, type LucideIcon } from 'lucide-react';
+import { BarChart3, Building2, FileText, LifeBuoy, LogOut, Menu, Moon, Package, ReceiptText, Settings2, ShieldCheck, ShoppingBag, Store, Sun, Users, X, type LucideIcon } from 'lucide-react';
 import { ZENVIA_LOGO } from '../branding';
 
-export type Page = 'dashboard' | 'sales' | 'orders' | 'invoices' | 'clients' | 'products' | 'suppliers' | 'amazon' | 'settings' | 'admin';
+export type Page = 'dashboard' | 'sales' | 'orders' | 'invoices' | 'clients' | 'products' | 'suppliers' | 'amazon' | 'support' | 'settings' | 'admin';
 export type ThemeMode = 'light' | 'dark';
 
 type SidebarUser = {
@@ -56,11 +56,12 @@ function initials(fullName: string, email: string) {
 
 export function Sidebar({page,onChange,onLogout,theme,onToggleTheme,allowedPages,isAdmin,user}:{page:Page;onChange:(p:Page)=>void;onLogout:()=>void;theme:ThemeMode;onToggleTheme:()=>void;allowedPages:Page[];isAdmin:boolean;user:SidebarUser}) {
   const [mobileOpen,setMobileOpen]=useState(false);
+  const canOpenSupport = allowedPages.includes('support');
   const canOpenSettings = allowedPages.includes('settings');
   const canOpenAdmin = isAdmin && allowedPages.includes('admin');
   const displayName = user.fullName.trim() || user.email.split('@')[0] || 'Usuario';
   const roleLabel = user.role === 'admin' ? 'Administrador' : 'Usuario';
-  const activeLabel=page==='settings'?'Configuración':page==='admin'?'Administración':items.find(([id])=>id===page)?.[1]||'Menú';
+  const activeLabel=page==='support'?'Soporte':page==='settings'?'Configuración':page==='admin'?'Administración':items.find(([id])=>id===page)?.[1]||'Menú';
 
   useEffect(()=>{
     setMobileOpen(false);
@@ -117,6 +118,7 @@ export function Sidebar({page,onChange,onLogout,theme,onToggleTheme,allowedPages
           </div>
         </div>
         <div className="sidebarSectionLabel sidebarSystemLabel">Sistema</div>
+        {canOpenSupport&&<button className={page==='support'?'settingsSidebarButton active':'settingsSidebarButton'} onClick={()=>navigate('support')}><LifeBuoy size={18}/><span>Soporte</span></button>}
         {canOpenSettings&&<button className={page==='settings'?'settingsSidebarButton active':'settingsSidebarButton'} onClick={()=>navigate('settings')}><Settings2 size={18}/><span>Configuración</span></button>}
         {canOpenAdmin&&<button className={page==='admin'?'adminSidebarButton active':'adminSidebarButton'} onClick={()=>navigate('admin')}><ShieldCheck size={18}/><span>Administración</span></button>}
         <button className="themeSidebarButton" onClick={onToggleTheme}>{theme==='dark'?<Sun size={18}/>:<Moon size={18}/>}<span>{theme==='dark'?'Modo claro':'Modo oscuro'}</span></button>
