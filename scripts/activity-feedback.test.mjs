@@ -74,3 +74,19 @@ test('shared drawer lock preserves page and sidebar scroll position',async()=>{
   assert.match(component,/sidebar\.scrollTop=restoreSidebarScrollTop/);
   assert.match(css,/overflow:clip!important/);
 });
+
+test('activities are deduplicated and Amazon clears transient work on navigation',async()=>{
+  const [service,page,amazon]=await Promise.all([
+    read('../src/services/activity.ts'),
+    read('../src/pages/Amazon.tsx'),
+    read('../src/services/amazon.ts'),
+  ]);
+  assert.match(service,/activityByKey/);
+  assert.match(service,/clearActivities/);
+  assert.match(service,/cancelledActivities/);
+  assert.match(page,/clearActivities\('amazon'\)/);
+  assert.match(amazon,/key:\`amazon-rpc:\\${name}\`/);
+  assert.match(amazon,/scope:'amazon'/);
+  assert.match(amazon,/withAmazonTimeout/);
+});
+
