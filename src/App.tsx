@@ -21,6 +21,7 @@ import { Suppliers } from './pages/Suppliers';
 import { AmazonPage } from './pages/Amazon';
 import { AdminPage } from './pages/Admin';
 import { SettingsPage } from './pages/Settings';
+import { SupportPage } from './pages/Support';
 import { supabase } from './services/supabase';
 import { loadAccessProfile, type AccessProfile, type MenuPermission } from './services/access';
 import { bootstrapUser, createInvoice, deleteProduct, deleteSupplier, getInvoiceFileUrl, loadAppData, updateInvoiceStatus } from './services/repository';
@@ -83,7 +84,7 @@ export default function App(){
  const allowedPages=useMemo<Page[]>(()=>{
    if(!access?.active) return [];
    const visible:Page[]=access.role==='admin'?regularPages:regularPages.filter(item=>access.permissions.includes(item));
-   return access.role==='admin'?[...visible,'settings','admin']:[...visible,'settings'];
+   return access.role==='admin'?[...visible,'support','settings','admin']:[...visible,'support','settings'];
  },[access]);
  const can=(permission:MenuPermission)=>Boolean(access?.active&&(access.role==='admin'||access.permissions.includes(permission)));
 
@@ -273,6 +274,7 @@ export default function App(){
    {page==='products'&&can('products')&&<Products products={data.products} onAdd={openNewProduct} onEdit={openEditProduct} onDelete={removeProduct}/>} 
    {page==='suppliers'&&can('suppliers')&&<Suppliers suppliers={data.suppliers} onAdd={openNewSupplier} onEdit={openEditSupplier} onDelete={removeSupplier}/>} 
    {page==='amazon'&&can('amazon')&&<AmazonPage isAdmin={access.role==='admin'}/>} 
+   {page==='support'&&<SupportPage isAdmin={access.role==='admin'} currentUserId={session.user.id}/>} 
    {page==='settings'&&<SettingsPage isAdmin={access.role==='admin'}/>} 
    {page==='admin'&&access.role==='admin'&&<AdminPage currentUserId={session.user.id}/>} 
  </main>

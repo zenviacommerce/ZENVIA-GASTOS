@@ -50,6 +50,7 @@ export type AmazonMarketplaceAnalytics={marketplaceId:string;countryCode:string;
 export type AmazonOrderAnalytics={amazonOrderId:string;purchaseDate:string;marketplaceId:string;status:string|null;units:number;netSales:number;amazonFees:number;refunds:number;productCost:number;profitBeforeAds:number;profitComplete:boolean};
 export type AmazonInventoryAnalytics={sellerSku:string;asin:string|null;marketplaceId:string;fulfillable:number;reserved:number;inbound:number;unfulfillable:number;researching:number;total:number;lastSync:string};
 export type AmazonUnmappedSku={sellerSku:string;asin:string|null;marketplaceIds:string[];orders:number;units:number;recentNetSales:number};
+export type AmazonProductMetadata={imageUrl:string|null;productName:string|null};
 export type AmazonProductOption={id:string;name:string;sku:string|null};
 export type AmazonPageResult<T>={items:T[];page:number;pageSize:number;total:number};
 
@@ -217,14 +218,42 @@ export function loadAmazonInventory(filters:Pick<AmazonAnalyticsFilters,'marketp
 export function loadAmazonUnmapped(search='',page=1,pageSize=25){return rpc<AmazonPageResult<AmazonUnmappedSku>>('amazon_analytics_unmapped_skus',{search:search||null,page,page_size:pageSize},'No se pudieron cargar los SKU sin vincular.');}
 export function setAmazonProductMapping(input:{sellerSku:string;productId:string;consumptionFactor:number}){return rpc<{ok:true;skuAssigned?:boolean}>('amazon_set_product_mapping',{seller_sku:input.sellerSku,product_id:input.productId,consumption_factor:input.consumptionFactor},'No se pudo guardar el vínculo del producto.');}
 export function deleteAmazonProductMapping(sellerSku:string){return rpc<{ok:true;deleted:number}>('amazon_delete_product_mapping',{seller_sku:sellerSku},'No se pudo eliminar el vínculo del producto.');}
-export async function loadAmazonProductImages(asins:string[]):Promise<Record<string,string>>{
+export async function loadAmazonProductMetadata(asins:string[]):Promise<Record<string,AmazonProductMetadata>>{
   const unique=Array.from(new Set(asins.map(value=>String(value||'').trim()).filter(Boolean)));
   if(!unique.length)return {};
-  const {data,error}=await supabase.from('amazon_product_images').select('asin,image_url,fetched_at').in('asin',unique).not('image_url','is',null).order('fetched_at',{ascending:false});
+  const {data,error}=await supabase.from('amazon_product_images').select('asin,image_url,product_name,fetched_at').in('asin',unique).order('fetched_at',{ascending:false});
   if(error)throw error;
-  const result:Record<string,string>={};
-  for(const row of data||[]){const asin=String((row as any).asin||'');const url=String((row as any).image_url||'');if(asin&&url&&!result[asin])result[asin]=url;}
+  const result:Record<string,AmazonProductMetadata>={};
+  for(const row of data||[]){
+    const asin=String((row as any).asin||'');
+    if(!asin)continue;
+    const current=result[asin]||{imageUrl:null,productName:null};
+    const imageUrl=String((row as any).image_url||'').trim()||null;
+    const productName=String((row as any).product_name||'').trim()||null;
+    result[asin]={imageUrl:current.imageUrl||imageUrl,productName:current.productName||productName};
+  }
   return result;
+}
+export async function loadAmazonProductImages(asins:string[]):Promise<Record<string,string>>{
+  const metadata=await loadAmazonProductMetadata(asins);
+  return Object.fromEntries(Object.entries(metadata).filter(([,value])=>Boolean(value.imageUrl)).map(([asin,value])=>[asin,value.imageUrl!]));
+}
+
+const AMAZON_MARKETPLACE_CODES:Record<string,string>={
+  A1RKKUPIHCS9HS:'ES',
+  A13V1IB3VIYZZH:'FR',
+  A1PA6795UKMFR9:'DE',
+  APJ6JRA9NG5V4:'IT',
+  A1805IZSGTT6HS:'NL',
+  A2NODRKZP88ZB9:'SE',
+  A1C3SOZRARQ6R3:'PL',
+  AMEN7PMS3EDWL:'BE',
+  A28R8C7NBKEWEA:'IE',
+  A1F83G8C2ARO7P:'UK',
+};
+export function amazonMarketplaceCode(marketplaceId:string){
+  const value=String(marketplaceId||'').trim();
+  return AMAZON_MARKETPLACE_CODES[value]||value;
 }
 
 export async function loadAmazonProductOptions(search=''):Promise<AmazonProductOption[]>{

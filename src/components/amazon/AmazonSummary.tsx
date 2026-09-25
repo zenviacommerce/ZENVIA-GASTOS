@@ -29,6 +29,16 @@ function chartTooltipLabel(value:unknown,grain:'day'|'month'){
     ?date.toLocaleDateString('es-ES',{month:'long',year:'numeric'})
     :date.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'long',year:'numeric'});
 }
+function chartMoneyTick(value:unknown,currency:string){
+  const amount=Number(value);
+  if(!Number.isFinite(amount))return '';
+  return new Intl.NumberFormat('es-ES',{
+    style:'currency',
+    currency,
+    maximumFractionDigits:0,
+    minimumFractionDigits:0,
+  }).format(amount);
+}
 function DetailRow({label,value,note}:{label:string;value:string;note?:string}){return <div className="amazonDetailsRow"><div><span>{label}</span>{note&&<small>{note}</small>}</div><strong>{value}</strong></div>;}
 
 export function AmazonSummary({filters,onLoaded,refreshToken=0,visibleKpis}:{filters:AmazonAnalyticsFilters;onLoaded?:(summary:AmazonSummaryData)=>void;refreshToken?:number;visibleKpis?:AmazonKpiKey[]}){
@@ -170,7 +180,7 @@ export function AmazonSummary({filters,onLoaded,refreshToken=0,visibleKpis}:{fil
 
     <section className="card amazonChartCard">
       <div className="amazonCardHeading"><div><span className="amazonSectionLabel">EVOLUCIÓN</span><strong>Ventas y ganancia neta</strong></div><span className="amazonCountBadge">{grain==='day'?'Diario':'Mensual'}</span></div>
-      <div className="amazonChart"><ResponsiveContainer width="100%" height="100%"><LineChart data={series} margin={{top:8,right:16,bottom:0,left:0}}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="period" tickFormatter={value=>chartTickLabel(value,grain)} interval="preserveStartEnd" minTickGap={34}/><YAxis tickFormatter={value=>money.format(Number(value))}/><Tooltip labelFormatter={value=>chartTooltipLabel(value,grain)} formatter={(value:any)=>money.format(Number(value))}/><Legend/><Line type="monotone" dataKey="netSales" name="Ventas sin IVA" stroke="currentColor" strokeWidth={2} dot={false}/><Line type="monotone" dataKey="netProfit" name="Ganancia neta" stroke="currentColor" strokeDasharray="6 4" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>
+      <div className="amazonChart"><ResponsiveContainer width="100%" height="100%"><LineChart data={series} margin={{top:8,right:16,bottom:0,left:10}}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="period" tickFormatter={value=>chartTickLabel(value,grain)} interval="preserveStartEnd" minTickGap={34}/><YAxis width={86} domain={['auto','auto']} tickFormatter={value=>chartMoneyTick(value,settings.amazon.consolidatedCurrency)}/><Tooltip labelFormatter={value=>chartTooltipLabel(value,grain)} formatter={(value:any)=>money.format(Number(value))}/><Legend/><Line type="monotone" dataKey="netSales" name="Ventas sin IVA" stroke="currentColor" strokeWidth={2} dot={false}/><Line type="monotone" dataKey="netProfit" name="Ganancia neta" stroke="currentColor" strokeDasharray="6 4" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>
     </section>
 
     {!loading&&<AmazonProducts filters={filters} embedded refreshToken={refreshToken}/>} 
