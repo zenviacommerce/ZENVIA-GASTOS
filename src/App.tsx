@@ -78,6 +78,7 @@ export default function App(){
  const [supplierToEdit,setSupplierToEdit]=useState<Supplier|null>(null);
  const [theme,setTheme]=useState<ThemeMode>(initialTheme);
  const [settingsDirty,setSettingsDirty]=useState(false);
+ const [passkeySetupVisible,setPasskeySetupVisible]=useState(false);
  const startPageApplied=useRef(false);
  const userId=session?.user.id||null;
 
@@ -253,10 +254,10 @@ export default function App(){
    await runAction(async()=>{await deleteSupplier(supplier.id);await refresh()},'No se pudo eliminar el proveedor.');
  };
 
- return <div className="app"><ToastHost/><Sidebar page={page} onChange={next=>void navigate(next)} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme} allowedPages={allowedPages} isAdmin={access.role==='admin'} user={{fullName:access.fullName,email:access.email||session.user.email||'',role:access.role}}/><main>
+ return <div className="app"><ToastHost/><Sidebar page={page} onChange={next=>void navigate(next)} onLogout={()=>supabase.auth.signOut()} theme={theme} onToggleTheme={toggleTheme} allowedPages={allowedPages} isAdmin={access.role==='admin'} user={{fullName:access.fullName,email:access.email||session.user.email||'',role:access.role}}/><main className={passkeySetupVisible?'hasPasskeySetup':''}>
    <button className="mobileLogoutButton" onClick={()=>supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut size={19}/></button>
    <button className="mobileThemeToggle" onClick={toggleTheme} title={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'} aria-label={theme==='dark'?'Cambiar a modo claro':'Cambiar a modo oscuro'}>{theme==='dark'?<Sun size={19}/>:<Moon size={19}/>}</button>
-   <PasskeySetup userId={session.user.id}/>
+   <PasskeySetup userId={session.user.id} onVisibilityChange={setPasskeySetupVisible}/>
    <AlertCenter
      notifications={settings.notifications}
      invoices={data.invoices}
