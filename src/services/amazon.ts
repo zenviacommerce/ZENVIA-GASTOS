@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { AmazonSettings } from './settingsSchema';
+import { startActivity } from './activity';
 
 export type AmazonMarketplaceStatus={id:string;countryCode:string;name:string;currencyCode:string;active:boolean};
 export type AmazonStatus={
@@ -122,50 +123,79 @@ export function amazonQuickRange(key:AmazonRangeKey,now=new Date()){
 }
 
 function rpcParams(filters:AmazonAnalyticsFilters){return {from_date:filters.from,to_date:filters.to,marketplace_ids:filters.marketplaceIds.length?filters.marketplaceIds:null};}
+const AMAZON_ACTIVITY_LABELS:Record<string,string>={
+  amazon_analytics_summary:'Cargando resumen de Amazon',
+  amazon_analytics_detail:'Cargando detalle de Amazon',
+  amazon_analytics_series:'Cargando evolución de Amazon',
+  amazon_analytics_products:'Cargando productos de Amazon',
+  amazon_analytics_marketplaces:'Cargando marketplaces de Amazon',
+  amazon_analytics_orders:'Cargando pedidos de Amazon',
+  amazon_analytics_inventory:'Cargando inventario de Amazon',
+  amazon_analytics_unmapped_skus:'Cargando SKU sin vincular',
+  amazon_set_product_mapping:'Guardando vínculo de Amazon',
+  amazon_delete_product_mapping:'Eliminando vínculo de Amazon',
+};
+
 async function rpc<T>(name:string,params:Record<string,unknown>,fallback:string):Promise<T>{
-  if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
-  const call=()=>supabase.rpc(name,params);
-  let result;
-  try{result=await call();}
-  catch(error){notifyAmazonConnectivityError(error);throw error;}
-  const firstMessage=message(result.data,result.error,'');
-  if(result.error&&/statement timeout|canceling statement|57014/i.test(firstMessage)){
-    await new Promise(resolve=>setTimeout(resolve,350));
+  const activity=startActivity({
+    label:AMAZON_ACTIVITY_LABELS[name]||'Cargando datos de Amazon',
+    detail:'Esperando respuesta de Amazon Analytics…',
+    showAfterMs:300,
+  });
+  try{
     if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
+    const call=()=>supabase.rpc(name,params);
+    let result;
     try{result=await call();}
     catch(error){notifyAmazonConnectivityError(error);throw error;}
+    const firstMessage=message(result.data,result.error,'');
+    if(result.error&&/statement timeout|canceling statement|57014/i.test(firstMessage)){
+      activity.update({detail:'La consulta está tardando más de lo normal. Reintentando…'});
+      await new Promise(resolve=>setTimeout(resolve,350));
+      if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
+      try{result=await call();}
+      catch(error){notifyAmazonConnectivityError(error);throw error;}
+    }
+    if(result.error){
+      const error=new Error(message(result.data,result.error,fallback));
+      notifyAmazonConnectivityError(error);
+      throw error;
+    }
+    return result.data as T;
+  }finally{
+    activity.finish();
   }
-  if(result.error){
-    const error=new Error(message(result.data,result.error,fallback));
-    notifyAmazonConnectivityError(error);
-    throw error;
-  }
-  return result.data as T;
 }
 
 export async function loadAmazonStatus(integrationAccountId?:string):Promise<AmazonStatus>{
-  if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
+  const activity=startActivity({label:'Comprobando conexión con Amazon',detail:'Consultando el estado de SP-API…',showAfterMs:300});
   try{
-    const {data,error}=await supabase.functions.invoke('amazon-status',{body:integrationAccountId?{integrationAccountId}:{}});
-    if(error||!data||data.error){
-      const next=new Error(message(data,error,'No se pudo consultar el estado de Amazon.'));
-      notifyAmazonConnectivityError(next);
-      throw next;
-    }
-    return data as AmazonStatus;
-  }catch(error){notifyAmazonConnectivityError(error);throw error;}
+    if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
+    try{
+      const {data,error}=await supabase.functions.invoke('amazon-status',{body:integrationAccountId?{integrationAccountId}:{}});
+      if(error||!data||data.error){
+        const next=new Error(message(data,error,'No se pudo consultar el estado de Amazon.'));
+        notifyAmazonConnectivityError(next);
+        throw next;
+      }
+      return data as AmazonStatus;
+    }catch(error){notifyAmazonConnectivityError(error);throw error;}
+  }finally{activity.finish();}
 }
 export async function requestAmazonSync(integrationAccountId?:string){
-  if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
+  const activity=startActivity({label:'Sincronizando Amazon',detail:'Solicitando trabajos de sincronización…',showAfterMs:200});
   try{
-    const {data,error}=await supabase.functions.invoke('amazon-sync-manual',{body:integrationAccountId?{integrationAccountId}:{}});
-    if(error||!data||data.error){
-      const next=new Error(message(data,error,'No se pudo iniciar la sincronización de Amazon.'));
-      notifyAmazonConnectivityError(next);
-      throw next;
-    }
-    return data as {ok:true;accounts:number;jobs:number};
-  }catch(error){notifyAmazonConnectivityError(error);throw error;}
+    if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
+    try{
+      const {data,error}=await supabase.functions.invoke('amazon-sync-manual',{body:integrationAccountId?{integrationAccountId}:{}});
+      if(error||!data||data.error){
+        const next=new Error(message(data,error,'No se pudo iniciar la sincronización de Amazon.'));
+        notifyAmazonConnectivityError(next);
+        throw next;
+      }
+      return data as {ok:true;accounts:number;jobs:number};
+    }catch(error){notifyAmazonConnectivityError(error);throw error;}
+  }finally{activity.finish();}
 }
 export function loadAmazonSummary(filters:AmazonAnalyticsFilters){return rpc<AmazonSummary>('amazon_analytics_summary',rpcParams(filters),'No se pudo cargar el resumen de Amazon.');}
 export function loadAmazonDetail(filters:AmazonAnalyticsFilters){return rpc<AmazonDetail>('amazon_analytics_detail',rpcParams(filters),'No se pudo cargar el detalle de Amazon.');}
