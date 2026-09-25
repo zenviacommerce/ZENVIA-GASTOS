@@ -20,5 +20,8 @@ export async function caller(req:Request,admin:any){
   const {data,error}=await admin.from('app_users').select('user_id,data_owner_id,email,full_name,role,active').eq('user_id',userData.user.id).maybeSingle();
   if(error)throw error;
   if(!data?.active)throw new Error('Usuario no autorizado.');
+  const {data:workspace,error:workspaceError}=await admin.from('workspaces').select('status').eq('id',data.data_owner_id).maybeSingle();
+  if(workspaceError)throw workspaceError;
+  if(!workspace||!['active','trialing'].includes(workspace.status))throw new Error('El acceso de tu empresa está suspendido.');
   return data;
 }
