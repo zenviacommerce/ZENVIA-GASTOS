@@ -138,16 +138,23 @@ Deno.serve(async(req:Request)=>{
 
     if(action==='list_users'){
       if(!has('users.view'))return fail('No tienes permiso para consultar usuarios internos.',403);
-      const [{data:users,error:usersError},{data:roles,error:rolesError},{data:allPermissions,error:permissionsError},{data:userOverrides,error:userOverridesError}]=await Promise.all([
+      const [
+        {data:users,error:usersError},
+        {data:roles,error:rolesError},
+        {data:allPermissions,error:permissionsError},
+        {data:userOverrides,error:userOverridesError},
+        {data:rolePermissions,error:rolePermissionsError},
+      ]=await Promise.all([
         admin.from('platform_users').select('user_id,email,full_name,role_key,active,last_login_at,created_at,updated_at').order('created_at',{ascending:true}),
         admin.from('platform_roles').select('role_key,name,description,active').eq('active',true).order('name'),
         admin.from('platform_permissions').select('permission_key,module,name,description').order('module').order('permission_key'),
         admin.from('platform_user_permissions').select('user_id,permission_key,allowed'),
+        admin.from('platform_role_permissions').select('role_key,permission_key'),
       ]);
-      if(usersError)throw usersError;if(rolesError)throw rolesError;if(permissionsError)throw permissionsError;if(userOverridesError)throw userOverridesError;
+      if(usersError)throw usersError;if(rolesError)throw rolesError;if(permissionsError)throw permissionsError;if(userOverridesError)throw userOverridesError;if(rolePermissionsError)throw rolePermissionsError;
       const overrideMap=new Map<string,any[]>();
       for(const row of userOverrides||[]){const list=overrideMap.get(row.user_id)||[];list.push(row);overrideMap.set(row.user_id,list);}
-      return ok({users:(users||[]).map((u:any)=>({...u,permission_overrides:overrideMap.get(u.user_id)||[]})),roles:roles||[],permissions:allPermissions||[]});
+      return ok({users:(users||[]).map((u:any)=>({...u,permission_overrides:overrideMap.get(u.user_id)||[]})),roles:roles||[],permissions:allPermissions||[],rolePermissions:rolePermissions||[]});
     }
 
     if(action==='invite_user'){
