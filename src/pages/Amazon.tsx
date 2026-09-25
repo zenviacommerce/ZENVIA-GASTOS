@@ -38,9 +38,11 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
     try{
       const next=await loadAmazonStatus();
       setStatus(next);writeViewCache(AMAZON_STATUS_CACHE,next);setConnectivityIssue(false);
+      return next;
     }catch(e){
       if(isAmazonConnectivityError(e)){setConnectivityIssue(true);setError('');}
       else setError(errorMessage(e,'No se pudo consultar Amazon.'));
+      return null;
     }finally{setLoading(false);}
   },[]);
   useEffect(()=>{void refresh();},[refresh]);
@@ -65,8 +67,14 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
     try{
       const result=await requestAmazonSync();
       showSuccess(result.jobs?`Sincronización iniciada: ${result.jobs} trabajos preparados.`:'Amazon está al día; no se han creado trabajos nuevos.');
-      await refresh();
-      setManualSyncPending(result.jobs>0);
+      const nextStatus=await refresh();
+      const nextPending=(nextStatus?.sync.jobCounts.queued||0)+(nextStatus?.sync.jobCounts.running||0);
+      if(result.jobs&&nextPending>0)setManualSyncPending(true);
+      else if(result.jobs){
+        setManualSyncPending(false);
+        setAnalyticsRefresh(value=>value+1);
+        showSuccess('Sincronización de Amazon completada. Los datos se han actualizado.');
+      }
     }catch(e){
       if(!isAmazonConnectivityError(e))showError(errorMessage(e,'No se pudo iniciar la sincronización de Amazon.'));
     }finally{setSyncing(false);}
