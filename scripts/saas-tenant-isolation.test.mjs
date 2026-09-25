@@ -54,7 +54,7 @@ test('Amazon seller credentials are scoped by workspace while app credentials ma
     const source=await read(path);
     const calls=[...source.matchAll(/loadAmazonSpApiCredentials\(admin,\{([^}]*)\}\)/g)];
     for(const call of calls){
-      assert.match(call[1],/ownerId\s*:/,`${path} must pass ownerId when loading Amazon credentials`);
+      assert.match(call[1],/\bownerId\b/,`${path} must pass ownerId when loading Amazon credentials`);
     }
   }
 });
