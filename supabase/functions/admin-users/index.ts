@@ -40,6 +40,27 @@ function validateIdentity(email: string, fullName: string) {
   return '';
 }
 
+async function loadEntitlementLimit(admin: any, workspaceId: string, entitlementKey: string): Promise<number | null> {
+  const { data: subscription, error: subscriptionError } = await admin
+    .from('workspace_subscriptions')
+    .select('plan_key')
+    .eq('workspace_id', workspaceId)
+    .maybeSingle();
+  if (subscriptionError) throw subscriptionError;
+  if (!subscription?.plan_key) return null;
+
+  const { data: entitlement, error: entitlementError } = await admin
+    .from('plan_entitlements')
+    .select('enabled,limit_value')
+    .eq('plan_key', subscription.plan_key)
+    .eq('entitlement_key', entitlementKey)
+    .maybeSingle();
+  if (entitlementError) throw entitlementError;
+  if (!entitlement) return null;
+  if (entitlement.enabled === false) return 0;
+  return typeof entitlement.limit_value === 'number' ? entitlement.limit_value : null;
+}
+
 async function writeAudit(admin: any, caller: any, actorEmail: string | null | undefined, action: string, targetId: string, targetEmail: string, summary: string, details: Record<string, unknown> = {}) {
   const { error } = await admin.from('audit_logs').insert({
     workspace_owner_id: caller.data_owner_id,
@@ -115,6 +136,21 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === 'create') {
+      const userLimit = await loadEntitlementLimit(admin, workspaceId, 'users');
+      if (userLimit !== null) {
+        const { count, error: countError } = await admin
+          .from('app_users')
+          .select('user_id', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId)
+          .eq('active', true);
+        if (countError) throw countError;
+        if ((count || 0) >= userLimit) {
+          return fail(userLimit === 0
+            ? 'Tu plan no permite crear usuarios adicionales.'
+            : `Has alcanzado el límite de ${userLimit} usuarios activos de tu plan.`, 403);
+        }
+      }
+
       const email = String(body?.email || '').trim().toLowerCase();
       const fullName = String(body?.fullName || '').trim();
       const password = String(body?.password || '');
