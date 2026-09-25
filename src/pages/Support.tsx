@@ -1,8 +1,9 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Bug, CheckCircle2, Clock3, FilePlus2, Lightbulb, LifeBuoy, MessageCircle, Paperclip, RefreshCw, Search, Send, X } from 'lucide-react';
+import { AlertCircle, Bug, CheckCircle2, Clock3, FilePlus2, Lightbulb, LifeBuoy, MessageCircle, Paperclip, Pencil, RefreshCw, Save, Search, Send, Trash2, X } from 'lucide-react';
 import { SelectField } from '../components/forms/SelectField';
-import { createSupportTicket, listSupportTickets, loadSupportTicket, replySupportTicket, supportAttachmentUrl, updateSupportTicket, type SupportAttachment, type SupportTicket, type SupportTicketDetail, type SupportTicketPriority, type SupportTicketStatus, type SupportTicketType } from '../services/support';
+import { createSupportTicket, deleteSupportTicket, listSupportTickets, loadSupportTicket, replySupportTicket, supportAttachmentUrl, updateSupportTicket, type SupportAttachment, type SupportTicket, type SupportTicketDetail, type SupportTicketPriority, type SupportTicketStatus, type SupportTicketType } from '../services/support';
 import { errorMessage, showError, showSuccess } from '../services/toast';
+import { confirmAction } from '../services/actionDialog';
 import '../support.css';
 
 const statusLabels:Record<SupportTicketStatus,string>={
@@ -153,11 +154,21 @@ function TicketDrawer({ticketId,isAdmin,currentUserId,onClose,onChanged}:{ticket
   const [reply,setReply]=useState('');
   const [files,setFiles]=useState<File[]>([]);
   const [busy,setBusy]=useState(false);
+  const [editing,setEditing]=useState(false);
+  const [editType,setEditType]=useState<SupportTicketType>('incident');
+  const [editSubject,setEditSubject]=useState('');
+  const [editDescription,setEditDescription]=useState('');
   const inputRef=useRef<HTMLInputElement|null>(null);
 
   const refresh=useCallback(async()=>{
     setLoading(true);setError('');
-    try{setDetail(await loadSupportTicket(ticketId))}
+    try{
+      const next=await loadSupportTicket(ticketId);
+      setDetail(next);
+      setEditType(next.ticket.type);
+      setEditSubject(next.ticket.subject);
+      setEditDescription(next.ticket.description);
+    }
     catch(e){setError(errorMessage(e,'No se pudo cargar el ticket.'))}
     finally{setLoading(false)}
   },[ticketId]);
@@ -175,10 +186,47 @@ function TicketDrawer({ticketId,isAdmin,currentUserId,onClose,onChanged}:{ticket
     finally{setBusy(false)}
   };
 
-  const update=async(changes:{status?:SupportTicketStatus;priority?:SupportTicketPriority})=>{
+  const update=async(changes:{type?:SupportTicketType;subject?:string;description?:string;status?:SupportTicketStatus;priority?:SupportTicketPriority})=>{
     setBusy(true);setError('');
-    try{await updateSupportTicket(ticketId,changes);await refresh();await onChanged();showSuccess('Ticket actualizado.')}
+    try{
+      await updateSupportTicket(ticketId,changes);
+      await refresh();await onChanged();
+      showSuccess('Ticket actualizado.');
+    }
     catch(e){showError(errorMessage(e,'No se pudo actualizar el ticket.'))}
+    finally{setBusy(false)}
+  };
+
+  const saveEdit=async()=>{
+    setBusy(true);setError('');
+    try{
+      await updateSupportTicket(ticketId,{type:editType,subject:editSubject,description:editDescription});
+      setEditing(false);
+      await refresh();await onChanged();
+      showSuccess('Contenido del ticket modificado.');
+    }catch(e){setError(errorMessage(e,'No se pudo modificar el ticket.'))}
+    finally{setBusy(false)}
+  };
+
+  const remove=async()=>{
+    const ticket=detail?.ticket;
+    if(!ticket)return;
+    const confirmed=await confirmAction({
+      title:'Eliminar ticket',
+      message:'Se eliminará definitivamente '+ticket.ticketNumber+' y toda su conversación.',
+      confirmLabel:'Eliminar ticket',
+      tone:'danger',
+      details:['También se eliminarán respuestas y referencias de adjuntos. La acción quedará registrada en Auditoría.'],
+    });
+    if(!confirmed)return;
+    setBusy(true);setError('');
+    try{
+      const result=await deleteSupportTicket(ticketId);
+      if(!result.storageCleanup&&result.warning)showError('El ticket se eliminó, pero quedó algún archivo pendiente de limpieza.');
+      showSuccess('Ticket eliminado correctamente.');
+      onClose();
+      await onChanged();
+    }catch(e){setError(errorMessage(e,'No se pudo eliminar el ticket.'))}
     finally{setBusy(false)}
   };
 
@@ -201,6 +249,18 @@ function TicketDrawer({ticketId,isAdmin,currentUserId,onClose,onChanged}:{ticket
           <span className={'supportPriority priority-'+ticket.priority}>{priorityLabels[ticket.priority]}</span>
           {isAdmin&&<span className="supportRequester">{ticket.createdByName||ticket.createdByEmail}<small>{ticket.createdByEmail}</small></span>}
         </div>
+
+        {isAdmin&&<div className="supportAdminToolbar">
+          <button type="button" className="secondary" disabled={busy} onClick={()=>setEditing(value=>!value)}><Pencil size={15}/>{editing?'Cancelar edición':'Editar ticket'}</button>
+          <button type="button" className="secondary dangerText" disabled={busy} onClick={()=>void remove()}><Trash2 size={15}/> Eliminar ticket</button>
+        </div>}
+
+        {isAdmin&&editing&&<div className="supportTicketEditor">
+          <label><span>Tipo</span><SelectField ariaLabel="Tipo de ticket" value={editType} disabled={busy} onChange={value=>setEditType(value as SupportTicketType)} options={Object.entries(typeLabels).map(([value,label])=>({value,label}))}/></label>
+          <label><span>Asunto</span><input value={editSubject} disabled={busy} maxLength={180} onChange={event=>setEditSubject(event.target.value)}/></label>
+          <label className="supportEditorDescription"><span>Descripción</span><textarea value={editDescription} disabled={busy} rows={5} maxLength={10000} onChange={event=>setEditDescription(event.target.value)}/></label>
+          <div className="supportEditorActions"><button type="button" className="secondary" disabled={busy} onClick={()=>{setEditing(false);setEditType(ticket.type);setEditSubject(ticket.subject);setEditDescription(ticket.description)}}>Cancelar</button><button type="button" className="primary" disabled={busy} onClick={()=>void saveEdit()}><Save size={15}/>{busy?'Guardando…':'Guardar cambios'}</button></div>
+        </div>}
 
         {isAdmin&&<div className="supportAdminControls">
           <label><span>Estado</span><SelectField ariaLabel="Estado" value={ticket.status} disabled={busy} onChange={value=>void update({status:value as SupportTicketStatus})} options={Object.entries(statusLabels).map(([value,label])=>({value,label}))}/></label>
@@ -232,7 +292,6 @@ function TicketDrawer({ticketId,isAdmin,currentUserId,onClose,onChanged}:{ticket
     </aside>
   </div>;
 }
-
 function AttachmentList({items,onOpen}:{items:SupportAttachment[];onOpen:(item:SupportAttachment)=>void}){
   if(!items.length)return null;
   return <div className="supportAttachmentList">{items.map(item=><button type="button" key={item.id} onClick={()=>onOpen(item)}><Paperclip size={13}/><span>{item.fileName}</span><small>{fileSize(item.fileSize)}</small></button>)}</div>;
