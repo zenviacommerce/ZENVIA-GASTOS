@@ -276,6 +276,28 @@ Deno.serve(async(req:Request)=>{
       return ok({ok:true,workspaceId});
     }
 
+    if(action==='update_workspace'){
+      if(platform.role!=='super_admin')return fail('Solo el superadministrador puede cambiar el estado de un cliente.',403);
+      const workspaceId=asText(body?.workspaceId,80);
+      const status=asText(body?.status,30);
+      if(!workspaceId||!['active','trialing','suspended','cancelled'].includes(status))return fail('Estado de cliente no válido.');
+      const {data:workspace,error:workspaceError}=await admin.from('workspaces').select('id,name,status').eq('id',workspaceId).maybeSingle();
+      if(workspaceError)throw workspaceError;
+      if(!workspace)return fail('Cliente no encontrado.',404);
+      if(workspace.status===status)return ok({ok:true,status});
+      const {error}=await admin.from('workspaces').update({status,updated_at:new Date().toISOString()}).eq('id',workspaceId);
+      if(error)throw error;
+      await audit({
+        workspaceId,
+        action:'update_workspace_status',
+        entityType:'workspace',
+        entityId:workspaceId,
+        summary:`Cambió el estado de ${workspace.name} a ${status}`,
+        details:{previous_status:workspace.status,status},
+      });
+      return ok({ok:true,status});
+    }
+
     if(action==='list_plans'){
       const [{data:plans,error:plansError},{data:entitlements,error:entitlementsError},{data:subscriptions,error:subscriptionsError}]=await Promise.all([
         admin.from('billing_plans').select('*').order('sort_order',{ascending:true}),
