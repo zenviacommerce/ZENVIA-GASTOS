@@ -11,6 +11,7 @@ import { AmazonInventory } from '../components/amazon/AmazonInventory';
 import { AmazonUnmapped } from '../components/amazon/AmazonUnmapped';
 import { readViewCache, writeViewCache } from '../services/viewCache';
 import { useSettings } from '../context/SettingsContext';
+import { clearActivities } from '../services/activity';
 
 const externalLinks=[{label:'Seller Central',href:'https://sellercentral.amazon.es/',Icon:ShoppingBag},{label:'Sellerboard',href:'https://sellerboard.com/',Icon:Megaphone}] as const;
 const tabs=[['summary','Resumen'],['products','Productos'],['marketplaces','Marketplaces'],['orders','Pedidos'],['inventory','Inventario'],['unmapped','Sin vincular']] as const;
@@ -41,6 +42,7 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
     }finally{setLoading(false);}
   },[]);
   useEffect(()=>{void refresh();},[refresh]);
+  useEffect(()=>()=>clearActivities('amazon'),[]);
   useEffect(()=>{
     const markOffline=()=>{setConnectivityIssue(true);setError('');};
     const markOnline=()=>{setConnectivityIssue(false);void refresh();setAnalyticsRefresh(value=>value+1);};
