@@ -31,6 +31,18 @@ test('Amazon mapping editor exposes supplier and keeps a component list',async()
 });
 
 
+
+test('Amazon mapping modal uses the Amazon product name as its primary title',async()=>{
+  const [modal,unmapped]=await Promise.all([
+    source('src/components/amazon/AmazonMappingModal.tsx'),
+    source('src/components/amazon/AmazonUnmapped.tsx'),
+  ]);
+  assert.match(modal,/productName\?:string\|null/);
+  assert.match(modal,/\{productName\|\|sellerSku\}/);
+  assert.match(modal,/\{sellerSku\} · \{asin\|\|'ASIN no disponible'\}/);
+  assert.match(unmapped,/productName=\{editingRow\?\.asin\?metadata\[editingRow\.asin\]\?\.productName\|\|null:null\}/);
+});
+
 test('Amazon mapping modal stays responsive without horizontal overflow',async()=>{
   const css=await source('src/amazon-mapping.css');
   assert.match(css,/\.amazonMappingModal\{[\s\S]*width:min\(1040px,calc\(100vw - 48px\)\)/);
