@@ -9,6 +9,11 @@ export type Workspace={
   subscription?:{workspace_id:string;plan_key:string;status:string;billing_provider:string;trial_ends_at?:string|null;current_period_ends_at?:string|null;cancel_at_period_end?:boolean}|null;
   users:{total:number;active:number};
   amazonAccounts:number;
+  usage:{
+    users:{value:number;limit:number|null};
+    amazonAccounts:{value:number;limit:number|null};
+    monthlyOrders:{value:number;limit:number|null};
+  };
 };
 
 export type Entitlement={plan_key:string;entitlement_key:string;enabled:boolean;limit_value:number|null;config:Record<string,unknown>};
