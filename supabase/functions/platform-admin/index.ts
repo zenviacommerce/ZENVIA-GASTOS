@@ -319,8 +319,36 @@ Deno.serve(async(req:Request)=>{
       }).select('id').single();
       if(error)throw error;
       await userClient.from('support_tickets').update({status:'waiting_user',updated_at:new Date().toISOString()}).eq('id',ticketId);
-      await audit({workspaceId:ticket.owner_id,action:'reply_ticket',entityType:'support_message',entityId:inserted.id,summary:`Respondió al ticket ${ticket.ticket_number}`,details:{ticket_id:ticketId}});
-      return ok({ok:true,messageId:inserted.id});
+
+      let notified=false;
+      let notificationReason='';
+      try{
+        const anonKey=Deno.env.get('SUPABASE_ANON_KEY')||'';
+        const notification=await fetch(`${url}/functions/v1/support-notify`,{
+          method:'POST',
+          headers:{
+            Authorization:`Bearer ${token}`,
+            apikey:anonKey,
+            'Content-Type':'application/json',
+          },
+          body:JSON.stringify({ticketId,event:'reply',messageId:inserted.id}),
+        });
+        const payload=await notification.json().catch(()=>({}));
+        notified=notification.ok&&payload?.delivered===true;
+        notificationReason=String(payload?.reason||payload?.error||'');
+      }catch(notificationError){
+        notificationReason=notificationError instanceof Error?notificationError.message:'No se pudo enviar la notificación.';
+      }
+
+      await audit({
+        workspaceId:ticket.owner_id,
+        action:'reply_ticket',
+        entityType:'support_message',
+        entityId:inserted.id,
+        summary:`Respondió al ticket ${ticket.ticket_number}`,
+        details:{ticket_id:ticketId,notified,notification_reason:notificationReason||null},
+      });
+      return ok({ok:true,messageId:inserted.id,notified,notificationReason});
     }
 
     if(action==='list_platform_audit'){
