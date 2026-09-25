@@ -106,16 +106,25 @@ Deno.serve(async(req:Request)=>{
     }
 
     if(action==='list_workspaces'){
-      const [{data:workspaces,error:workspacesError},{data:subscriptions,error:subscriptionsError},{data:users,error:usersError},{data:amazonAccounts,error:amazonError}]=await Promise.all([
+      const [
+        {data:workspaces,error:workspacesError},
+        {data:subscriptions,error:subscriptionsError},
+        {data:users,error:usersError},
+        {data:amazonAccounts,error:amazonError},
+        {data:usageEntitlements,error:usageEntitlementsError},
+      ]=await Promise.all([
         admin.from('workspaces').select('id,slug,name,legal_name,status,created_at,updated_at').order('created_at',{ascending:false}),
         admin.from('workspace_subscriptions').select('workspace_id,plan_key,status,billing_provider,trial_ends_at,current_period_ends_at,cancel_at_period_end'),
         admin.from('app_users').select('workspace_id,user_id,active,role'),
         admin.from('amazon_accounts').select('owner_id,id,active'),
+        admin.from('plan_entitlements').select('plan_key,entitlement_key,enabled,limit_value').in('entitlement_key',['users','amazon_accounts','monthly_orders']),
       ]);
       if(workspacesError)throw workspacesError;
       if(subscriptionsError)throw subscriptionsError;
       if(usersError)throw usersError;
       if(amazonError)throw amazonError;
+      if(usageEntitlementsError)throw usageEntitlementsError;
+
       const subscriptionMap=new Map((subscriptions||[]).map((row:any)=>[row.workspace_id,row]));
       const userCounts=new Map<string,{total:number;active:number}>();
       for(const row of users||[]){
@@ -124,12 +133,49 @@ Deno.serve(async(req:Request)=>{
       }
       const amazonCounts=new Map<string,number>();
       for(const row of amazonAccounts||[])if(row.active)amazonCounts.set(row.owner_id,(amazonCounts.get(row.owner_id)||0)+1);
-      return ok({workspaces:(workspaces||[]).map((row:any)=>({
-        ...row,
-        subscription:subscriptionMap.get(row.id)||null,
-        users:userCounts.get(row.id)||{total:0,active:0},
-        amazonAccounts:amazonCounts.get(row.id)||0,
-      }))});
+
+      const entitlementLimits=new Map<string,number|null>();
+      for(const entitlement of usageEntitlements||[]){
+        const key=`${entitlement.plan_key}:${entitlement.entitlement_key}`;
+        entitlementLimits.set(key,entitlement.enabled===false?0:(entitlement.limit_value==null?null:Number(entitlement.limit_value)));
+      }
+
+      const now=new Date();
+      const monthStart=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString();
+      const nextMonthStart=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,1)).toISOString();
+      const monthlyOrderCounts=new Map<string,number>();
+      await Promise.all((workspaces||[]).map(async(row:any)=>{
+        const {count,error}=await admin.from('fulfillment_orders')
+          .select('id',{count:'exact',head:true})
+          .eq('owner_id',row.id)
+          .gte('order_created_at',monthStart)
+          .lt('order_created_at',nextMonthStart);
+        if(error)throw error;
+        monthlyOrderCounts.set(row.id,Number(count||0));
+      }));
+
+      const limitFor=(workspaceId:string,key:string)=>{
+        const planKey=subscriptionMap.get(workspaceId)?.plan_key;
+        if(!planKey)return null;
+        return entitlementLimits.has(`${planKey}:${key}`)?entitlementLimits.get(`${planKey}:${key}`)??null:null;
+      };
+
+      return ok({workspaces:(workspaces||[]).map((row:any)=>{
+        const usersForWorkspace=userCounts.get(row.id)||{total:0,active:0};
+        const amazonForWorkspace=amazonCounts.get(row.id)||0;
+        const monthlyOrders=monthlyOrderCounts.get(row.id)||0;
+        return {
+          ...row,
+          subscription:subscriptionMap.get(row.id)||null,
+          users:usersForWorkspace,
+          amazonAccounts:amazonForWorkspace,
+          usage:{
+            users:{value:usersForWorkspace.active,limit:limitFor(row.id,'users')},
+            amazonAccounts:{value:amazonForWorkspace,limit:limitFor(row.id,'amazon_accounts')},
+            monthlyOrders:{value:monthlyOrders,limit:limitFor(row.id,'monthly_orders')},
+          },
+        };
+      })});
     }
 
     if(action==='create_workspace'){
