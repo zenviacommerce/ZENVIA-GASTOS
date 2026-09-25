@@ -85,7 +85,7 @@ Deno.serve(async(req:Request)=>{
 
     const now=new Date().toISOString();const rows:any[]=[];const failed:any[]=[];
     for(const product of products){
-      const marketplaceCandidates=Array.from(new Set([product.marketplaceId,esMarketplaceId,...activeMarketplaceIds].filter(Boolean)));
+      const marketplaceCandidates=Array.from(new Set([esMarketplaceId,product.marketplaceId,...activeMarketplaceIds].filter(Boolean)));
       let image:any=null;let productName:string|null=null;let usedMarketplace='';let lastError='';
       for(const marketplaceId of marketplaceCandidates){
         try{
