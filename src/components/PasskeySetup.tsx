@@ -30,13 +30,16 @@ function errorText(error:unknown){
   return 'No se pudo activar Face ID / huella.';
 }
 
-export function PasskeySetup({userId}:{userId:string}){
+export function PasskeySetup({userId,onVisibilityChange}:{userId:string;onVisibilityChange?:(visible:boolean)=>void}){
   const [supported,setSupported]=useState(false);
   const [registered,setRegistered]=useState<boolean|null>(null);
   const [busy,setBusy]=useState(false);
   const [dismissed,setDismissed]=useState(false);
   const registeredKey=`zenvia-passkey-registered-${userId}`;
   const dismissedKey=`zenvia-passkey-dismissed-${userId}`;
+
+  const visible=supported&&registered===false&&!dismissed;
+  useEffect(()=>{onVisibilityChange?.(visible);return()=>onVisibilityChange?.(false)},[visible,onVisibilityChange]);
 
   useEffect(()=>{
     let active=true;
@@ -97,7 +100,7 @@ export function PasskeySetup({userId}:{userId:string}){
     finally{setBusy(false)}
   };
 
-  if(!supported||registered===null||registered||dismissed)return null;
+  if(!visible)return null;
   return <div className="passkeySetupBanner" role="region" aria-label="Activar acceso biométrico">
     <div className="passkeySetupIcon"><Fingerprint size={21}/></div>
     <div className="passkeySetupText"><strong>Activa Face ID / Touch ID</strong><span>Este dispositivo admite acceso biométrico. Actívalo una vez para entrar sin escribir la contraseña.</span></div>
