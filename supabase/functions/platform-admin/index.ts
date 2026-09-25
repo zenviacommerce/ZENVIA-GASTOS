@@ -183,7 +183,40 @@ Deno.serve(async(req:Request)=>{
           workspace_id:workspaceId,plan_key:planKey,status:'active',billing_provider:'manual',
         });
         if(subscriptionError)throw subscriptionError;
+
+        const {error:businessError}=await admin.from('business_settings').insert({
+          owner_id:workspaceId,
+          legal_name:legalName||name,
+          trade_name:name,
+          country_code:'ES',
+          email:ownerEmail,
+        });
+        if(businessError)throw businessError;
+
+        const defaultCategories=[
+          ['Mercancía',10],
+          ['Transporte y logística',20],
+          ['Publicidad y marketing',30],
+          ['Software y suscripciones',40],
+          ['Embalaje y consumibles',50],
+          ['Servicios profesionales',60],
+          ['Suministros',70],
+          ['Viajes y dietas',80],
+          ['Comisiones marketplaces',90],
+          ['Otros',100],
+        ].map(([categoryName,sortOrder])=>({
+          owner_id:workspaceId,
+          name:String(categoryName),
+          sort_order:Number(sortOrder),
+          active:true,
+        }));
+        const {error:categoryError}=await admin.from('expense_categories').insert(defaultCategories);
+        if(categoryError)throw categoryError;
       }catch(error){
+        await admin.from('workspace_subscriptions').delete().eq('workspace_id',workspaceId);
+        await admin.from('expense_categories').delete().eq('owner_id',workspaceId);
+        await admin.from('business_settings').delete().eq('owner_id',workspaceId);
+        await admin.from('audit_logs').delete().eq('workspace_owner_id',workspaceId);
         if(invitedUserId)await admin.auth.admin.deleteUser(invitedUserId).catch(()=>undefined);
         await admin.from('workspaces').delete().eq('id',workspaceId);
         throw error;
