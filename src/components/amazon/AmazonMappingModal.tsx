@@ -6,12 +6,12 @@ type Props={
   sellerSku:string;
   asin?:string|null;
   imageUrl?:string|null;
-  defaultFactor?:number;
+  initialFactor?:number;
   onChanged:()=>void;
   onClose:()=>void;
 };
 
-export function AmazonMappingModal({sellerSku,asin,imageUrl,defaultFactor=1,onChanged,onClose}:Props){
+export function AmazonMappingModal({sellerSku,asin,imageUrl,initialFactor=1,onChanged,onClose}:Props){
   useEffect(()=>{
     const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')onClose();};
     window.addEventListener('keydown',onKey);
@@ -28,7 +28,7 @@ export function AmazonMappingModal({sellerSku,asin,imageUrl,defaultFactor=1,onCh
         <button className="amazonMappingModalClose" type="button" onClick={onClose} aria-label="Cerrar"><X size={19}/></button>
       </header>
       <div className="amazonMappingModalBody">
-        <AmazonMappingEditor sellerSku={sellerSku} defaultFactor={defaultFactor} onChanged={onChanged} onCancel={onClose}/>
+        <AmazonMappingEditor sellerSku={sellerSku} defaultFactor={initialFactor} onChanged={onChanged} onCancel={onClose}/>
       </div>
     </section>
   </div>;
