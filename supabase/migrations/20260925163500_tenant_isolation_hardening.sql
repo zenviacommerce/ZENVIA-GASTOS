@@ -79,6 +79,15 @@ begin
   end loop;
 end $$;
 
+create index if not exists sales_invoice_lines_owner_workspace_idx
+  on public.sales_invoice_lines(owner_id);
+create index if not exists sales_payments_owner_workspace_idx
+  on public.sales_payments(owner_id);
+create index if not exists support_messages_owner_workspace_idx
+  on public.support_messages(owner_id);
+create index if not exists support_attachments_owner_workspace_idx
+  on public.support_attachments(owner_id);
+
 create or replace function private.enforce_environment_integration_scope()
 returns trigger
 language plpgsql
