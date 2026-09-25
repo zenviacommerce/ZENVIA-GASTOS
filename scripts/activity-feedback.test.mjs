@@ -55,3 +55,22 @@ test('Amazon requests expose background work and tables do not show false empty 
   assert.match(inventory,/loading\?'Cargando inventario de Amazon/);
   assert.match(unmapped,/loading\?'Cargando SKU sin vincular/);
 });
+
+
+test('Amazon defaults to all marketplaces and never forces the primary marketplace',async()=>{
+  const page=await read('../src/pages/Amazon.tsx');
+  assert.match(page,/marketplaceIds:\[\]/);
+  assert.match(page,/if\(!current\.marketplaceIds\.length\)return current/);
+  assert.doesNotMatch(page,/const fallback=marketplaceSelection\.primaryMarketplaceId/);
+});
+
+test('shared drawer lock preserves page and sidebar scroll position',async()=>{
+  const [component,css]=await Promise.all([
+    read('../src/components/UnifiedListExperience.tsx'),
+    read('../src/unified-list-experience.css'),
+  ]);
+  assert.match(component,/sideDrawerWindowScrollY=window\.scrollY/);
+  assert.match(component,/sideDrawerSidebarScrollTop=document\.querySelector<HTMLElement>\('\.sidebar'\)\?\.scrollTop/);
+  assert.match(component,/sidebar\.scrollTop=restoreSidebarScrollTop/);
+  assert.match(css,/overflow:clip!important/);
+});
