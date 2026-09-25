@@ -14,6 +14,7 @@ test('Amazon settings keep typed safe fallbacks',async()=>{
   assert.match(schema,/historyDays[^\n]*1[^\n]*3650/);
   assert.match(schema,/defaultConsumptionFactor[^\n]*0\.0001/);
   assert.match(schema,/fxMissingRatePolicy[^\n]*last_known[^\n]*exclude/);
+  assert.match(schema,/amazon:\s*\{[\s\S]*?defaultPeriod:\s*'current_month'/);
 });
 
 test('Amazon page derives marketplace and period defaults from settings while manual sync stays available',async()=>{

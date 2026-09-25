@@ -322,7 +322,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     activeMarketplaceIds: [],
     primaryMarketplaceId: null,
     consolidatedCurrency: 'EUR',
-    defaultPeriod: 'current_quarter',
+    defaultPeriod: 'current_month',
     historyDays: 90,
     autoSyncOrders: true,
     autoSyncInventory: true,
