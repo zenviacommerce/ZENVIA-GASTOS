@@ -6,8 +6,6 @@
 .amazonMappingResults button strong,.amazonMappingResults button small{display:block}.amazonMappingResults button small{margin-top:2px;color:#94a3b8;font-size:10px}
 .amazonMappingEmpty,.amazonMappingSelected{padding:7px 8px;font-size:11px;color:#64748b}.amazonMappingSelected{padding-left:0}
 [data-theme='dark'] .amazonMappingResults{background:#0f172a;border-color:#334155}[data-theme='dark'] .amazonMappingResults button{color:#cbd5e1}[data-theme='dark'] .amazonMappingResults button:hover,[data-theme='dark'] .amazonMappingResults button.isSelected{background:#422006;color:#fdba74}
-@media(max-width:1000px){.amazonMappingEditor{grid-template-columns:1fr 140px}.amazonMappingPicker{grid-column:1/-1}.amazonMappingActions{grid-column:1/-1}}
-@media(max-width:520px){.amazonMappingEditor{grid-template-columns:1fr}.amazonMappingPicker,.amazonMappingActions{grid-column:auto}}
 
 .amazonMappingCurrent{display:grid;gap:8px}
 .amazonMappingCurrentHead{display:flex;align-items:center;justify-content:space-between;gap:12px}
