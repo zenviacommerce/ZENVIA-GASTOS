@@ -28,3 +28,19 @@ test('tablet account drawer keeps Settings and Administration available',async()
   assert.match(theme,/sidebarBottom \.adminSidebarButton/);
   assert.match(theme,/display:flex!important/);
 });
+
+
+test('biometric setup is visible on first supported login and tracked per device',async()=>{
+  const [setup,css]=await Promise.all([
+    read('src/components/PasskeySetup.tsx'),
+    read('src/passkey.css'),
+  ]);
+  assert.match(setup,/isUserVerifyingPlatformAuthenticatorAvailable/);
+  assert.match(setup,/zenvia-passkey-registered-/);
+  assert.match(setup,/safeStorageGet\('local',registeredKey\)/);
+  assert.match(setup,/safeStorageSet\('local',registeredKey,'1'\)/);
+  assert.match(setup,/account-wide, not device-specific/i);
+  assert.match(setup,/Activa Face ID \/ Touch ID/);
+  assert.doesNotMatch(css,/\.passkeySetupBanner\{display:none\}/);
+  assert.match(css,/\.passkeySetupBanner\{display:grid/);
+});
