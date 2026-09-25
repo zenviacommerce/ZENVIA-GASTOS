@@ -10,7 +10,8 @@ test('sidebar groups navigation by business area in the agreed order',async()=>{
   const operaciones=sidebar.indexOf("label:'Operaciones'");
   const gestion=sidebar.indexOf("label:'Gestión'");
   const canales=sidebar.indexOf("label:'Canales'");
-  assert.ok(inicio>=0&&operaciones>inicio&&gestion>operaciones&&canales>gestion);
+  const ayuda=sidebar.indexOf("label:'Ayuda'");
+  assert.ok(inicio>=0&&operaciones>inicio&&gestion>operaciones&&canales>gestion&&ayuda>canales);
 
   const operationsBlock=sidebar.slice(operaciones,gestion);
   assert.ok(operationsBlock.indexOf("'orders'")<operationsBlock.indexOf("'sales'"));
@@ -21,13 +22,19 @@ test('sidebar groups navigation by business area in the agreed order',async()=>{
   assert.ok(managementBlock.indexOf("'clients'")<managementBlock.indexOf("'suppliers'"));
 });
 
-test('system actions stay separated from business navigation',async()=>{
+test('support is a first-class Help destination and system actions keep an intuitive order',async()=>{
   const sidebar=await read('../src/components/Sidebar.tsx');
-  assert.match(sidebar,/sidebarSystemLabel">Sistema/);
-  assert.match(sidebar,/settingsSidebarButton/);
-  assert.match(sidebar,/adminSidebarButton/);
-  assert.match(sidebar,/themeSidebarButton/);
-  assert.match(sidebar,/Cerrar sesión/);
+  const ayuda=sidebar.indexOf("label:'Ayuda'");
+  const soporte=sidebar.indexOf("['support','Soporte','Soporte',CircleHelp]",ayuda);
+  const system=sidebar.indexOf('sidebarSystemLabel">Sistema');
+  const settings=sidebar.indexOf('>Configuración</span>',system);
+  const admin=sidebar.indexOf('>Administración</span>',system);
+  const theme=sidebar.indexOf("theme==='dark'?'Modo claro':'Modo oscuro'",system);
+  const logout=sidebar.indexOf('>Cerrar sesión</span>',system);
+  assert.ok(ayuda>=0&&soporte>ayuda);
+  assert.ok(system>=0&&settings>system&&admin>settings&&theme>admin&&logout>theme);
+  assert.match(sidebar,/CircleHelp/);
+  assert.doesNotMatch(sidebar,/LifeBuoy/);
 });
 
 test('sidebar grouping remains readable on desktop and mobile',async()=>{
