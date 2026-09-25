@@ -9,6 +9,7 @@ import { SupplierModal } from './components/SupplierModal';
 import { ToastHost } from './components/ToastHost';
 import { AlertCenter } from './components/AlertCenter';
 import { AuthScreen } from './components/AuthScreen';
+import { InvitePasswordSetup } from './components/InvitePasswordSetup';
 import { PasskeySetup } from './components/PasskeySetup';
 import { useSettings } from './context/SettingsContext';
 import { Dashboard } from './pages/Dashboard';
@@ -183,6 +184,11 @@ export default function App(){
 
  if(!authReady) return <div className="fullLoader"><LoaderCircle className="spin"/> Cargando…</div>;
  if(!session) return <><ToastHost/><AuthScreen/></>;
+ if(session.user.user_metadata?.onboarding_pending===true) return <><ToastHost/><InvitePasswordSetup session={session} onComplete={async()=>{
+   const {data}=await supabase.auth.getSession();
+   setSession(data.session);
+   setAccessReady(false);
+ }}/></>;
  if(!accessReady) return <><ToastHost/><div className="fullLoader"><LoaderCircle className="spin"/> Comprobando acceso…</div></>;
  if(!access||!access.active||!allowedPages.length) return <><ToastHost/><div className="authPage"><div className="authPanel accessDeniedPanel"><div className="authHeroIcon"><LockKeyhole/></div><h1>{error?'No se pudo cargar el acceso':'Acceso no autorizado'}</h1><p>{error?error:access&&!access.active?'Tu acceso a ZENVIA Gestión está desactivado.':'Esta cuenta no está autorizada para utilizar ZENVIA Gestión. Contacta con el administrador.'}</p><div className="actions">{error&&<button className="primary" onClick={()=>{setAccessReady(false);setError('');withTimeout(loadAccessProfile(session.user.id),12000,'La comprobación de acceso está tardando demasiado.').then(profile=>{setAccess(profile);setAccessReady(true)}).catch(e=>{setAccess(null);setAccessReady(true);setError(errorMessage(e,'No se pudo comprobar tu acceso.'))})}}>Reintentar</button>}<button className="secondary" onClick={()=>supabase.auth.signOut()}>Cerrar sesión</button></div></div></div></>;
 

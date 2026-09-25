@@ -7,6 +7,7 @@ const corsHeaders={
 };
 const jsonHeaders={...corsHeaders,'Content-Type':'application/json'};
 const modulePermissions=['dashboard','sales','orders','invoices','clients','products','suppliers','amazon','support'];
+const customerAppUrl=(Deno.env.get('CUSTOMER_APP_URL')||'https://gestion.zenviacommerce.com').replace(/\/$/,'');
 
 function getAdminKey(){
   const secretKeys=Deno.env.get('SUPABASE_SECRET_KEYS');
@@ -155,11 +156,14 @@ Deno.serve(async(req:Request)=>{
 
       let invitedUserId='';
       try{
-        const {data:invite,error:inviteError}=await admin.auth.admin.inviteUserByEmail(ownerEmail);
+        const {data:invite,error:inviteError}=await admin.auth.admin.inviteUserByEmail(ownerEmail,{
+          data:{full_name:ownerFullName,onboarding_pending:true},
+          redirectTo:customerAppUrl,
+        });
         if(inviteError||!invite.user)throw inviteError||new Error('No se pudo crear la invitación.');
         invitedUserId=invite.user.id;
         const {error:metaError}=await admin.auth.admin.updateUserById(invitedUserId,{
-          user_metadata:{...(invite.user.user_metadata||{}),full_name:ownerFullName},
+          user_metadata:{...(invite.user.user_metadata||{}),full_name:ownerFullName,onboarding_pending:true},
           app_metadata:{...(invite.user.app_metadata||{}),zenvia_managed:true,workspace_id:workspaceId},
         });
         if(metaError)throw metaError;
