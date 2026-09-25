@@ -17,6 +17,20 @@ function fromListing(data:any){
   return null;
 }
 
+function fromListingName(data:any){
+  const summary=Array.isArray(data?.summaries)?data.summaries.find((item:any)=>String(item?.itemName||'').trim()):null;
+  if(summary?.itemName)return String(summary.itemName).trim();
+  const attrs=data?.attributes||{};
+  for(const key of ['item_name','title','product_name']){
+    const values=Array.isArray(attrs?.[key])?attrs[key]:attrs?.[key]?[attrs[key]]:[];
+    for(const value of values){
+      const text=String(value?.value||value?.name||value||'').trim();
+      if(text)return text;
+    }
+  }
+  return null;
+}
+
 Deno.serve(async(req:Request)=>{
   if(req.method!=='POST')return response({error:'Método no permitido.'},405);
   try{
@@ -39,9 +53,9 @@ Deno.serve(async(req:Request)=>{
     if(marketError)throw marketError;
     const activeMarketplaceIds=(markets||[]).map((m:any)=>String(m.marketplace_id||'')).filter(Boolean);
     const esMarketplaceId=String((markets||[]).find((m:any)=>m.country_code==='ES')?.marketplace_id||'');
-    const {data:cached,error:cacheError}=await admin.from('amazon_product_images').select('asin').eq('owner_id',account.owner_id).eq('amazon_account_id',account.id);
+    const {data:cached,error:cacheError}=await admin.from('amazon_product_images').select('asin,image_url,product_name').eq('owner_id',account.owner_id).eq('amazon_account_id',account.id);
     if(cacheError)throw cacheError;
-    const cachedAsins=new Set((cached||[]).map((row:any)=>String(row.asin||'')));
+    const cachedAsins=new Set((cached||[]).filter((row:any)=>row.image_url&&row.product_name).map((row:any)=>String(row.asin||'')));
 
     let products=Array.isArray(body?.products)?body.products.map((p:any)=>({
       asin:String(p?.asin||'').trim(),sellerSku:String(p?.sellerSku||'').trim(),marketplaceId:String(p?.marketplaceId||'').trim()
@@ -72,26 +86,28 @@ Deno.serve(async(req:Request)=>{
     const now=new Date().toISOString();const rows:any[]=[];const failed:any[]=[];
     for(const product of products){
       const marketplaceCandidates=Array.from(new Set([product.marketplaceId,esMarketplaceId,...activeMarketplaceIds].filter(Boolean)));
-      let image:any=null;let usedMarketplace='';let lastError='';
+      let image:any=null;let productName:string|null=null;let usedMarketplace='';let lastError='';
       for(const marketplaceId of marketplaceCandidates){
         try{
           const data:any=await spApiRequest(`/listings/2021-08-01/items/${encodeURIComponent(credentials.sellerId)}/${encodeURIComponent(product.sellerSku)}`,{
             query:{marketplaceIds:[marketplaceId],includedData:['attributes','summaries']}
           },credentials);
-          image=fromListing(data);usedMarketplace=marketplaceId;
-          if(image)break;
+          image=image||fromListing(data);productName=productName||fromListingName(data);usedMarketplace=marketplaceId;
+          if(image&&productName)break;
         }catch(error){lastError=error instanceof Error?error.message:'Error';}
       }
-      if(image){
+      if(image||productName){
         rows.push({
-          owner_id:account.owner_id,amazon_account_id:account.id,asin:product.asin,marketplace_id:usedMarketplace||product.marketplaceId,
-          image_url:image.url,image_width:null,image_height:null,fetched_at:now,updated_at:now
+          owner_id:account.owner_id,amazon_account_id:account.id,asin:product.asin,seller_sku:product.sellerSku,
+          marketplace_id:usedMarketplace||product.marketplaceId,product_name:productName,
+          image_url:image?.url||null,image_width:null,image_height:null,fetched_at:now,updated_at:now
         });
-      }else{
-        failed.push({asin:product.asin,sellerSku:product.sellerSku,error:lastError||'Listing sin imagen principal'});
+      }
+      if(!image||!productName){
+        failed.push({asin:product.asin,sellerSku:product.sellerSku,error:lastError||(!image?'Listing sin imagen principal':'Listing sin nombre')});
       }
     }
     if(rows.length){const {error}=await admin.from('amazon_product_images').upsert(rows,{onConflict:'owner_id,amazon_account_id,asin,marketplace_id'});if(error)throw error;}
-    return response({ok:true,processed:rows.length,withImage:rows.filter(r=>r.image_url).length,failed:failed.length,failures:failed.slice(0,10)});
+    return response({ok:true,processed:rows.length,withImage:rows.filter(r=>r.image_url).length,withName:rows.filter(r=>r.product_name).length,failed:failed.length,failures:failed.slice(0,10)});
   }catch(error){return response({error:error instanceof Error?error.message:'No se pudieron sincronizar las imágenes Amazon.'},500);}
 });
