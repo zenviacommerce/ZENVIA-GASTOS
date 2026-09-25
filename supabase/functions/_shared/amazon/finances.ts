@@ -37,7 +37,7 @@ async function upsertTransactions(admin:any,transactions:any[],job:any){
 }
 
 export async function syncFinancesJob(admin:any,job:any){
-  if(!job?.window_from)throw new Error('Job de finanzas incompleto.');const postedBefore=safePostedBefore(job.window_to);if(new Date(job.window_from)>=new Date(postedBefore))return 0;const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:job.amazon_account_id});let nextToken:string|undefined;let processed=0;
+  if(!job?.window_from)throw new Error('Job de finanzas incompleto.');const postedBefore=safePostedBefore(job.window_to);if(new Date(job.window_from)>=new Date(postedBefore))return 0;const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:job.amazon_account_id,ownerId:job.owner_id});let nextToken:string|undefined;let processed=0;
   do{const query:any={postedAfter:job.window_from,postedBefore,...(job.marketplace_id?{marketplaceId:job.marketplace_id}:{}),...(nextToken?{nextToken}:{})};const data:any=await spApiRequest('/finances/2024-06-19/transactions',{query},credentials);const payload=data?.payload||data||{};const transactions=Array.isArray(payload?.transactions)?payload.transactions:[];processed+=await upsertTransactions(admin,transactions,job);nextToken=payload?.nextToken||undefined;}while(nextToken);
   return processed;
 }
