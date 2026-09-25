@@ -30,6 +30,16 @@ test('Amazon mapping editor exposes supplier and keeps a component list',async()
   assert.match(service,/amazon_add_product_mapping/);
 });
 
+
+test('Amazon mapping modal stays responsive without horizontal overflow',async()=>{
+  const css=await source('src/amazon-mapping.css');
+  assert.match(css,/\.amazonMappingModal\{[\s\S]*width:min\(1040px,calc\(100vw - 48px\)\)/);
+  assert.match(css,/\.amazonMappingModal \.amazonMappingEditor\{[\s\S]*grid-template-columns:minmax\(0,1\.15fr\) minmax\(340px,\.85fr\)/);
+  assert.match(css,/\.amazonMappingModal \.amazonMappingAdd\{[\s\S]*display:flex[\s\S]*flex-direction:column/);
+  assert.match(css,/@media\(max-width:900px\)[\s\S]*\.amazonMappingModal \.amazonMappingEditor\{grid-template-columns:1fr\}/);
+  assert.match(css,/\.amazonMappingModalBody\{[\s\S]*overflow:auto/);
+});
+
 test('Amazon product profitability UI reports multiple linked components',async()=>{
   const products=await source('src/components/amazon/AmazonProducts.tsx');
   assert.match(products,/Gestionar vínculos/);
