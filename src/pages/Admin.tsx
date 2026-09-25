@@ -19,7 +19,7 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
 }
 
-export function AdminPage({ currentUserId }: { currentUserId: string }) {
+export function AdminPage({ currentUserId, workspaceName }: { currentUserId: string; workspaceName?: string }) {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -90,7 +90,7 @@ export function AdminPage({ currentUserId }: { currentUserId: string }) {
 
       {error && <div className="errorBox adminError">{error}</div>}
       <section className="card adminUsersCard">
-        <div className="adminUsersHead"><div><h3>Accesos de ZENVIA COMMERCE</h3><p>Los permisos corresponden a los módulos actuales y se aplican también al acceso a los datos.</p></div>{loading && <span className="adminLoading">Actualizando…</span>}</div>
+        <div className="adminUsersHead"><div><h3>Accesos de {workspaceName || 'tu empresa'}</h3><p>Los permisos corresponden a los módulos actuales y se aplican también al acceso a los datos.</p></div>{loading && <span className="adminLoading">Actualizando…</span>}</div>
         <div className="adminUsersList">
           {pagedUsers.map(user => {
             const permissionLabels = user.role === 'admin'
