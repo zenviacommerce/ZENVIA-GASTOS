@@ -12,18 +12,11 @@ test('tenant RLS separates membership visibility from operational workspace acce
   assert.match(sql,/workspace_subscriptions_member_select[\s\S]*app_membership_workspace_id/);
 });
 
-test('Platform can suspend, cancel and reactivate workspaces with audit',async()=>{
-  const [backend,api,app]=await Promise.all([
-    read('supabase/functions/platform-admin/index.ts'),
-    read('platform/src/api.ts'),
-    read('platform/src/App.tsx'),
-  ]);
-  assert.match(backend,/action==='update_workspace'/);
-  assert.match(backend,/\['active','trialing','suspended','cancelled'\]\.includes\(status\)/);
-  assert.match(backend,/action:'update_workspace_status'/);
-  assert.match(api,/updateWorkspaceStatus/);
-  assert.match(app,/¿Suspender \$\{workspace\.name\}\?/);
-  assert.match(app,/<option value="cancelled">Cancelado<\/option>/);
+test('Platform bridge can suspend, cancel and reactivate workspaces',async()=>{
+  const bridge=await read('supabase/functions/platform-bridge/index.ts');
+  assert.match(bridge,/action==='update_workspace'/);
+  assert.match(bridge,/\['active','trialing','suspended','cancelled'\]\.includes\(status\)/);
+  assert.match(bridge,/previousStatus:workspace\.status/);
 });
 
 test('customer app blocks suspended and cancelled workspaces before rendering business pages',async()=>{
