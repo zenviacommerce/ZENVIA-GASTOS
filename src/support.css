@@ -101,3 +101,19 @@
   .supportAdminControls{grid-template-columns:1fr}
   .supportMessage{max-width:96%}
 }
+
+.supportAdminToolbar{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface)}
+.supportAdminToolbar button{display:inline-flex;align-items:center;gap:6px}
+.supportTicketEditor{display:grid;grid-template-columns:180px minmax(0,1fr);gap:10px;padding:14px 16px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--accent) 4%,var(--surface))}
+.supportTicketEditor label{display:grid;gap:5px}
+.supportTicketEditor label>span{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase}
+.supportTicketEditor input,.supportTicketEditor textarea{width:100%;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);padding:9px 10px;outline:none}
+.supportTicketEditor input:focus,.supportTicketEditor textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}
+.supportEditorDescription{grid-column:1/-1}
+.supportEditorActions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px}
+@media(max-width:620px){
+  .supportAdminToolbar{justify-content:stretch}
+  .supportAdminToolbar button{flex:1;justify-content:center}
+  .supportTicketEditor{grid-template-columns:1fr}
+  .supportEditorDescription,.supportEditorActions{grid-column:1}
+}
