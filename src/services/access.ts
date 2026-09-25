@@ -4,6 +4,12 @@ import { emailError, nameError, normalizeEmail } from './validation';
 export type MenuPermission = 'dashboard' | 'sales' | 'orders' | 'invoices' | 'clients' | 'products' | 'suppliers' | 'amazon' | 'support';
 export type AppRole = 'admin' | 'user';
 
+export interface WorkspaceEntitlement {
+  enabled: boolean;
+  limit: number | null;
+  config: Record<string, unknown>;
+}
+
 export const permissionOptions: Array<{ id: MenuPermission; label: string; description: string }> = [
   { id: 'dashboard', label: 'Resumen', description: 'Ver el cuadro de mando, métricas, IVA, resultados y filtros por periodo.' },
   { id: 'sales', label: 'Facturación', description: 'Gestionar facturas de venta, borradores, cobros, series, datos fiscales y registros IVA.' },
@@ -23,6 +29,15 @@ export interface AccessProfile {
   role: AppRole;
   active: boolean;
   dataOwnerId: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspaceSlug: string;
+  workspaceStatus: string;
+  planKey: string;
+  planName: string;
+  subscriptionStatus: string;
+  isPlatformAdmin: boolean;
+  entitlements: Record<string, WorkspaceEntitlement>;
   permissions: MenuPermission[];
 }
 
@@ -48,9 +63,57 @@ function cleanPermissions(value: unknown): MenuPermission[] {
 async function fetchAccessProfileRow(userId:string){
   return supabase
     .from('app_users')
-    .select('user_id,email,full_name,role,active,data_owner_id,permissions')
+    .select('user_id,email,full_name,role,active,data_owner_id,workspace_id,permissions')
     .eq('user_id', userId)
     .maybeSingle();
+}
+
+type WorkspaceContextRow = {
+  workspace_id?: string | null;
+  workspace_name?: string | null;
+  workspace_slug?: string | null;
+  workspace_status?: string | null;
+  plan_key?: string | null;
+  plan_name?: string | null;
+  subscription_status?: string | null;
+  is_platform_admin?: boolean | null;
+  entitlements?: unknown;
+};
+
+function cleanEntitlements(value:unknown):Record<string,WorkspaceEntitlement>{
+  if(!value||typeof value!=='object'||Array.isArray(value))return {};
+  const result:Record<string,WorkspaceEntitlement>={};
+  for(const [key,raw] of Object.entries(value as Record<string,unknown>)){
+    if(!raw||typeof raw!=='object'||Array.isArray(raw))continue;
+    const item=raw as Record<string,unknown>;
+    result[key]={
+      enabled:item.enabled!==false,
+      limit:typeof item.limit==='number'&&Number.isFinite(item.limit)?item.limit:null,
+      config:item.config&&typeof item.config==='object'&&!Array.isArray(item.config)
+        ? item.config as Record<string,unknown>
+        : {},
+    };
+  }
+  return result;
+}
+
+function isWorkspaceContextUnavailable(error:unknown){
+  if(!error||typeof error!=='object')return false;
+  const value=error as {code?:unknown;message?:unknown};
+  const code=typeof value.code==='string'?value.code:'';
+  const message=typeof value.message==='string'?value.message.toLowerCase():'';
+  return code==='PGRST202'||code==='42883'||message.includes('get_workspace_context');
+}
+
+async function loadWorkspaceContext():Promise<WorkspaceContextRow|null>{
+  const {data,error}=await supabase.rpc('get_workspace_context');
+  if(error){
+    // Compatibility during a staggered DB/frontend rollout.
+    if(isWorkspaceContextUnavailable(error))return null;
+    throw new Error(accessErrorMessage(error));
+  }
+  if(Array.isArray(data))return (data[0] as WorkspaceContextRow|undefined)||null;
+  return data&&typeof data==='object'?data as WorkspaceContextRow:null;
 }
 
 function accessErrorMessage(error:unknown){
@@ -89,6 +152,7 @@ export async function loadAccessProfile(userId: string): Promise<AccessProfile |
   if(result.error)throw new Error(accessErrorMessage(result.error));
   const data=result.data;
   if (!data) return null;
+  const workspace=await loadWorkspaceContext();
   return {
     userId: data.user_id,
     email: data.email,
@@ -96,6 +160,15 @@ export async function loadAccessProfile(userId: string): Promise<AccessProfile |
     role: data.role as AppRole,
     active: Boolean(data.active),
     dataOwnerId: data.data_owner_id,
+    workspaceId: workspace?.workspace_id || data.workspace_id || data.data_owner_id,
+    workspaceName: workspace?.workspace_name || '',
+    workspaceSlug: workspace?.workspace_slug || '',
+    workspaceStatus: workspace?.workspace_status || 'active',
+    planKey: workspace?.plan_key || 'internal',
+    planName: workspace?.plan_name || 'Interno',
+    subscriptionStatus: workspace?.subscription_status || 'active',
+    isPlatformAdmin: Boolean(workspace?.is_platform_admin),
+    entitlements: cleanEntitlements(workspace?.entitlements),
     permissions: data.role === 'admin' ? permissionOptions.map(option => option.id) : cleanPermissions(data.permissions),
   };
 }
