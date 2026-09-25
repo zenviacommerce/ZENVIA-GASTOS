@@ -51,14 +51,45 @@ function enhanceDetailDrawers(){
   });
 }
 
+let sideDrawerWindowScrollY:number|null=null;
+let sideDrawerSidebarScrollTop:number|null=null;
+
 function syncSideDrawerPageLock(){
   const selectors='.zenviaDetailDrawerBackdrop,.masterDrawerBackdrop,.ordersDrawerBackdrop';
   // Fixed-position backdrops commonly have offsetParent === null even while
   // visible. Their presence in the DOM is the reliable open-state signal because
   // all side drawers are conditionally mounted.
   const open=document.querySelector(selectors)!==null;
-  document.documentElement.classList.toggle('zenviaSideDrawerOpen',open);
-  document.body.classList.toggle('zenviaSideDrawerOpen',open);
+  const locked=document.documentElement.classList.contains('zenviaSideDrawerOpen');
+
+  if(open&&!locked){
+    sideDrawerWindowScrollY=window.scrollY;
+    sideDrawerSidebarScrollTop=document.querySelector<HTMLElement>('.sidebar')?.scrollTop??null;
+    document.documentElement.classList.add('zenviaSideDrawerOpen');
+    document.body.classList.add('zenviaSideDrawerOpen');
+    // Changing the root overflow can make sticky sidebars recalculate their
+    // containing block. Restore both scroll positions after that layout pass.
+    requestAnimationFrame(()=>{
+      if(sideDrawerWindowScrollY!=null)window.scrollTo({top:sideDrawerWindowScrollY,left:0,behavior:'auto'});
+      const sidebar=document.querySelector<HTMLElement>('.sidebar');
+      if(sidebar&&sideDrawerSidebarScrollTop!=null)sidebar.scrollTop=sideDrawerSidebarScrollTop;
+    });
+    return;
+  }
+
+  if(!open&&locked){
+    const restoreWindowScrollY=sideDrawerWindowScrollY;
+    const restoreSidebarScrollTop=sideDrawerSidebarScrollTop;
+    document.documentElement.classList.remove('zenviaSideDrawerOpen');
+    document.body.classList.remove('zenviaSideDrawerOpen');
+    sideDrawerWindowScrollY=null;
+    sideDrawerSidebarScrollTop=null;
+    requestAnimationFrame(()=>{
+      if(restoreWindowScrollY!=null)window.scrollTo({top:restoreWindowScrollY,left:0,behavior:'auto'});
+      const sidebar=document.querySelector<HTMLElement>('.sidebar');
+      if(sidebar&&restoreSidebarScrollTop!=null)sidebar.scrollTop=restoreSidebarScrollTop;
+    });
+  }
 }
 
 function enhanceExpenseDesktopEdit(){
@@ -373,8 +404,15 @@ export function UnifiedListExperience(){
       observer.disconnect();
       hideTooltip();
       tooltip.remove();
+      const restoreWindowScrollY=sideDrawerWindowScrollY;
+      const restoreSidebarScrollTop=sideDrawerSidebarScrollTop;
       document.documentElement.classList.remove('zenviaSideDrawerOpen');
       document.body.classList.remove('zenviaSideDrawerOpen');
+      sideDrawerWindowScrollY=null;
+      sideDrawerSidebarScrollTop=null;
+      if(restoreWindowScrollY!=null)window.scrollTo({top:restoreWindowScrollY,left:0,behavior:'auto'});
+      const sidebar=document.querySelector<HTMLElement>('.sidebar');
+      if(sidebar&&restoreSidebarScrollTop!=null)sidebar.scrollTop=restoreSidebarScrollTop;
       document.removeEventListener('pointerover',onPointerOver);
       document.removeEventListener('pointerout',onPointerOut);
       document.removeEventListener('focusin',onFocusIn);
