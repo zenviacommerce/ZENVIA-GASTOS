@@ -73,17 +73,25 @@ export function AmazonSummary({filters,onLoaded,refreshToken=0,visibleKpis}:{fil
         const nextSummary=await loadAmazonSummary(filters);
         if(!alive)return;
         setSummary(nextSummary);writeViewCache(currentSummaryKey,nextSummary);onLoaded?.(nextSummary);
-        try{
-          const nextDetail=await loadAmazonDetail(filters);
-          if(alive){setDetail(nextDetail);writeViewCache(currentDetailKey,nextDetail);}
-        }catch(reason){
-          if(alive&&!isAmazonConnectivityError(reason))setError(errorMessage(reason,'No se pudo cargar el detalle de Amazon.'));
+        // The KPIs are the primary content. Show them as soon as the summary is
+        // ready; detail and chart data can finish in parallel without blocking
+        // the whole Amazon page.
+        setLoading(false);
+
+        const [detailResult,seriesResult]=await Promise.allSettled([
+          loadAmazonDetail(filters),
+          loadAmazonSeries(filters,grain),
+        ]);
+        if(!alive)return;
+        if(detailResult.status==='fulfilled'){
+          setDetail(detailResult.value);writeViewCache(currentDetailKey,detailResult.value);
+        }else if(!isAmazonConnectivityError(detailResult.reason)){
+          setError(errorMessage(detailResult.reason,'No se pudo cargar el detalle de Amazon.'));
         }
-        try{
-          const nextSeries=await loadAmazonSeries(filters,grain);
-          if(alive){setSeries(nextSeries);writeViewCache(currentSeriesKey,nextSeries);}
-        }catch(reason){
-          if(alive&&!isAmazonConnectivityError(reason))setError(errorMessage(reason,'No se pudo cargar la evolución de Amazon.'));
+        if(seriesResult.status==='fulfilled'){
+          setSeries(seriesResult.value);writeViewCache(currentSeriesKey,seriesResult.value);
+        }else if(!isAmazonConnectivityError(seriesResult.reason)){
+          setError(errorMessage(seriesResult.reason,'No se pudo cargar la evolución de Amazon.'));
         }
       }catch(reason){
         if(alive&&!isAmazonConnectivityError(reason))setError(errorMessage(reason,'No se pudo cargar Amazon Analytics.'));
