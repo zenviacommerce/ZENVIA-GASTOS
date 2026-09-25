@@ -173,9 +173,6 @@ export async function createSupportTicket(input:{type:SupportTicketType;subject:
     type:input.type,
     subject,
     description,
-    owner_id:'00000000-0000-0000-0000-000000000000',
-    created_by:'00000000-0000-0000-0000-000000000000',
-    created_by_email:'',
   }).select('*').single();
   if(error)throw error;
   const ticket=mapTicket(data);
@@ -189,10 +186,6 @@ export async function replySupportTicket(ticketId:string,body:string,files:File[
   if(!clean)throw new Error('Escribe una respuesta.');
   const {data,error}=await supabase.from('support_messages').insert({
     ticket_id:ticketId,
-    owner_id:'00000000-0000-0000-0000-000000000000',
-    author_user_id:'00000000-0000-0000-0000-000000000000',
-    author_email:'',
-    author_role:'user',
     body:clean,
   }).select('*').single();
   if(error)throw error;
