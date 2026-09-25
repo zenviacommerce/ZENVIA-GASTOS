@@ -58,3 +58,13 @@ test('Detail RPCs do not expose buyer or recipient PII',async()=>{
   const text=(await sql()).toLowerCase();
   for(const forbidden of ['buyer_name','buyer_email','buyer_phone','shipping_address','delivery_address'])assert.equal(text.includes(forbidden),false,forbidden);
 });
+
+
+test('Amazon analytics heavy order filters remain sargable',async()=>{
+  const migration=await readFile(new URL('../supabase/migrations/20260925132000_amazon_analytics_sargable_orders.sql',import.meta.url),'utf8');
+  assert.match(migration,/purchase_date >= from_date::timestamptz/);
+  assert.match(migration,/purchase_date < \(to_date\+1\)::timestamptz/);
+  assert.match(migration,/amazon_orders_owner_purchase_market_idx/);
+  assert.match(migration,/amazon_finance_tax_audit_order_idx/);
+  assert.match(migration,/statement_timeout='25s'/);
+});
