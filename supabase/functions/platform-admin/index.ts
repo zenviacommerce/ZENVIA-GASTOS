@@ -116,7 +116,7 @@ Deno.serve(async(req:Request)=>{
         admin.from('workspaces').select('id,slug,name,legal_name,status,created_at,updated_at').order('created_at',{ascending:false}),
         admin.from('workspace_subscriptions').select('workspace_id,plan_key,status,billing_provider,trial_ends_at,current_period_ends_at,cancel_at_period_end'),
         admin.from('app_users').select('workspace_id,user_id,active,role'),
-        admin.from('amazon_accounts').select('owner_id,id,active'),
+        admin.from('amazon_accounts').select('owner_id,id,status'),
         admin.from('plan_entitlements').select('plan_key,entitlement_key,enabled,limit_value').in('entitlement_key',['users','amazon_accounts','monthly_orders']),
       ]);
       if(workspacesError)throw workspacesError;
@@ -132,7 +132,7 @@ Deno.serve(async(req:Request)=>{
         item.total+=1;if(row.active)item.active+=1;userCounts.set(row.workspace_id,item);
       }
       const amazonCounts=new Map<string,number>();
-      for(const row of amazonAccounts||[])if(row.active)amazonCounts.set(row.owner_id,(amazonCounts.get(row.owner_id)||0)+1);
+      for(const row of amazonAccounts||[])if(row.status!=='disabled')amazonCounts.set(row.owner_id,(amazonCounts.get(row.owner_id)||0)+1);
 
       const entitlementLimits=new Map<string,number|null>();
       for(const entitlement of usageEntitlements||[]){
