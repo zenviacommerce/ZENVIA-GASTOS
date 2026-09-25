@@ -43,6 +43,9 @@ export async function authenticateUser(req:Request,admin:any):Promise<AppCaller>
     .maybeSingle();
   if(error)throw error;
   if(!caller?.active)throw new Error('Tu acceso está desactivado.');
+  const {data:workspace,error:workspaceError}=await admin.from('workspaces').select('status').eq('id',caller.data_owner_id).maybeSingle();
+  if(workspaceError)throw workspaceError;
+  if(!workspace||!['active','trialing'].includes(workspace.status))throw new Error('El acceso de tu empresa está suspendido.');
   return caller as AppCaller;
 }
 
