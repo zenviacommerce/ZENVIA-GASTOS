@@ -96,6 +96,8 @@ async function authenticate(req:Request,admin:any):Promise<Caller>{
   const {data:userData,error:userError}=await admin.auth.getUser(token);if(userError||!userData.user)throw new Error('Sesión no válida.');
   const {data:caller,error}=await admin.from('app_users').select('user_id,data_owner_id,role,active,permissions').eq('user_id',userData.user.id).maybeSingle();if(error)throw error;
   if(!caller?.active)throw new Error('Tu acceso está desactivado.');
+  const {data:workspace,error:workspaceError}=await admin.from('workspaces').select('status').eq('id',caller.data_owner_id).maybeSingle();if(workspaceError)throw workspaceError;
+  if(!workspace||!['active','trialing'].includes(workspace.status))throw new Error('El acceso de tu empresa está suspendido.');
   const permissions=Array.isArray(caller.permissions)?caller.permissions:[];if(caller.role!=='admin'&&!permissions.includes('orders'))throw new Error('No tienes permiso para gestionar pedidos.');
   return caller as Caller;
 }
