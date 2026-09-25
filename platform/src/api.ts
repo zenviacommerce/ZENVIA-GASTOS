@@ -1,11 +1,12 @@
 import { supabase } from './supabase';
 
 export type PlatformRole='super_admin'|'support_admin'|'billing_admin';
+export type WorkspaceStatus='active'|'trialing'|'suspended'|'cancelled';
 export type PlatformStats={workspaces:number;subscriptions:number;openTickets:number;activePlans:number};
 export type Bootstrap={actor:{id:string;email:string;role:PlatformRole};stats:PlatformStats};
 
 export type Workspace={
-  id:string;slug:string;name:string;legal_name?:string|null;status:string;created_at:string;updated_at:string;
+  id:string;slug:string;name:string;legal_name?:string|null;status:WorkspaceStatus;created_at:string;updated_at:string;
   subscription?:{workspace_id:string;plan_key:string;status:string;billing_provider:string;trial_ends_at?:string|null;current_period_ends_at?:string|null;cancel_at_period_end?:boolean}|null;
   users:{total:number;active:number};
   amazonAccounts:number;
@@ -47,6 +48,7 @@ export const platformApi={
   listPlans:()=>invoke<{plans:BillingPlan[]}>('list_plans'),
   updatePlan:(input:{planKey:string;name:string;description:string;active:boolean;isPublic:boolean;monthlyPriceCents:number|null;yearlyPriceCents:number|null;entitlements:Array<{key:string;enabled:boolean;limit:number|null}>})=>invoke<{ok:true}>('update_plan',input),
   assignPlan:(workspaceId:string,planKey:string)=>invoke<{ok:true}>('assign_plan',{workspaceId,planKey}),
+  updateWorkspaceStatus:(workspaceId:string,status:WorkspaceStatus)=>invoke<{ok:true;status:WorkspaceStatus}>('update_workspace',{workspaceId,status}),
   listTickets:()=>invoke<{tickets:Ticket[]}>('list_tickets'),
   ticketDetail:(ticketId:string)=>invoke<{ticket:Ticket;messages:TicketMessage[];attachments:TicketAttachment[]}>('ticket_detail',{ticketId}),
   updateTicket:(ticketId:string,patch:{status?:Ticket['status'];priority?:Ticket['priority'];assignedTo?:string|null})=>invoke<{ok:true}>('update_ticket',{ticketId,...patch}),
