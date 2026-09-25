@@ -32,6 +32,16 @@ test('Amazon mapping editor exposes supplier and keeps a component list',async()
 
 
 
+
+test('generic Amazon mapping modal resolves Amazon metadata by ASIN when callers omit it',async()=>{
+  const modal=await source('src/components/amazon/AmazonMappingModal.tsx');
+  assert.match(modal,/loadAmazonProductMetadata\(\[asin\]\)/);
+  assert.match(modal,/if\(!productName&&product\.productName\)setResolvedName\(product\.productName\)/);
+  assert.match(modal,/if\(!imageUrl&&product\.imageUrl\)setResolvedImage\(product\.imageUrl\)/);
+  assert.match(modal,/\{resolvedName\|\|sellerSku\}/);
+  assert.match(modal,/src=\{resolvedImage\}/);
+});
+
 test('Amazon mapping modal uses the Amazon product name as its primary title',async()=>{
   const [modal,unmapped]=await Promise.all([
     source('src/components/amazon/AmazonMappingModal.tsx'),
