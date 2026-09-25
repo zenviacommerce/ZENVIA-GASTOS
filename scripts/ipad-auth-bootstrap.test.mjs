@@ -44,3 +44,18 @@ test('biometric setup is visible on first supported login and tracked per device
   assert.doesNotMatch(css,/\.passkeySetupBanner\{display:none\}/);
   assert.match(css,/\.passkeySetupBanner\{display:grid/);
 });
+
+
+test('mobile biometric banner reserves header space without adding the page spacer twice',async()=>{
+  const [app,setup,css]=await Promise.all([
+    read('src/App.tsx'),
+    read('src/components/PasskeySetup.tsx'),
+    read('src/passkey.css'),
+  ]);
+  assert.match(app,/passkeySetupVisible/);
+  assert.match(app,/hasPasskeySetup/);
+  assert.match(app,/onVisibilityChange=\{setPasskeySetupVisible\}/);
+  assert.match(setup,/onVisibilityChange/);
+  assert.match(css,/main\.hasPasskeySetup>\.passkeySetupBanner/);
+  assert.match(css,/main\.hasPasskeySetup>\.page\{\s*padding-top:18px!important/);
+});

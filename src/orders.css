@@ -120,3 +120,61 @@ html[data-theme='dark'] .ordersFieldError{color:#fca5a5}
   outline:2px solid rgba(20,184,166,.28);
   outline-offset:1px;
 }
+
+
+/* Mobile order actions: never force desktop controls into one horizontal row. */
+@media(max-width:900px){
+  .ordersPage .pageHead .actions{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    width:100%;
+    align-items:stretch;
+  }
+  .ordersPage .pageHead .actions>button{
+    width:100%;
+    min-width:0;
+    min-height:46px;
+    height:auto;
+    padding:9px 10px;
+    white-space:normal;
+    line-height:1.2;
+    text-align:center;
+    justify-content:center;
+  }
+  .ordersPage .pageHead .actions>button:nth-of-type(1),
+  .ordersPage .pageHead .actions>button:nth-of-type(2){
+    order:1;
+  }
+  .ordersPage .pageHead .actions>.ordersQuickLabelFormat{
+    order:2;
+    grid-column:1/-1;
+    width:100%;
+    min-width:0;
+    min-height:46px;
+    box-sizing:border-box;
+  }
+  .ordersPage .pageHead .actions>.ordersQuickLabelFormat .selectField,
+  .ordersPage .pageHead .actions>.ordersQuickLabelFormat .searchableSelect{
+    min-width:0;
+    width:100%;
+    max-width:none;
+    flex:1;
+  }
+  .ordersPage .pageHead .actions>button:nth-of-type(3){
+    order:3;
+    grid-column:1/-1;
+  }
+  .ordersPage .pageHead .actions>button:nth-of-type(4){
+    order:4;
+    grid-column:1/-1;
+  }
+}
+@media(max-width:430px){
+  .ordersPage .pageHead .actions{
+    grid-template-columns:1fr 1fr;
+  }
+  .ordersPage .pageHead .actions>button{
+    font-size:13px;
+  }
+}
