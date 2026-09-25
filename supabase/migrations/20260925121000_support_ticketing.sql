@@ -106,11 +106,14 @@ begin
   new.created_by:=auth.uid();
   new.created_by_email:=coalesce(profile.email,'');
   new.created_by_name:=profile.full_name;
-  if coalesce(new.ticket_number,'')='' then
-    new.ticket_number:='ZG-'||to_char(now(),'YYYY')||'-'||lpad(nextval('public.support_ticket_number_seq')::text,6,'0');
-  end if;
+  new.ticket_number:='ZG-'||to_char(now(),'YYYY')||'-'||lpad(nextval('public.support_ticket_number_seq')::text,6,'0');
+  new.status:='open';
+  new.priority:='normal';
+  new.assigned_to:=null;
+  new.resolved_at:=null;
+  new.closed_at:=null;
   new.updated_at:=now();
-  new.last_activity_at:=coalesce(new.last_activity_at,now());
+  new.last_activity_at:=now();
   return new;
 end;
 $$;
@@ -181,6 +184,10 @@ begin
   if auth.uid() is null then raise exception 'Sesión no válida.'; end if;
   if not private.app_support_ticket_access(new.ticket_id,false) then raise exception 'Ticket no accesible.'; end if;
   select t.owner_id into ticket_owner from public.support_tickets t where t.id=new.ticket_id;
+  if new.message_id is not null and not exists(
+    select 1 from public.support_messages m where m.id=new.message_id and m.ticket_id=new.ticket_id
+  ) then raise exception 'El mensaje no pertenece al ticket.'; end if;
+  if split_part(new.storage_path,'/',1)<>new.ticket_id::text then raise exception 'Ruta de adjunto no válida.'; end if;
   new.owner_id:=ticket_owner;
   new.uploaded_by:=auth.uid();
   return new;
