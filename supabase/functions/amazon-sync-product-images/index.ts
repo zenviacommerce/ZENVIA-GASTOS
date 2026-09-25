@@ -47,7 +47,7 @@ Deno.serve(async(req:Request)=>{
     if(integrationAccountId)accountQuery=accountQuery.eq('integration_account_id',integrationAccountId);
     const {data:account,error:accountError}=await accountQuery.maybeSingle();
     if(accountError)throw accountError;if(!account)throw new Error('No hay cuenta Amazon configurada.');
-    const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:account.id,integrationAccountId:account.integration_account_id});
+    const credentials=await loadAmazonSpApiCredentials(admin,{amazonAccountId:account.id,integrationAccountId:account.integration_account_id,ownerId:account.owner_id});
 
     const {data:markets,error:marketError}=await admin.from('amazon_marketplaces').select('marketplace_id,country_code').eq('amazon_account_id',account.id).eq('owner_id',account.owner_id).eq('active',true).order('country_code');
     if(marketError)throw marketError;
