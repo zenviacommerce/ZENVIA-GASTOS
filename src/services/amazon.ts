@@ -40,8 +40,11 @@ export type AmazonSeriesPoint={
 };
 export type AmazonProductSort='product_name'|'orders'|'units'|'gross_sales'|'net_sales'|'product_cost'|'amazon_fees'|'refunds'|'profit_before_ads'|'margin_pct';
 export type AmazonSortDirection='asc'|'desc';
+export type AmazonProductMapping={
+  id?:string;productId:string;productName:string;productSku:string|null;supplierName:string|null;consumptionFactor:number;
+};
 export type AmazonProductAnalytics={
-  sellerSku:string;asin:string|null;productId:string|null;productName:string|null;consumptionFactor:number;
+  sellerSku:string;asin:string|null;productId:string|null;productName:string|null;consumptionFactor:number;productMappings:AmazonProductMapping[];
   orders:number;businessOrders:number;units:number;grossSales:number;salesVat:number;netSales:number;
   amazonFees:number;amazonFeeVat:number;refunds:number;amazonAdjustments:number;productCost:number;
   profitBeforeAds:number;marginPct:number|null;missingVatOrders:number;profitComplete:boolean;
@@ -51,7 +54,7 @@ export type AmazonOrderAnalytics={amazonOrderId:string;purchaseDate:string;marke
 export type AmazonInventoryAnalytics={sellerSku:string;asin:string|null;marketplaceId:string;fulfillable:number;reserved:number;inbound:number;unfulfillable:number;researching:number;total:number;lastSync:string};
 export type AmazonUnmappedSku={sellerSku:string;asin:string|null;marketplaceIds:string[];orders:number;units:number;recentNetSales:number};
 export type AmazonProductMetadata={imageUrl:string|null;productName:string|null};
-export type AmazonProductOption={id:string;name:string;sku:string|null};
+export type AmazonProductOption={id:string;name:string;sku:string|null;supplierName:string|null};
 export type AmazonPageResult<T>={items:T[];page:number;pageSize:number;total:number};
 
 export const AMAZON_KPI_KEYS=[
@@ -140,8 +143,10 @@ const AMAZON_ACTIVITY_LABELS:Record<string,string>={
   amazon_analytics_orders:'Cargando pedidos de Amazon',
   amazon_analytics_inventory:'Cargando inventario de Amazon',
   amazon_analytics_unmapped_skus:'Cargando SKU sin vincular',
+  amazon_get_product_mappings:'Cargando vínculos de Amazon',
   amazon_set_product_mapping:'Guardando vínculo de Amazon',
   amazon_delete_product_mapping:'Eliminando vínculo de Amazon',
+  amazon_delete_product_mapping_item:'Eliminando componente de Amazon',
 };
 
 async function rpc<T>(name:string,params:Record<string,unknown>,fallback:string):Promise<T>{
@@ -216,8 +221,10 @@ export function loadAmazonMarketplaces(filters:AmazonAnalyticsFilters){return rp
 export function loadAmazonOrders(filters:AmazonAnalyticsFilters,search='',page=1,pageSize=25){return rpc<AmazonPageResult<AmazonOrderAnalytics>>('amazon_analytics_orders',{...rpcParams(filters),search:search||null,page,page_size:pageSize},'No se pudieron cargar los pedidos de Amazon.');}
 export function loadAmazonInventory(filters:Pick<AmazonAnalyticsFilters,'marketplaceIds'>,search='',page=1,pageSize=25){return rpc<AmazonPageResult<AmazonInventoryAnalytics>>('amazon_analytics_inventory',{marketplace_ids:filters.marketplaceIds.length?filters.marketplaceIds:null,search:search||null,page,page_size:pageSize},'No se pudo cargar el inventario de Amazon.');}
 export function loadAmazonUnmapped(search='',page=1,pageSize=25){return rpc<AmazonPageResult<AmazonUnmappedSku>>('amazon_analytics_unmapped_skus',{search:search||null,page,page_size:pageSize},'No se pudieron cargar los SKU sin vincular.');}
+export function loadAmazonProductMappings(sellerSku:string){return rpc<AmazonProductMapping[]>('amazon_get_product_mappings',{seller_sku:sellerSku},'No se pudieron cargar los vínculos del producto.');}
 export function setAmazonProductMapping(input:{sellerSku:string;productId:string;consumptionFactor:number}){return rpc<{ok:true;skuAssigned?:boolean}>('amazon_set_product_mapping',{seller_sku:input.sellerSku,product_id:input.productId,consumption_factor:input.consumptionFactor},'No se pudo guardar el vínculo del producto.');}
 export function deleteAmazonProductMapping(sellerSku:string){return rpc<{ok:true;deleted:number}>('amazon_delete_product_mapping',{seller_sku:sellerSku},'No se pudo eliminar el vínculo del producto.');}
+export function deleteAmazonProductMappingItem(sellerSku:string,productId:string){return rpc<{ok:true;deleted:number}>('amazon_delete_product_mapping_item',{seller_sku:sellerSku,product_id:productId},'No se pudo eliminar el componente del producto.');}
 export async function loadAmazonProductMetadata(asins:string[]):Promise<Record<string,AmazonProductMetadata>>{
   const unique=Array.from(new Set(asins.map(value=>String(value||'').trim()).filter(Boolean)));
   if(!unique.length)return {};
@@ -257,7 +264,16 @@ export function amazonMarketplaceCode(marketplaceId:string){
 }
 
 export async function loadAmazonProductOptions(search=''):Promise<AmazonProductOption[]>{
-  let query=supabase.from('products').select('id,name,sku').eq('active',true).order('name').limit(100);
+  let query=supabase.from('products').select('id,name,sku,last_supplier_id').eq('active',true).order('name').limit(100);
   const term=search.trim();if(term)query=query.or(`name.ilike.%${term.replace(/[,%()]/g,'')}%,sku.ilike.%${term.replace(/[,%()]/g,'')}%`);
-  const {data,error}=await query;if(error)throw error;return (data||[]).map((row:any)=>({id:row.id,name:row.name,sku:row.sku||null}));
+  const {data,error}=await query;if(error)throw error;
+  const rows=(data||[]) as Array<{id:string;name:string;sku:string|null;last_supplier_id:string|null}>;
+  const supplierIds=Array.from(new Set(rows.map(row=>row.last_supplier_id).filter((id):id is string=>Boolean(id))));
+  const supplierNames=new Map<string,string>();
+  if(supplierIds.length){
+    const {data:suppliers,error:supplierError}=await supabase.from('suppliers').select('id,name').in('id',supplierIds);
+    if(supplierError)throw supplierError;
+    for(const supplier of suppliers||[])supplierNames.set(String((supplier as any).id),String((supplier as any).name||''));
+  }
+  return rows.map(row=>({id:row.id,name:row.name,sku:row.sku||null,supplierName:row.last_supplier_id?supplierNames.get(row.last_supplier_id)||null:null}));
 }
