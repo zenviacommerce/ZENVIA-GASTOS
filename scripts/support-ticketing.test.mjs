@@ -23,7 +23,7 @@ test('Support module exposes incident/request ticket lifecycle with replies and 
 
 test('Support email notifications target the support mailbox and the ticket creator',async()=>{
   const fn=await read('supabase/functions/support-notify/index.ts');
-  assert.match(fn,/info@zenviacommerce\.com/);
+  assert.match(fn,/soporte@zenviacommerce\.com/);
   assert.match(fn,/RESEND_API_KEY/);
   assert.match(fn,/ticket\.created_by_email/);
   assert.match(fn,/support_email_events/);
