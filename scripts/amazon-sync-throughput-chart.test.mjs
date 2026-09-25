@@ -38,3 +38,20 @@ test('Amazon UI polls active sync jobs and refreshes analytics when the queue dr
   assert.match(page,/setAnalyticsRefresh\(value=>value\+1\)/);
   assert.match(page,/Sincronización de Amazon completada/);
 });
+
+
+test('Amazon worker cron removes the legacy duplicate schedule',async()=>{
+  const migration=await source('supabase/migrations/20260925114500_amazon_worker_cron_dedupe.sql');
+  assert.match(migration,/amazon-worker-minute/);
+  assert.match(migration,/amazon-sync-worker/);
+  assert.match(migration,/cron\.unschedule/);
+  assert.match(migration,/'\* \* \* \* \*'/);
+});
+
+test('manual sync handles an immediately drained queue without leaving stale pending state',async()=>{
+  const page=await source('src/pages/Amazon.tsx');
+  assert.match(page,/const nextStatus=await refresh\(\)/);
+  assert.match(page,/const nextPending=/);
+  assert.match(page,/else if\(result\.jobs\)/);
+  assert.match(page,/setManualSyncPending\(false\)/);
+});
