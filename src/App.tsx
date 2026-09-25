@@ -84,10 +84,22 @@ export default function App(){
 
  const allowedPages=useMemo<Page[]>(()=>{
    if(!access?.active) return [];
-   const visible:Page[]=access.role==='admin'?regularPages:regularPages.filter(item=>access.permissions.includes(item));
-   return access.role==='admin'?[...visible,'settings','admin']:[...visible,'settings'];
+   const moduleEnabled=(permission:MenuPermission)=>access.entitlements[`module.${permission}`]?.enabled ?? true;
+   const permitted=access.role==='admin'
+     ? regularPages
+     : regularPages.filter(item=>access.permissions.includes(item));
+   const visible:Page[]=permitted.filter(moduleEnabled);
+   const settingsEnabled=access.entitlements['module.settings']?.enabled ?? true;
+   const adminEnabled=access.entitlements['module.admin']?.enabled ?? true;
+   if(settingsEnabled)visible.push('settings');
+   if(access.role==='admin'&&adminEnabled)visible.push('admin');
+   return visible;
  },[access]);
- const can=(permission:MenuPermission)=>Boolean(access?.active&&(access.role==='admin'||access.permissions.includes(permission)));
+ const can=(permission:MenuPermission)=>Boolean(
+   access?.active
+   &&(access.role==='admin'||access.permissions.includes(permission))
+   &&(access.entitlements[`module.${permission}`]?.enabled ?? true)
+ );
 
  useEffect(()=>{
    const onSettingsDirty=(event:Event)=>setSettingsDirty(Boolean((event as CustomEvent<{dirty?:boolean}>).detail?.dirty));
@@ -277,7 +289,7 @@ export default function App(){
    {page==='amazon'&&can('amazon')&&<AmazonPage isAdmin={access.role==='admin'}/>} 
    {page==='support'&&can('support')&&<SupportPage isAdmin={access.role==='admin'} currentUserId={session.user.id}/>} 
    {page==='settings'&&<SettingsPage isAdmin={access.role==='admin'}/>} 
-   {page==='admin'&&access.role==='admin'&&<AdminPage currentUserId={session.user.id}/>} 
+   {page==='admin'&&access.role==='admin'&&<AdminPage currentUserId={session.user.id} workspaceName={access.workspaceName}/>} 
  </main>
  {can('invoices')&&<UploadInvoiceModal open={upload} onClose={()=>setUpload(false)} onSave={saveInvoice} categories={data.categories} existingInvoices={data.invoices}/>} 
  {can('invoices')&&<BulkInvoiceImportModal open={bulkUpload} onClose={()=>setBulkUpload(false)} categories={data.categories} existingInvoices={data.invoices} onSave={saveBulkInvoice} onFinished={finishBulkImport}/>} 
