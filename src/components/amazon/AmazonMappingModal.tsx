@@ -6,12 +6,13 @@ type Props={
   sellerSku:string;
   asin?:string|null;
   imageUrl?:string|null;
+  productName?:string|null;
   initialFactor?:number;
   onChanged:()=>void;
   onClose:()=>void;
 };
 
-export function AmazonMappingModal({sellerSku,asin,imageUrl,initialFactor=1,onChanged,onClose}:Props){
+export function AmazonMappingModal({sellerSku,asin,imageUrl,productName,initialFactor=1,onChanged,onClose}:Props){
   useEffect(()=>{
     const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')onClose();};
     window.addEventListener('keydown',onKey);
@@ -23,7 +24,7 @@ export function AmazonMappingModal({sellerSku,asin,imageUrl,initialFactor=1,onCh
       <header className="amazonMappingModalHead">
         <div className="amazonMappingModalIdentity">
           {imageUrl?<img className="amazonMappingModalThumb" src={imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer"/>:<span className="amazonMappingModalThumb amazonProductThumbPlaceholder"><ImageOff size={21}/></span>}
-          <div><span className="amazonSectionLabel">VINCULAR PRODUCTOS</span><strong><Link2 size={16}/>{sellerSku}</strong><small>{asin||'ASIN no disponible'}</small></div>
+          <div><span className="amazonSectionLabel">VINCULAR PRODUCTOS</span><strong><Link2 size={16}/>{productName||sellerSku}</strong><small>{sellerSku} · {asin||'ASIN no disponible'}</small></div>
         </div>
         <button className="amazonMappingModalClose" type="button" onClick={onClose} aria-label="Cerrar"><X size={19}/></button>
       </header>
