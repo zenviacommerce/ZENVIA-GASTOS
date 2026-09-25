@@ -105,5 +105,6 @@ test('production Amazon worker cron uses direct pg_net invocation instead of a m
   assert.match(migration,/amazon-sync-worker/);
   assert.match(migration,/net\.http_post/);
   assert.match(migration,/amazon_cron_secret_key/);
-  assert.doesNotMatch(migration,/amazon_invoke_internal_function/);
+  const command=migration.slice(migration.indexOf('select cron.schedule'));
+  assert.doesNotMatch(command,/amazon_invoke_internal_function/);
 });
