@@ -48,19 +48,21 @@ test('Finances sync persists normalized components after transaction upsert', as
 });
 
 
-test('Finance components persist gross amount when Amazon exposes Base plus Tax',async()=>{
+test('Finance components preserve raw Amazon Base and Tax values',async()=>{
   const parser=await source('supabase/functions/_shared/amazon/finance-components.ts');
-  assert.match(parser,/amount_original:amount\(entry\.node\)\+\(entry\.tax!==null/);
-  assert.match(parser,/gross \+ tax/);
+  assert.match(parser,/amount_original:amount\(entry\.node\)/);
+  assert.match(parser,/tax_amount_original:entry\.tax/);
 });
 
-test('Amazon finance normalization removes superseded deferred lifecycle rows and infers Spanish service-fee VAT',async()=>{
+test('Amazon finance normalization deduplicates lifecycle rows and normalizes fee VAT in one analytics view',async()=>{
   const migration=await source('supabase/migrations/20260925104000_amazon_fee_vat_and_lifecycle_normalization.sql');
   assert.match(migration,/DEFERRED_TRANSACTION_ID/);
-  assert.match(migration,/trg_amazon_prepare_finance_component/);
-  assert.match(migration,/trg_amazon_remove_superseded_finance_components/);
+  assert.match(migration,/superseded/);
+  assert.match(migration,/trg_amazon_mark_deferred_transaction_superseded/);
+  assert.match(migration,/amazon_finance_components_analytics/);
   assert.match(migration,/transaction_type='ServiceFee'/);
   assert.match(migration,/country_code/);
   assert.match(migration,/1\.21/);
   assert.match(migration,/ReserveDebit/);
+  assert.match(migration,/replace\(definition,'public\.amazon_finance_components','private\.amazon_finance_components_analytics'\)/);
 });
