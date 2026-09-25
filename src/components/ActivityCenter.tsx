@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LoaderCircle } from 'lucide-react';
-import { ACTIVITY_EVENT, type ActivityRecord } from '../services/activity';
+import { ACTIVITY_EVENT, getActiveActivities, type ActivityRecord } from '../services/activity';
 
 function clampProgress(value:number|undefined){
   if(value==null||!Number.isFinite(value))return null;
@@ -26,7 +26,7 @@ function etaLabel(activity:ActivityRecord,progress:number,now:number){
 }
 
 export function ActivityCenter(){
-  const [activities,setActivities]=useState<Record<string,ActivityRecord>>({});
+  const [activities,setActivities]=useState<Record<string,ActivityRecord>>(()=>Object.fromEntries(getActiveActivities().map(activity=>[activity.id,activity])));
   const [now,setNow]=useState(Date.now());
 
   useEffect(()=>{
