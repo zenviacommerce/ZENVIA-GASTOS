@@ -31,6 +31,9 @@ test('platform workspace list exposes users, Amazon accounts and monthly order u
   assert.match(platform,/monthlyOrders:\{value:monthlyOrders,limit:limitFor\(row\.id,'monthly_orders'\)\}/);
   assert.match(platform,/users:\{value:usersForWorkspace\.active,limit:limitFor\(row\.id,'users'\)\}/);
   assert.match(platform,/amazonAccounts:\{value:amazonForWorkspace,limit:limitFor\(row\.id,'amazon_accounts'\)\}/);
+  assert.match(platform,/select\('owner_id,id,status'\)/);
+  assert.match(platform,/row\.status!=='disabled'/);
+  assert.doesNotMatch(platform,/amazon_accounts'\)\.select\('owner_id,id,active'\)/);
   assert.match(api,/monthlyOrders:\{value:number;limit:number\|null\}/);
   assert.match(app,/Pedidos\/mes/);
   assert.match(app,/usageClass\(w\.usage\.monthlyOrders\.value,w\.usage\.monthlyOrders\.limit\)/);
