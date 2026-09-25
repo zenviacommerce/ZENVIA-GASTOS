@@ -35,6 +35,7 @@ test('Support is available to every active user and admin gets the management vi
   const [app,sidebar]=await Promise.all([read('src/App.tsx'),read('src/components/Sidebar.tsx')]);
   assert.match(app,/'support','settings'/);
   assert.match(app,/SupportPage/);
-  assert.match(sidebar,/LifeBuoy/);
+  assert.match(sidebar,/CircleHelp/);
+  assert.match(sidebar,/label:'Ayuda'/);
   assert.match(sidebar,/Soporte/);
 });
