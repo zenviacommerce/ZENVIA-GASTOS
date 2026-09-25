@@ -105,29 +105,97 @@ export function App(){
 }
 
 function Login(){
+  const [mode,setMode]=useState<'login'|'bootstrap'>('login');
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
+  const [confirm,setConfirm]=useState('');
+  const [fullName,setFullName]=useState('');
+  const [code,setCode]=useState('');
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
+
   const submit=async(e:FormEvent)=>{
     e.preventDefault();setBusy(true);setError('');
-    const {error}=await supabase.auth.signInWithPassword({email:email.trim(),password});
-    if(error)setError(error.message);
-    setBusy(false);
+    try{
+      if(mode==='bootstrap'){
+        if(password.length<10)throw new Error('La contraseña debe tener al menos 10 caracteres.');
+        if(password!==confirm)throw new Error('Las contraseñas no coinciden.');
+        await platformApi.bootstrapInitial({
+          email:'soporte@zenviacommerce.com',
+          fullName:fullName.trim(),
+          password,
+          code:code.trim(),
+        });
+        const login=await supabase.auth.signInWithPassword({email:'soporte@zenviacommerce.com',password});
+        if(login.error)throw login.error;
+      }else{
+        const {error}=await supabase.auth.signInWithPassword({email:email.trim(),password});
+        if(error)throw error;
+      }
+    }catch(err){
+      setError(err instanceof Error?err.message:'No se pudo acceder.');
+    }finally{setBusy(false)}
   };
+
   return <div className="loginPage">
     <form className="loginCard" onSubmit={submit}>
       <div className="loginLogo">Z</div>
       <div className="eyebrow">ZENVIA COMMERCE</div>
-      <h1>ZENVIA Platform</h1>
-      <p>Panel interno para clientes, planes, suscripciones y soporte.</p>
-      <label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required autoComplete="email"/></label>
-      <label>Contraseña<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="current-password"/></label>
+      <h1>{mode==='bootstrap'?'Activar ZENVIA Platform':'ZENVIA Platform'}</h1>
+      <p>{mode==='bootstrap'
+        ?'Configuración inicial del administrador interno. Este proceso solo puede realizarse una vez.'
+        :'Panel interno para clientes, planes, suscripciones y soporte.'}</p>
+      {mode==='bootstrap'?<>
+        <label>Administrador<input value="soporte@zenviacommerce.com" disabled/></label>
+        <label>Nombre<input value={fullName} onChange={e=>setFullName(e.target.value)} required autoComplete="name"/></label>
+        <label>Nueva contraseña<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required minLength={10} autoComplete="new-password"/></label>
+        <label>Repite la contraseña<input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} required minLength={10} autoComplete="new-password"/></label>
+        <label>Código de activación<input value={code} onChange={e=>setCode(e.target.value)} required autoComplete="one-time-code"/></label>
+      </>:<>
+        <label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required autoComplete="email"/></label>
+        <label>Contraseña<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="current-password"/></label>
+      </>}
       {error&&<div className="errorBox">{error}</div>}
-      <button className="primary wide" disabled={busy}>{busy?'Accediendo…':'Acceder'}</button>
-      <small>Solo usuarios autorizados como administradores de plataforma.</small>
+      <button className="primary wide" disabled={busy}>{busy?'Procesando…':mode==='bootstrap'?'Activar y entrar':'Acceder'}</button>
+      <button type="button" className="loginModeButton" onClick={()=>{setError('');setPassword('');setMode(mode==='login'?'bootstrap':'login')}}>
+        {mode==='login'?'Primera activación':'Volver al inicio de sesión'}
+      </button>
+      <small>Auth independiente de ZENVIA Gestión. Solo personal interno autorizado.</small>
     </form>
   </div>;
+}
+
+function PlatformInviteSetup({session}:{session:Session}){
+  const [password,setPassword]=useState('');
+  const [confirm,setConfirm]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const submit=async(e:FormEvent)=>{
+    e.preventDefault();setError('');
+    if(password.length<10){setError('La contraseña debe tener al menos 10 caracteres.');return;}
+    if(password!==confirm){setError('Las contraseñas no coinciden.');return;}
+    setBusy(true);
+    try{
+      const {error}=await supabase.auth.updateUser({
+        password,
+        data:{...(session.user.user_metadata||{}),platform_onboarding_pending:false},
+      });
+      if(error)throw error;
+      window.location.reload();
+    }catch(err){setError(err instanceof Error?err.message:'No se pudo activar el usuario.')}
+    finally{setBusy(false)}
+  };
+  return <div className="loginPage"><form className="loginCard" onSubmit={submit}>
+    <div className="loginLogo"><KeyRound size={20}/></div>
+    <div className="eyebrow">USUARIO INTERNO</div>
+    <h1>Activa tu acceso</h1>
+    <p>Define una contraseña propia para ZENVIA Platform. No se comparte con ZENVIA Gestión.</p>
+    <label>Email<input value={session.user.email||''} disabled/></label>
+    <label>Nueva contraseña<input type="password" minLength={10} value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="new-password"/></label>
+    <label>Repite la contraseña<input type="password" minLength={10} value={confirm} onChange={e=>setConfirm(e.target.value)} required autoComplete="new-password"/></label>
+    {error&&<div className="errorBox">{error}</div>}
+    <button className="primary wide" disabled={busy}>{busy?'Guardando…':'Crear contraseña y entrar'}</button>
+  </form></div>;
 }
 
 function AccessDenied({message}:{message:string}){
