@@ -8,5 +8,5 @@ test('Platform surfaces Edge Function response errors instead of generic invoke 
   const source=await read('platform/src/api.ts');
   assert.match(source,/FunctionsHttpError/);
   assert.match(source,/error\.context\.clone\(\)\.json\(\)/);
-  assert.match(source,/body\?\.error\|\|body\?\.message/);
+  assert.match(source,/payload\?\.error\|\|payload\?\.message/);
 });
