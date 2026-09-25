@@ -48,7 +48,7 @@ test('Amazon mapping modal uses the Amazon product name as its primary title',as
     source('src/components/amazon/AmazonUnmapped.tsx'),
   ]);
   assert.match(modal,/productName\?:string\|null/);
-  assert.match(modal,/\{productName\|\|sellerSku\}/);
+  assert.match(modal,/\{resolvedName\|\|sellerSku\}/);
   assert.match(modal,/\{sellerSku\} · \{asin\|\|'ASIN no disponible'\}/);
   assert.match(unmapped,/productName=\{editingRow\?\.asin\?metadata\[editingRow\.asin\]\?\.productName\|\|null:null\}/);
 });
