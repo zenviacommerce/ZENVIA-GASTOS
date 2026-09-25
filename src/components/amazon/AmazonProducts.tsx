@@ -110,7 +110,7 @@ export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:
         </tbody>
       </table>
     </div>
-    {editing&&<AmazonMappingModal sellerSku={editing} asin={editingRow?.asin} imageUrl={editingRow?.asin?metadata[editingRow.asin]?.imageUrl||null:null} defaultFactor={1} onChanged={()=>{void refresh();}} onClose={()=>setEditing(null)}/>}
+    {editing&&<AmazonMappingModal sellerSku={editing} asin={editingRow?.asin} imageUrl={editingRow?.asin?metadata[editingRow.asin]?.imageUrl||null:null} initialFactor={editingRow?.consumptionFactor||1} onChanged={()=>{void refresh();}} onClose={()=>setEditing(null)}/>}
     <div className="amazonPagination"><span>{loading&&!data.items.length?'Cargando productos…':`${data.total} productos · ${Math.min((page-1)*pageSize+1,data.total)}–${Math.min(page*pageSize,data.total)}`}</span><div><button disabled={page<=1} onClick={()=>setPage(value=>value-1)}>Anterior</button><span>Página {page}</span><button disabled={page*pageSize>=data.total} onClick={()=>setPage(value=>value+1)}>Siguiente</button></div></div>
   </section>;
 }
