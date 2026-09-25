@@ -17,10 +17,10 @@
 @media(max-width:1000px){.amazonCostRowsGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.amazonCostRowsGrid{grid-template-columns:1fr}}
 
-.amazonProductNameCell{min-width:260px}
+.amazonProductNameCell{min-width:360px;width:clamp(360px,28vw,520px)}
 .amazonProductIdentity{display:flex;align-items:center;gap:10px;min-width:0}
 .amazonProductIdentity>div{min-width:0}
-.amazonProductIdentity strong{display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.amazonProductIdentity strong{display:block;max-width:clamp(300px,24vw,460px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .amazonProductThumb{width:46px;height:46px;flex:0 0 46px;object-fit:contain;border:1px solid #e2e8f0;border-radius:9px;background:#fff}
 .amazonProductThumbPlaceholder{display:grid;place-items:center;color:#94a3b8;background:#f8fafc}
 [data-theme='dark'] .amazonProductThumb{border-color:#334155;background:#0f172a}
