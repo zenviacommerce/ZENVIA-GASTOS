@@ -60,10 +60,10 @@ test('Amazon seller credentials are scoped by workspace while app credentials ma
 });
 
 test('new workspace onboarding initializes business identity and expense categories',async()=>{
-  const platform=await read('supabase/functions/platform-admin/index.ts');
+  const platform=await read('supabase/functions/platform-bridge/index.ts');
   assert.match(platform,/from\('business_settings'\)\.insert/);
   assert.match(platform,/legal_name:legalName\|\|name/);
-  assert.match(platform,/from\('expense_categories'\)\.insert\(defaultCategories\)/);
+  assert.match(platform,/from\('expense_categories'\)\.insert\(categories\)/);
   for(const category of ['Mercancía','Transporte y logística','Publicidad y marketing','Comisiones marketplaces','Otros']){
     assert.match(platform,new RegExp(category));
   }

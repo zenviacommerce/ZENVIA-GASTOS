@@ -5,7 +5,7 @@ import test from 'node:test';
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 
 test('platform owner invites land in customer app and require password setup',async()=>{
-  const platform=await read('supabase/functions/platform-admin/index.ts');
+  const platform=await read('supabase/functions/platform-bridge/index.ts');
   assert.match(platform,/CUSTOMER_APP_URL/);
   assert.match(platform,/https:\/\/gestion\.zenviacommerce\.com/);
   assert.match(platform,/inviteUserByEmail\(ownerEmail,\{/);
