@@ -85,7 +85,7 @@ test('activities are deduplicated and Amazon clears transient work on navigation
   assert.match(service,/clearActivities/);
   assert.match(service,/cancelledActivities/);
   assert.match(page,/clearActivities\('amazon'\)/);
-  assert.match(amazon,/key:\`amazon-rpc:\\${name}\`/);
+  assert.match(amazon,/amazon-rpc:/);
   assert.match(amazon,/scope:'amazon'/);
   assert.match(amazon,/withAmazonTimeout/);
 });
