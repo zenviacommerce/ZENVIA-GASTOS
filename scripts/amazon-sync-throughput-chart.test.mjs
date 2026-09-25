@@ -55,3 +55,19 @@ test('manual sync handles an immediately drained queue without leaving stale pen
   assert.match(page,/else if\(result\.jobs\)/);
   assert.match(page,/setManualSyncPending\(false\)/);
 });
+
+
+test('Amazon summary uses indexable timestamp ranges for global finance rows',async()=>{
+  const migration=await source('supabase/migrations/20260925124500_amazon_analytics_timestamp_filters.sql');
+  assert.match(migration,/posted_date >= from_date::timestamptz/);
+  assert.match(migration,/posted_date < \(to_date\+1\)::timestamptz/);
+  assert.match(migration,/amazon_analytics_summary_without_fbm_20260917/);
+  assert.match(migration,/amazon_analytics_series_without_fbm_20260917/);
+});
+
+test('Amazon renders primary KPIs before loading detail and chart data in parallel',async()=>{
+  const summary=await source('src/components/amazon/AmazonSummary.tsx');
+  assert.match(summary,/setSummary\(nextSummary\)[\s\S]*setLoading\(false\)[\s\S]*Promise\.allSettled/);
+  assert.match(summary,/loadAmazonDetail\(filters\)/);
+  assert.match(summary,/loadAmazonSeries\(filters,grain\)/);
+});
