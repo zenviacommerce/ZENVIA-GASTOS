@@ -1,3 +1,4 @@
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
 export type PlatformRole='super_admin'|'support_admin'|'billing_admin';
@@ -36,7 +37,18 @@ export type AuditEntry={id:string;actor_user_id:string;workspace_id?:string|null
 
 async function invoke<T>(action:string,payload:Record<string,unknown>={}):Promise<T>{
   const {data,error}=await supabase.functions.invoke('platform-admin',{body:{action,...payload}});
-  if(error)throw new Error(error.message||'No se pudo completar la operación.');
+  if(error){
+    if(error instanceof FunctionsHttpError){
+      try{
+        const body=await error.context.clone().json();
+        const message=String(body?.error||body?.message||'').trim();
+        if(message)throw new Error(message);
+      }catch(parsedError){
+        if(parsedError instanceof Error&&parsedError.message&&parsedError.message!==error.message)throw parsedError;
+      }
+    }
+    throw new Error(error.message||'No se pudo completar la operación.');
+  }
   if(data?.error)throw new Error(String(data.error));
   return data as T;
 }
