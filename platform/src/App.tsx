@@ -1,22 +1,26 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  BarChart3, Building2, CircleDollarSign, Headphones, History, LogOut, Menu, Plus,
-  RefreshCcw, Search, ShieldCheck, TicketCheck, Users, X
+  BarChart3, Building2, CircleDollarSign, Headphones, History, KeyRound, LogOut, Menu, Plus,
+  RefreshCcw, Search, ShieldCheck, TicketCheck, UserPlus, Users, X
 } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import {
-  platformApi, type AuditEntry, type BillingPlan, type Bootstrap, type Ticket,
+  platformApi, type AuditEntry, type BillingPlan, type Bootstrap, type PlatformPermission,
+  type PlatformRole, type PlatformRoleDefinition, type PlatformUser, type Ticket,
   type TicketMessage, type Workspace, type WorkspaceStatus, formatDate, moneyFromCents
 } from './api';
 
-type Section='dashboard'|'clients'|'plans'|'tickets'|'audit';
+type Section='dashboard'|'clients'|'plans'|'tickets'|'users'|'audit';
 
 const statusLabels:Record<string,string>={
   active:'Activo',trialing:'Prueba',suspended:'Suspendido',cancelled:'Cancelado',
   open:'Abierto',in_progress:'En curso',waiting_user:'Esperando cliente',resolved:'Resuelto',closed:'Cerrado',
 };
 const priorityLabels:Record<string,string>={low:'Baja',normal:'Normal',high:'Alta',urgent:'Urgente'};
+const platformRoleLabels:Record<PlatformRole,string>={
+  super_admin:'Superadministrador',support_admin:'Soporte',billing_admin:'Facturación',operations_admin:'Operaciones',
+};
 
 function usageText(value:number,limit:number|null){
   return limit===null?`${value} / ∞`:`${value} / ${limit}`;
@@ -50,16 +54,19 @@ export function App(){
 
   if(!authReady)return <FullLoader text="Cargando ZENVIA Platform…"/>;
   if(!session)return <Login/>;
+  if(session.user.user_metadata?.platform_onboarding_pending===true)return <PlatformInviteSetup session={session}/>;
   if(bootstrapError)return <AccessDenied message={bootstrapError}/>;
   if(!bootstrap)return <FullLoader text="Comprobando acceso de plataforma…"/>;
 
+  const can=(permission:string)=>bootstrap.actor.role==='super_admin'||bootstrap.actor.permissions.includes(permission);
   const nav:Array<{id:Section;label:string;icon:typeof BarChart3}>=[
-    {id:'dashboard',label:'Resumen',icon:BarChart3},
-    {id:'clients',label:'Clientes',icon:Building2},
-    {id:'plans',label:'Planes',icon:CircleDollarSign},
-    {id:'tickets',label:'Tickets',icon:Headphones},
-    {id:'audit',label:'Auditoría',icon:History},
-  ];
+    can('dashboard.view')&&{id:'dashboard',label:'Resumen',icon:BarChart3},
+    can('clients.view')&&{id:'clients',label:'Clientes',icon:Building2},
+    can('plans.view')&&{id:'plans',label:'Planes',icon:CircleDollarSign},
+    can('tickets.view')&&{id:'tickets',label:'Tickets',icon:Headphones},
+    can('users.view')&&{id:'users',label:'Usuarios',icon:Users},
+    can('audit.view')&&{id:'audit',label:'Auditoría',icon:History},
+  ].filter(Boolean) as Array<{id:Section;label:string;icon:typeof BarChart3}>;
 
   return <div className="platformShell">
     <aside className={menuOpen?'platformSidebar open':'platformSidebar'}>
@@ -76,7 +83,7 @@ export function App(){
       })}</nav>
       <div className="platformIdentity">
         <div className="avatar">{(bootstrap.actor.email||'Z').slice(0,2).toUpperCase()}</div>
-        <div><strong>{bootstrap.actor.email}</strong><span>{bootstrap.actor.role==='super_admin'?'Superadministrador':bootstrap.actor.role==='support_admin'?'Soporte':'Facturación'}</span></div>
+        <div><strong>{bootstrap.actor.email}</strong><span>{platformRoleLabels[bootstrap.actor.role]}</span></div>
         <button onClick={()=>supabase.auth.signOut()} title="Cerrar sesión"><LogOut size={17}/></button>
       </div>
     </aside>
@@ -91,35 +98,104 @@ export function App(){
       {section==='clients'&&<Clients role={bootstrap.actor.role}/>}
       {section==='plans'&&<Plans role={bootstrap.actor.role}/>}
       {section==='tickets'&&<Tickets/>}
+      {section==='users'&&<PlatformUsers currentUserId={bootstrap.actor.id}/>}
       {section==='audit'&&<Audit/>}
     </main>
   </div>;
 }
 
 function Login(){
+  const [mode,setMode]=useState<'login'|'bootstrap'>('login');
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
+  const [confirm,setConfirm]=useState('');
+  const [fullName,setFullName]=useState('');
+  const [code,setCode]=useState('');
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
+
   const submit=async(e:FormEvent)=>{
     e.preventDefault();setBusy(true);setError('');
-    const {error}=await supabase.auth.signInWithPassword({email:email.trim(),password});
-    if(error)setError(error.message);
-    setBusy(false);
+    try{
+      if(mode==='bootstrap'){
+        if(password.length<10)throw new Error('La contraseña debe tener al menos 10 caracteres.');
+        if(password!==confirm)throw new Error('Las contraseñas no coinciden.');
+        await platformApi.bootstrapInitial({
+          email:'soporte@zenviacommerce.com',
+          fullName:fullName.trim(),
+          password,
+          code:code.trim(),
+        });
+        const login=await supabase.auth.signInWithPassword({email:'soporte@zenviacommerce.com',password});
+        if(login.error)throw login.error;
+      }else{
+        const {error}=await supabase.auth.signInWithPassword({email:email.trim(),password});
+        if(error)throw error;
+      }
+    }catch(err){
+      setError(err instanceof Error?err.message:'No se pudo acceder.');
+    }finally{setBusy(false)}
   };
+
   return <div className="loginPage">
     <form className="loginCard" onSubmit={submit}>
       <div className="loginLogo">Z</div>
       <div className="eyebrow">ZENVIA COMMERCE</div>
-      <h1>ZENVIA Platform</h1>
-      <p>Panel interno para clientes, planes, suscripciones y soporte.</p>
-      <label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required autoComplete="email"/></label>
-      <label>Contraseña<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="current-password"/></label>
+      <h1>{mode==='bootstrap'?'Activar ZENVIA Platform':'ZENVIA Platform'}</h1>
+      <p>{mode==='bootstrap'
+        ?'Configuración inicial del administrador interno. Este proceso solo puede realizarse una vez.'
+        :'Panel interno para clientes, planes, suscripciones y soporte.'}</p>
+      {mode==='bootstrap'?<>
+        <label>Administrador<input value="soporte@zenviacommerce.com" disabled/></label>
+        <label>Nombre<input value={fullName} onChange={e=>setFullName(e.target.value)} required autoComplete="name"/></label>
+        <label>Nueva contraseña<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required minLength={10} autoComplete="new-password"/></label>
+        <label>Repite la contraseña<input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} required minLength={10} autoComplete="new-password"/></label>
+        <label>Código de activación<input value={code} onChange={e=>setCode(e.target.value)} required autoComplete="one-time-code"/></label>
+      </>:<>
+        <label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required autoComplete="email"/></label>
+        <label>Contraseña<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="current-password"/></label>
+      </>}
       {error&&<div className="errorBox">{error}</div>}
-      <button className="primary wide" disabled={busy}>{busy?'Accediendo…':'Acceder'}</button>
-      <small>Solo usuarios autorizados como administradores de plataforma.</small>
+      <button className="primary wide" disabled={busy}>{busy?'Procesando…':mode==='bootstrap'?'Activar y entrar':'Acceder'}</button>
+      <button type="button" className="loginModeButton" onClick={()=>{setError('');setPassword('');setMode(mode==='login'?'bootstrap':'login')}}>
+        {mode==='login'?'Primera activación':'Volver al inicio de sesión'}
+      </button>
+      <small>Auth independiente de ZENVIA Gestión. Solo personal interno autorizado.</small>
     </form>
   </div>;
+}
+
+function PlatformInviteSetup({session}:{session:Session}){
+  const [password,setPassword]=useState('');
+  const [confirm,setConfirm]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const submit=async(e:FormEvent)=>{
+    e.preventDefault();setError('');
+    if(password.length<10){setError('La contraseña debe tener al menos 10 caracteres.');return;}
+    if(password!==confirm){setError('Las contraseñas no coinciden.');return;}
+    setBusy(true);
+    try{
+      const {error}=await supabase.auth.updateUser({
+        password,
+        data:{...(session.user.user_metadata||{}),platform_onboarding_pending:false},
+      });
+      if(error)throw error;
+      window.location.reload();
+    }catch(err){setError(err instanceof Error?err.message:'No se pudo activar el usuario.')}
+    finally{setBusy(false)}
+  };
+  return <div className="loginPage"><form className="loginCard" onSubmit={submit}>
+    <div className="loginLogo"><KeyRound size={20}/></div>
+    <div className="eyebrow">USUARIO INTERNO</div>
+    <h1>Activa tu acceso</h1>
+    <p>Define una contraseña propia para ZENVIA Platform. No se comparte con ZENVIA Gestión.</p>
+    <label>Email<input value={session.user.email||''} disabled/></label>
+    <label>Nueva contraseña<input type="password" minLength={10} value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="new-password"/></label>
+    <label>Repite la contraseña<input type="password" minLength={10} value={confirm} onChange={e=>setConfirm(e.target.value)} required autoComplete="new-password"/></label>
+    {error&&<div className="errorBox">{error}</div>}
+    <button className="primary wide" disabled={busy}>{busy?'Guardando…':'Crear contraseña y entrar'}</button>
+  </form></div>;
 }
 
 function AccessDenied({message}:{message:string}){
@@ -158,7 +234,7 @@ function Dashboard({bootstrap,onNavigate}:{bootstrap:Bootstrap;onNavigate:(s:Sec
       <section className="card platformInfo">
         <ShieldCheck/>
         <h2>Separación de seguridad</h2>
-        <p>Este panel no utiliza permisos de administrador de empresa. Todas las operaciones globales pasan por una API de plataforma que valida <code>platform_admins</code>.</p>
+        <p>Este panel utiliza un Auth y una base de datos propios. Las operaciones sobre clientes pasan por un puente servidor-servidor y nunca reutilizan la sesión de ZENVIA Gestión.</p>
       </section>
     </div>
   </div>;
@@ -372,6 +448,143 @@ function TicketDetail({ticketId,onClose,onChanged}:{ticketId:string;onClose:()=>
     </>}
     {notice&&<div className="successBox">{notice}</div>}
     {error&&<div className="errorBox">{error}</div>}
+  </Modal>;
+}
+
+
+function PlatformUsers({currentUserId}:{currentUserId:string}){
+  const [users,setUsers]=useState<PlatformUser[]>([]);
+  const [roles,setRoles]=useState<PlatformRoleDefinition[]>([]);
+  const [permissions,setPermissions]=useState<PlatformPermission[]>([]);
+  const [rolePermissions,setRolePermissions]=useState<Array<{role_key:PlatformRole;permission_key:string}>>([]);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  const [showInvite,setShowInvite]=useState(false);
+  const [editing,setEditing]=useState<PlatformUser|null>(null);
+
+  const refresh=useCallback(async()=>{
+    setLoading(true);setError('');
+    try{
+      const data=await platformApi.listUsers();
+      setUsers(data.users);setRoles(data.roles);setPermissions(data.permissions);setRolePermissions(data.rolePermissions);
+    }catch(e){setError(e instanceof Error?e.message:'No se pudieron cargar los usuarios.')}
+    finally{setLoading(false)}
+  },[]);
+  useEffect(()=>{void refresh()},[refresh]);
+
+  const roleName=(key:PlatformRole)=>roles.find(r=>r.role_key===key)?.name||platformRoleLabels[key]||key;
+  return <div className="page">
+    <PageHead eyebrow="SEGURIDAD" title="Usuarios de Platform" description="Personal interno con acceso a administración, soporte y facturación."
+      actions={<><button className="secondary" onClick={()=>void refresh()} disabled={loading}><RefreshCcw size={16}/> Actualizar</button><button className="primary" onClick={()=>setShowInvite(true)}><UserPlus size={16}/> Nuevo usuario</button></>}/>
+    {error&&<div className="errorBox">{error}</div>}
+    <section className="card tableCard">
+      <div className="platformUserTable">
+        <div className="platformUserRow platformUserHead"><div>Usuario</div><div>Rol</div><div>Estado</div><div>Último acceso</div><div>Alta</div><div></div></div>
+        {users.map(user=><div className="platformUserRow" key={user.user_id}>
+          <div className="entityCell"><strong>{user.full_name||user.email}</strong><span>{user.email}{user.user_id===currentUserId?' · Tú':''}</span></div>
+          <div>{roleName(user.role_key)}</div>
+          <div><span className={user.active?'pill active':'pill cancelled'}>{user.active?'Activo':'Desactivado'}</span></div>
+          <div>{formatDate(user.last_login_at)}</div>
+          <div>{formatDate(user.created_at)}</div>
+          <div><button className="secondary compactButton" onClick={()=>setEditing(user)}>Permisos</button></div>
+        </div>)}
+        {!loading&&!users.length&&<div className="emptyState">No hay usuarios internos.</div>}
+        {loading&&!users.length&&<div className="emptyState">Cargando usuarios…</div>}
+      </div>
+    </section>
+    {showInvite&&<InvitePlatformUser roles={roles} onClose={()=>setShowInvite(false)} onCreated={async()=>{setShowInvite(false);await refresh()}}/>}
+    {editing&&<PlatformUserEditor user={editing} currentUserId={currentUserId} roles={roles} permissions={permissions} rolePermissions={rolePermissions}
+      onClose={()=>setEditing(null)} onSaved={async()=>{setEditing(null);await refresh()}}/>}
+  </div>;
+}
+
+function InvitePlatformUser({roles,onClose,onCreated}:{roles:PlatformRoleDefinition[];onClose:()=>void;onCreated:()=>Promise<void>}){
+  const [email,setEmail]=useState('');
+  const [fullName,setFullName]=useState('');
+  const [roleKey,setRoleKey]=useState<PlatformRole>('support_admin');
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const submit=async(e:FormEvent)=>{
+    e.preventDefault();setBusy(true);setError('');
+    try{await platformApi.inviteUser({email:email.trim(),fullName:fullName.trim(),roleKey});await onCreated();}
+    catch(err){setError(err instanceof Error?err.message:'No se pudo invitar al usuario.')}
+    finally{setBusy(false)}
+  };
+  return <Modal title="Nuevo usuario interno" subtitle="Recibirá una invitación para crear su contraseña de ZENVIA Platform." onClose={onClose}>
+    <form className="formGrid" onSubmit={submit}>
+      <label>Nombre<input value={fullName} onChange={e=>setFullName(e.target.value)} required/></label>
+      <label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required/></label>
+      <label className="full">Rol<select value={roleKey} onChange={e=>setRoleKey(e.target.value as PlatformRole)}>
+        {roles.map(role=><option key={role.role_key} value={role.role_key}>{role.name}</option>)}
+      </select></label>
+      {error&&<div className="errorBox full">{error}</div>}
+      <div className="modalActions full"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy?'Invitando…':'Enviar invitación'}</button></div>
+    </form>
+  </Modal>;
+}
+
+function PlatformUserEditor({
+  user,currentUserId,roles,permissions,rolePermissions,onClose,onSaved,
+}:{
+  user:PlatformUser;currentUserId:string;roles:PlatformRoleDefinition[];permissions:PlatformPermission[];
+  rolePermissions:Array<{role_key:PlatformRole;permission_key:string}>;onClose:()=>void;onSaved:()=>Promise<void>;
+}){
+  const [roleKey,setRoleKey]=useState<PlatformRole>(user.role_key);
+  const [active,setActive]=useState(user.active);
+  const [overrides,setOverrides]=useState<Record<string,'inherit'|'allow'|'deny'>>(()=>{
+    const map:Record<string,'inherit'|'allow'|'deny'>={};
+    for(const p of user.permission_overrides)map[p.permission_key]=p.allowed?'allow':'deny';
+    return map;
+  });
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+
+  const defaults=useMemo(()=>new Set(rolePermissions.filter(x=>x.role_key===roleKey).map(x=>x.permission_key)),[rolePermissions,roleKey]);
+  const grouped=useMemo(()=>{
+    const map=new Map<string,PlatformPermission[]>();
+    for(const permission of permissions){const list=map.get(permission.module)||[];list.push(permission);map.set(permission.module,list);}
+    return [...map.entries()];
+  },[permissions]);
+
+  const save=async(e:FormEvent)=>{
+    e.preventDefault();setBusy(true);setError('');
+    try{
+      await platformApi.updateUser({
+        userId:user.user_id,roleKey,active,
+        permissionOverrides:Object.entries(overrides)
+          .filter(([,value])=>value!=='inherit')
+          .map(([permissionKey,value])=>({permissionKey,allowed:value==='allow'})),
+      });
+      await onSaved();
+    }catch(err){setError(err instanceof Error?err.message:'No se pudo actualizar el usuario.')}
+    finally{setBusy(false)}
+  };
+
+  return <Modal title={user.full_name||user.email} subtitle={user.email} onClose={onClose} wide>
+    <form onSubmit={save}>
+      <div className="userEditorTop">
+        <label>Rol<select value={roleKey} onChange={e=>setRoleKey(e.target.value as PlatformRole)}>{roles.map(role=><option key={role.role_key} value={role.role_key}>{role.name}</option>)}</select></label>
+        <label className="toggleLabel"><input type="checkbox" checked={active} disabled={user.user_id===currentUserId} onChange={e=>setActive(e.target.checked)}/><span>Usuario activo</span></label>
+      </div>
+      <div className="permissionHelp">Los permisos en <strong>Heredar</strong> siguen el rol. Puedes permitir o denegar excepciones concretas por usuario.</div>
+      <div className="permissionGroups">{grouped.map(([module,list])=><section className="permissionGroup" key={module}>
+        <h3>{module}</h3>
+        {list.map(permission=>{
+          const value=overrides[permission.permission_key]||'inherit';
+          const inherited=defaults.has(permission.permission_key);
+          return <div className="permissionRow" key={permission.permission_key}>
+            <div><strong>{permission.name}</strong><span>{permission.description||permission.permission_key}</span></div>
+            <select value={value} onChange={e=>setOverrides(all=>({...all,[permission.permission_key]:e.target.value as 'inherit'|'allow'|'deny'}))}>
+              <option value="inherit">Heredar · {inherited?'Permitido':'Denegado'}</option>
+              <option value="allow">Permitir</option>
+              <option value="deny">Denegar</option>
+            </select>
+          </div>;
+        })}
+      </section>)}</div>
+      {error&&<div className="errorBox">{error}</div>}
+      <div className="modalActions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy?'Guardando…':'Guardar usuario'}</button></div>
+    </form>
   </Modal>;
 }
 

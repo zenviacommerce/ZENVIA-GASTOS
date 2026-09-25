@@ -2,7 +2,7 @@ import { adminClient } from '../_shared/support/supabase.ts';
 
 const corsHeaders={
   'Access-Control-Allow-Origin':'*',
-  'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type, x-platform-token',
   'Access-Control-Allow-Methods':'POST, OPTIONS',
 };
 const SUPPORT_TO=(Deno.env.get('SUPPORT_EMAIL_TO')||'soporte@zenviacommerce.com').trim();
@@ -12,6 +12,11 @@ function response(data:unknown,status=200){return new Response(JSON.stringify(da
 function esc(value:unknown){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]||ch));}
 function typeLabel(value:string){return value==='incident'?'Incidencia':'Petición';}
 function statusLabel(value:string){return ({open:'Abierto',in_progress:'En curso',waiting_user:'Esperando usuario',resolved:'Resuelto',closed:'Cerrado'} as Record<string,string>)[value]||value;}
+async function sha256(value:string){
+  const encoded=new TextEncoder().encode(value);
+  const digest=await crypto.subtle.digest('SHA-256',encoded);
+  return [...new Uint8Array(digest)].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
 
 async function sendEmail(to:string,subject:string,html:string){
   const apiKey=(Deno.env.get('RESEND_API_KEY')||'').trim();
@@ -33,19 +38,32 @@ Deno.serve(async(req:Request)=>{
   if(req.method!=='POST')return response({error:'Método no permitido.'},405);
   const admin=adminClient();
   try{
-    const token=(req.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'').trim();
-    if(!token)return response({error:'Sesión no válida.'},401);
-    const {data:userData,error:userError}=await admin.auth.getUser(token);
-    if(userError||!userData?.user)return response({error:'Sesión no válida.'},401);
-    const authUser=userData.user;
-    const [{data:who,error:whoError},{data:platform,error:platformError}]=await Promise.all([
-      admin.from('app_users').select('user_id,data_owner_id,email,full_name,role,active').eq('user_id',authUser.id).maybeSingle(),
-      admin.from('platform_admins').select('user_id,role,active').eq('user_id',authUser.id).maybeSingle(),
-    ]);
-    if(whoError)throw whoError;
-    if(platformError)throw platformError;
-    const isPlatform=Boolean(platform?.active);
-    if(!isPlatform&&!who?.active)return response({error:'Usuario no autorizado.'},403);
+    const bridgeToken=(req.headers.get('x-platform-token')||'').trim();
+    let isPlatform=false;
+    let who:any=null;
+
+    if(bridgeToken){
+      const {data:bridge,error:bridgeError}=await admin.from('platform_bridge_secrets')
+        .select('token_sha256,active').eq('secret_id','primary').maybeSingle();
+      if(bridgeError)throw bridgeError;
+      isPlatform=Boolean(bridge?.active)&&await sha256(bridgeToken)===bridge?.token_sha256;
+      if(!isPlatform)return response({error:'Puente no autorizado.'},401);
+    }else{
+      const token=(req.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'').trim();
+      if(!token)return response({error:'Sesión no válida.'},401);
+      const {data:userData,error:userError}=await admin.auth.getUser(token);
+      if(userError||!userData?.user)return response({error:'Sesión no válida.'},401);
+      const authUser=userData.user;
+      const [{data:profile,error:whoError},{data:platform,error:platformError}]=await Promise.all([
+        admin.from('app_users').select('user_id,data_owner_id,email,full_name,role,active').eq('user_id',authUser.id).maybeSingle(),
+        admin.from('platform_admins').select('user_id,role,active').eq('user_id',authUser.id).maybeSingle(),
+      ]);
+      if(whoError)throw whoError;
+      if(platformError)throw platformError;
+      who=profile;
+      isPlatform=Boolean(platform?.active);
+      if(!isPlatform&&!who?.active)return response({error:'Usuario no autorizado.'},403);
+    }
 
     const body=await req.json().catch(()=>({}));
     const ticketId=String(body?.ticketId||'').trim();
