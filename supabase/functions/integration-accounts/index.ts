@@ -37,6 +37,9 @@ async function authenticate(req:Request,admin:any):Promise<Caller>{
     .eq('user_id',userData.user.id).maybeSingle();
   if(error)throw error;
   if(!caller?.active)throw new Error('Tu acceso está desactivado.');
+  const {data:workspace,error:workspaceError}=await admin.from('workspaces').select('status').eq('id',caller.data_owner_id).maybeSingle();
+  if(workspaceError)throw workspaceError;
+  if(!workspace||!['active','trialing'].includes(workspace.status))throw new Error('El acceso de tu empresa está suspendido.');
   if(caller.role!=='admin')throw new Error('Solo un administrador puede gestionar integraciones.');
   return caller as Caller;
 }
