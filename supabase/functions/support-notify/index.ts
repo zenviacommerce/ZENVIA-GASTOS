@@ -1,12 +1,12 @@
-import { adminClient, caller } from '../_shared/support/supabase.ts';
+import { adminClient } from '../_shared/support/supabase.ts';
 
 const corsHeaders={
   'Access-Control-Allow-Origin':'*',
   'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods':'POST, OPTIONS',
 };
-const SUPPORT_TO=(Deno.env.get('SUPPORT_EMAIL_TO')||'info@zenviacommerce.com').trim();
-const SUPPORT_FROM=(Deno.env.get('SUPPORT_EMAIL_FROM')||'ZENVIA Gestión <info@zenviacommerce.com>').trim();
+const SUPPORT_TO=(Deno.env.get('SUPPORT_EMAIL_TO')||'soporte@zenviacommerce.com').trim();
+const SUPPORT_FROM=(Deno.env.get('SUPPORT_EMAIL_FROM')||'ZENVIA Soporte <soporte@zenviacommerce.com>').trim();
 
 function response(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:{...corsHeaders,'Content-Type':'application/json'}});}
 function esc(value:unknown){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]||ch));}
@@ -33,7 +33,20 @@ Deno.serve(async(req:Request)=>{
   if(req.method!=='POST')return response({error:'Método no permitido.'},405);
   const admin=adminClient();
   try{
-    const who=await caller(req,admin);
+    const token=(req.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'').trim();
+    if(!token)return response({error:'Sesión no válida.'},401);
+    const {data:userData,error:userError}=await admin.auth.getUser(token);
+    if(userError||!userData?.user)return response({error:'Sesión no válida.'},401);
+    const authUser=userData.user;
+    const [{data:who,error:whoError},{data:platform,error:platformError}]=await Promise.all([
+      admin.from('app_users').select('user_id,data_owner_id,email,full_name,role,active').eq('user_id',authUser.id).maybeSingle(),
+      admin.from('platform_admins').select('user_id,role,active').eq('user_id',authUser.id).maybeSingle(),
+    ]);
+    if(whoError)throw whoError;
+    if(platformError)throw platformError;
+    const isPlatform=Boolean(platform?.active);
+    if(!isPlatform&&!who?.active)return response({error:'Usuario no autorizado.'},403);
+
     const body=await req.json().catch(()=>({}));
     const ticketId=String(body?.ticketId||'').trim();
     const event=String(body?.event||'').trim();
@@ -42,8 +55,11 @@ Deno.serve(async(req:Request)=>{
 
     const {data:ticket,error:ticketError}=await admin.from('support_tickets').select('*').eq('id',ticketId).maybeSingle();
     if(ticketError)throw ticketError;
-    if(!ticket||ticket.owner_id!==who.data_owner_id)return response({error:'Ticket no accesible.'},404);
-    if(who.role!=='admin'&&ticket.created_by!==who.user_id)return response({error:'Ticket no accesible.'},403);
+    if(!ticket)return response({error:'Ticket no accesible.'},404);
+    if(!isPlatform){
+      if(ticket.owner_id!==who?.data_owner_id)return response({error:'Ticket no accesible.'},404);
+      if(who?.role!=='admin'&&ticket.created_by!==who?.user_id)return response({error:'Ticket no accesible.'},403);
+    }
 
     let message:any=null;
     if(event==='reply'){
@@ -53,7 +69,7 @@ Deno.serve(async(req:Request)=>{
       message=result.data;
       if(!message)return response({error:'Respuesta no encontrada.'},404);
     }
-    if(event==='status'&&who.role!=='admin')return response({error:'Solo un administrador puede notificar cambios de estado.'},403);
+    if(event==='status'&&!isPlatform&&who?.role!=='admin')return response({error:'Solo un administrador puede notificar cambios de estado.'},403);
 
     const adminEvent=event==='status'||message?.author_role==='admin';
     const recipient=adminEvent?String(ticket.created_by_email||'').trim():SUPPORT_TO;
@@ -71,7 +87,7 @@ Deno.serve(async(req:Request)=>{
         <p><strong>Estado:</strong> ${esc(statusLabel(ticket.status))}</p>
         ${event==='reply'?'<p><strong>Respuesta de:</strong> '+esc(author)+'</p>':''}
         <div style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px">${esc(bodyText)}</div>
-        <p style="font-size:12px;color:#64748b">Abre ZENVIA Gestión → Soporte para consultar el historial completo, responder y ver los adjuntos.</p>
+        <p style="font-size:12px;color:#64748b">Abre ZENVIA Gestión → Soporte para consultar el historial completo, responder y ver los adjuntos. También puedes escribir a soporte@zenviacommerce.com.</p>
       </div>`;
 
     const sent=await sendEmail(recipient,subject,html);
