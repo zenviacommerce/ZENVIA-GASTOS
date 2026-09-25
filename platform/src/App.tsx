@@ -7,7 +7,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import {
   platformApi, type AuditEntry, type BillingPlan, type Bootstrap, type Ticket,
-  type TicketMessage, type Workspace, formatDate, moneyFromCents
+  type TicketMessage, type Workspace, type WorkspaceStatus, formatDate, moneyFromCents
 } from './api';
 
 type Section='dashboard'|'clients'|'plans'|'tickets'|'audit';
@@ -190,6 +190,16 @@ function Clients({role}:{role:string}){
     try{await platformApi.assignPlan(workspace.id,planKey);await refresh();}
     catch(e){setError(e instanceof Error?e.message:'No se pudo cambiar el plan.')}
   };
+  const changeStatus=async(workspace:Workspace,status:WorkspaceStatus)=>{
+    if(status===workspace.status)return;
+    if((status==='suspended'||status==='cancelled')&&!window.confirm(
+      status==='suspended'
+        ? `¿Suspender ${workspace.name}? Sus usuarios perderán acceso a los datos hasta que lo reactives.`
+        : `¿Cancelar ${workspace.name}? Sus usuarios dejarán de tener acceso a ZENVIA Gestión.`
+    ))return;
+    try{await platformApi.updateWorkspaceStatus(workspace.id,status);await refresh();}
+    catch(e){setError(e instanceof Error?e.message:'No se pudo cambiar el estado del cliente.')}
+  };
 
   return <div className="page">
     <PageHead eyebrow="CLIENTES" title="Workspaces" description="Empresas que utilizan ZENVIA Gestión y su estado de servicio."
@@ -201,7 +211,14 @@ function Clients({role}:{role:string}){
         <div className="tableRow tableHead"><div>Empresa</div><div>Estado</div><div>Plan</div><div>Usuarios</div><div>Amazon</div><div>Pedidos/mes</div><div>Alta</div></div>
         {shown.map(w=><div className="tableRow" key={w.id}>
           <div className="entityCell"><strong>{w.name}</strong><span>{w.legal_name||w.slug}</span></div>
-          <div><span className={`pill ${w.status}`}>{statusLabels[w.status]||w.status}</span></div>
+          <div>{role==='super_admin'
+            ?<select value={w.status} onChange={e=>void changeStatus(w,e.target.value as WorkspaceStatus)}>
+              <option value="active">Activo</option>
+              <option value="trialing">Prueba</option>
+              <option value="suspended">Suspendido</option>
+              <option value="cancelled">Cancelado</option>
+            </select>
+            :<span className={`pill ${w.status}`}>{statusLabels[w.status]||w.status}</span>}</div>
           <div>{role==='super_admin'||role==='billing_admin'
             ?<select value={w.subscription?.plan_key||'internal'} onChange={e=>void assign(w,e.target.value)}>{plans.map(p=><option value={p.plan_key} key={p.plan_key}>{p.name}</option>)}</select>
             :<span>{plans.find(p=>p.plan_key===w.subscription?.plan_key)?.name||w.subscription?.plan_key||'—'}</span>}</div>
