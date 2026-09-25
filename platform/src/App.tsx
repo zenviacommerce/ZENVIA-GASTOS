@@ -1,22 +1,26 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  BarChart3, Building2, CircleDollarSign, Headphones, History, LogOut, Menu, Plus,
-  RefreshCcw, Search, ShieldCheck, TicketCheck, Users, X
+  BarChart3, Building2, CircleDollarSign, Headphones, History, KeyRound, LogOut, Menu, Plus,
+  RefreshCcw, Search, ShieldCheck, TicketCheck, UserPlus, Users, X
 } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import {
-  platformApi, type AuditEntry, type BillingPlan, type Bootstrap, type Ticket,
+  platformApi, type AuditEntry, type BillingPlan, type Bootstrap, type PlatformPermission,
+  type PlatformRole, type PlatformRoleDefinition, type PlatformUser, type Ticket,
   type TicketMessage, type Workspace, type WorkspaceStatus, formatDate, moneyFromCents
 } from './api';
 
-type Section='dashboard'|'clients'|'plans'|'tickets'|'audit';
+type Section='dashboard'|'clients'|'plans'|'tickets'|'users'|'audit';
 
 const statusLabels:Record<string,string>={
   active:'Activo',trialing:'Prueba',suspended:'Suspendido',cancelled:'Cancelado',
   open:'Abierto',in_progress:'En curso',waiting_user:'Esperando cliente',resolved:'Resuelto',closed:'Cerrado',
 };
 const priorityLabels:Record<string,string>={low:'Baja',normal:'Normal',high:'Alta',urgent:'Urgente'};
+const platformRoleLabels:Record<PlatformRole,string>={
+  super_admin:'Superadministrador',support_admin:'Soporte',billing_admin:'Facturación',operations_admin:'Operaciones',
+};
 
 function usageText(value:number,limit:number|null){
   return limit===null?`${value} / ∞`:`${value} / ${limit}`;
@@ -50,16 +54,19 @@ export function App(){
 
   if(!authReady)return <FullLoader text="Cargando ZENVIA Platform…"/>;
   if(!session)return <Login/>;
+  if(session.user.user_metadata?.platform_onboarding_pending===true)return <PlatformInviteSetup session={session}/>;
   if(bootstrapError)return <AccessDenied message={bootstrapError}/>;
   if(!bootstrap)return <FullLoader text="Comprobando acceso de plataforma…"/>;
 
+  const can=(permission:string)=>bootstrap.actor.role==='super_admin'||bootstrap.actor.permissions.includes(permission);
   const nav:Array<{id:Section;label:string;icon:typeof BarChart3}>=[
-    {id:'dashboard',label:'Resumen',icon:BarChart3},
-    {id:'clients',label:'Clientes',icon:Building2},
-    {id:'plans',label:'Planes',icon:CircleDollarSign},
-    {id:'tickets',label:'Tickets',icon:Headphones},
-    {id:'audit',label:'Auditoría',icon:History},
-  ];
+    can('dashboard.view')&&{id:'dashboard',label:'Resumen',icon:BarChart3},
+    can('clients.view')&&{id:'clients',label:'Clientes',icon:Building2},
+    can('plans.view')&&{id:'plans',label:'Planes',icon:CircleDollarSign},
+    can('tickets.view')&&{id:'tickets',label:'Tickets',icon:Headphones},
+    can('users.view')&&{id:'users',label:'Usuarios',icon:Users},
+    can('audit.view')&&{id:'audit',label:'Auditoría',icon:History},
+  ].filter(Boolean) as Array<{id:Section;label:string;icon:typeof BarChart3}>;
 
   return <div className="platformShell">
     <aside className={menuOpen?'platformSidebar open':'platformSidebar'}>
@@ -76,7 +83,7 @@ export function App(){
       })}</nav>
       <div className="platformIdentity">
         <div className="avatar">{(bootstrap.actor.email||'Z').slice(0,2).toUpperCase()}</div>
-        <div><strong>{bootstrap.actor.email}</strong><span>{bootstrap.actor.role==='super_admin'?'Superadministrador':bootstrap.actor.role==='support_admin'?'Soporte':'Facturación'}</span></div>
+        <div><strong>{bootstrap.actor.email}</strong><span>{platformRoleLabels[bootstrap.actor.role]}</span></div>
         <button onClick={()=>supabase.auth.signOut()} title="Cerrar sesión"><LogOut size={17}/></button>
       </div>
     </aside>
@@ -91,6 +98,7 @@ export function App(){
       {section==='clients'&&<Clients role={bootstrap.actor.role}/>}
       {section==='plans'&&<Plans role={bootstrap.actor.role}/>}
       {section==='tickets'&&<Tickets/>}
+      {section==='users'&&<PlatformUsers currentUserId={bootstrap.actor.id}/>}
       {section==='audit'&&<Audit/>}
     </main>
   </div>;
@@ -158,7 +166,7 @@ function Dashboard({bootstrap,onNavigate}:{bootstrap:Bootstrap;onNavigate:(s:Sec
       <section className="card platformInfo">
         <ShieldCheck/>
         <h2>Separación de seguridad</h2>
-        <p>Este panel no utiliza permisos de administrador de empresa. Todas las operaciones globales pasan por una API de plataforma que valida <code>platform_admins</code>.</p>
+        <p>Este panel utiliza un Auth y una base de datos propios. Las operaciones sobre clientes pasan por un puente servidor-servidor y nunca reutilizan la sesión de ZENVIA Gestión.</p>
       </section>
     </div>
   </div>;
