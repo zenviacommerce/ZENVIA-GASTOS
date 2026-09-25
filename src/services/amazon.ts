@@ -2,6 +2,13 @@ import { supabase } from './supabase';
 import type { AmazonSettings } from './settingsSchema';
 import { startActivity } from './activity';
 
+function withAmazonTimeout<T>(promise:PromiseLike<T>,ms=30000):Promise<T>{
+  return new Promise<T>((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error('Amazon está tardando demasiado en responder. Inténtalo de nuevo.')),ms);
+    promise.then(value=>{clearTimeout(timer);resolve(value)},error=>{clearTimeout(timer);reject(error)});
+  });
+}
+
 export type AmazonMarketplaceStatus={id:string;countryCode:string;name:string;currencyCode:string;active:boolean};
 export type AmazonStatus={
   configured:boolean;connected:boolean;status:'not_configured'|'pending'|'connected'|'error'|'disabled'|string;
@@ -140,11 +147,14 @@ async function rpc<T>(name:string,params:Record<string,unknown>,fallback:string)
   const activity=startActivity({
     label:AMAZON_ACTIVITY_LABELS[name]||'Cargando datos de Amazon',
     detail:'Esperando respuesta de Amazon Analytics…',
-    showAfterMs:300,
+    showAfterMs:350,
+    key:`amazon-rpc:${name}`,
+    scope:'amazon',
+    maxAgeMs:35000,
   });
   try{
     if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
-    const call=()=>supabase.rpc(name,params);
+    const call=()=>withAmazonTimeout(supabase.rpc(name,params),30000);
     let result;
     try{result=await call();}
     catch(error){notifyAmazonConnectivityError(error);throw error;}
@@ -168,11 +178,11 @@ async function rpc<T>(name:string,params:Record<string,unknown>,fallback:string)
 }
 
 export async function loadAmazonStatus(integrationAccountId?:string):Promise<AmazonStatus>{
-  const activity=startActivity({label:'Comprobando conexión con Amazon',detail:'Consultando el estado de SP-API…',showAfterMs:300});
+  const activity=startActivity({label:'Comprobando conexión con Amazon',detail:'Consultando el estado de SP-API…',showAfterMs:800,key:'amazon-status',scope:'amazon',maxAgeMs:25000});
   try{
     if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
     try{
-      const {data,error}=await supabase.functions.invoke('amazon-status',{body:integrationAccountId?{integrationAccountId}:{}});
+      const {data,error}=await withAmazonTimeout(supabase.functions.invoke('amazon-status',{body:integrationAccountId?{integrationAccountId}:{}}),20000);
       if(error||!data||data.error){
         const next=new Error(message(data,error,'No se pudo consultar el estado de Amazon.'));
         notifyAmazonConnectivityError(next);
@@ -183,11 +193,11 @@ export async function loadAmazonStatus(integrationAccountId?:string):Promise<Ama
   }finally{activity.finish();}
 }
 export async function requestAmazonSync(integrationAccountId?:string){
-  const activity=startActivity({label:'Sincronizando Amazon',detail:'Solicitando trabajos de sincronización…',showAfterMs:200});
+  const activity=startActivity({label:'Sincronizando Amazon',detail:'Solicitando trabajos de sincronización…',showAfterMs:200,key:'amazon-sync',scope:'amazon',maxAgeMs:45000});
   try{
     if(typeof navigator!=='undefined'&&!navigator.onLine)throw offlineError();
     try{
-      const {data,error}=await supabase.functions.invoke('amazon-sync-manual',{body:integrationAccountId?{integrationAccountId}:{}});
+      const {data,error}=await withAmazonTimeout(supabase.functions.invoke('amazon-sync-manual',{body:integrationAccountId?{integrationAccountId}:{}}),40000);
       if(error||!data||data.error){
         const next=new Error(message(data,error,'No se pudo iniciar la sincronización de Amazon.'));
         notifyAmazonConnectivityError(next);

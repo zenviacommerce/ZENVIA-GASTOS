@@ -5,6 +5,12 @@ export type ActivityInput={
   current?:number;
   total?:number;
   showAfterMs?:number;
+  /** Replaces any previous visible activity with the same key. */
+  key?:string;
+  /** Lets a page clear its own transient activities on unmount/navigation. */
+  scope?:string;
+  /** Safety valve for network requests that never settle. */
+  maxAgeMs?:number;
 };
 
 export type ActivityRecord=ActivityInput&{
@@ -13,10 +19,13 @@ export type ActivityRecord=ActivityInput&{
   updatedAt:number;
 };
 
-export type ActivityPatch=Partial<Omit<ActivityRecord,'id'|'startedAt'|'updatedAt'>>;
+export type ActivityPatch=Partial<Omit<ActivityRecord,'id'|'startedAt'|'updatedAt'|'key'|'scope'|'maxAgeMs'>>;
 
 export const ACTIVITY_EVENT='zenvia:activity';
 const activeActivities=new Map<string,ActivityRecord>();
+const activityByKey=new Map<string,string>();
+const cancelledActivities=new Set<string>();
+const staleTimers=new Map<string,ReturnType<typeof setTimeout>>();
 
 export function getActiveActivities(){return Array.from(activeActivities.values());}
 
@@ -35,7 +44,29 @@ function emit(detail:ActivityEventDetail){
   window.dispatchEvent(new CustomEvent<ActivityEventDetail>(ACTIVITY_EVENT,{detail}));
 }
 
+function removeActivity(id:string,cancel=false){
+  const current=activeActivities.get(id);
+  if(cancel)cancelledActivities.add(id);
+  if(current?.key&&activityByKey.get(current.key)===id)activityByKey.delete(current.key);
+  activeActivities.delete(id);
+  const timer=staleTimers.get(id);
+  if(timer){clearTimeout(timer);staleTimers.delete(id);}
+  emit({type:'remove',id});
+}
+
+export function clearActivities(scope?:string){
+  for(const activity of Array.from(activeActivities.values())){
+    if(scope&&activity.scope!==scope)continue;
+    removeActivity(activity.id,true);
+  }
+}
+
 export function startActivity(input:ActivityInput){
+  if(input.key){
+    const previousId=activityByKey.get(input.key);
+    if(previousId)removeActivity(previousId,true);
+  }
+
   const id=uid();
   let state:ActivityRecord={
     id,
@@ -45,17 +76,27 @@ export function startActivity(input:ActivityInput){
     current:input.current,
     total:input.total,
     showAfterMs:input.showAfterMs??250,
+    key:input.key,
+    scope:input.scope,
+    maxAgeMs:input.maxAgeMs,
     startedAt:Date.now(),
     updatedAt:Date.now(),
   };
   let finished=false;
   activeActivities.set(id,state);
+  if(input.key)activityByKey.set(input.key,id);
   emit({type:'upsert',activity:state});
+
+  if(input.maxAgeMs&&input.maxAgeMs>0){
+    staleTimers.set(id,setTimeout(()=>removeActivity(id,true),input.maxAgeMs));
+  }
+
+  const stillActive=()=>!finished&&!cancelledActivities.has(id)&&activeActivities.has(id);
 
   return {
     id,
     update(patch:ActivityPatch){
-      if(finished)return;
+      if(!stillActive())return;
       state={...state,...patch,updatedAt:Date.now()};
       activeActivities.set(id,state);
       emit({type:'upsert',activity:state});
@@ -63,8 +104,12 @@ export function startActivity(input:ActivityInput){
     finish(){
       if(finished)return;
       finished=true;
-      activeActivities.delete(id);
-      emit({type:'remove',id});
+      const wasCancelled=cancelledActivities.delete(id);
+      if(!wasCancelled&&activeActivities.has(id))removeActivity(id);
+      else{
+        const timer=staleTimers.get(id);
+        if(timer){clearTimeout(timer);staleTimers.delete(id);}
+      }
     },
   };
 }
