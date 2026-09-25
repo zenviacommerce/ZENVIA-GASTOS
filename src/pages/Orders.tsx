@@ -33,6 +33,7 @@ import {
 import { errorMessage, showError, showInfo, showSuccess } from '../services/toast';
 import { persistRememberedFilter, rememberedFilter } from '../services/uiPreferences';
 import { formatAppDateTime } from '../services/formatting';
+import { startActivity } from '../services/activity';
 import type { GeneralSettings, ShippingSettings } from '../services/settingsSchema';
 
 const money=(value:number|null,currency='EUR')=>value==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:currency||'EUR'}).format(value);
@@ -353,31 +354,58 @@ export function Orders(){
   const existingLabel=async(order:FulfillmentOrder,mode:'print'|'download')=>{setBusyOrder(order.id);try{const result=await fetchOrderLabel(order.id);await handleBlob(labelBlob(result),order,mode)}catch(e){showError(errorMessage(e,'No se pudo recuperar la etiqueta.'))}finally{setBusyOrder(null)}};
   const generateLabels=async(targets:FulfillmentOrder[],scope:'pendientes'|'seleccionadas')=>{
     if(!targets.length){showSuccess(scope==='seleccionadas'?'No hay pedidos seleccionados que admitan etiqueta.':'No hay pedidos pendientes en el periodo seleccionado.');return;}
+    const activity=startActivity({
+      label:'Generando etiquetas de pedidos',
+      detail:`Preparando 0 de ${targets.length}`,
+      progress:0,
+      current:0,
+      total:targets.length,
+      showAfterMs:150,
+    });
     setBulkGenerating(true);setBulkProgress(`0/${targets.length}`);setError('');
     const zip=new JSZip(),usedNames=new Set<string>(),failed:string[]=[];
     let processed=0,generated=0;
-    for(const order of targets){
-      try{
-        const local=validateOrderForCarrier(order);if(local.blocking)throw new Error(local.issues[0]?.message||'El pedido necesita revisión antes de generar la etiqueta.');
-        const shipping=await getShippingOptions(order.id);
-        const option=automaticShippingOption(order,shipping.options);
-        if(!option)throw new Error('No se encontró un servicio válido según las reglas automáticas de envío.');
-        const carrierValidation=validateOrderForCarrier(order,option.carrierCode);
-        if(carrierValidation.blocking)throw new Error(carrierValidation.issues[0]?.message||'El transportista rechazará los datos del pedido.');
-        const result=await createOrderLabel(order.id,option,settings.orders.pushTrackingToMarketplace);
-        const prepared=await prepareLabelPdf(labelBlob(result),settings.shipping);
-        zip.file(uniqueLabelPdfFilename(order,usedNames,labelFilenameOptions),prepared);
-        generated+=1;
-      }catch(e){failed.push(`${order.orderNumber||order.orderId||order.id}: ${errorMessage(e,'Error al generar etiqueta')}`)}
-      finally{processed+=1;setBulkProgress(`${processed}/${targets.length}`)}
-    }
     try{
-      if(generated){const blob=await zip.generateAsync({type:'blob'});downloadBlob(blob,bulkLabelZipFilename(settings.orders.bulkZipFilenameTemplate,scope,iso(new Date())))}
+      for(const order of targets){
+        activity.update({
+          current:processed,
+          progress:targets.length?processed/targets.length*90:90,
+          detail:`Pedido ${order.orderNumber||order.orderId||processed+1} · ${processed} de ${targets.length}`,
+        });
+        try{
+          const local=validateOrderForCarrier(order);if(local.blocking)throw new Error(local.issues[0]?.message||'El pedido necesita revisión antes de generar la etiqueta.');
+          const shipping=await getShippingOptions(order.id);
+          const option=automaticShippingOption(order,shipping.options);
+          if(!option)throw new Error('No se encontró un servicio válido según las reglas automáticas de envío.');
+          const carrierValidation=validateOrderForCarrier(order,option.carrierCode);
+          if(carrierValidation.blocking)throw new Error(carrierValidation.issues[0]?.message||'El transportista rechazará los datos del pedido.');
+          const result=await createOrderLabel(order.id,option,settings.orders.pushTrackingToMarketplace);
+          const prepared=await prepareLabelPdf(labelBlob(result),settings.shipping);
+          zip.file(uniqueLabelPdfFilename(order,usedNames,labelFilenameOptions),prepared);
+          generated+=1;
+        }catch(e){failed.push(`${order.orderNumber||order.orderId||order.id}: ${errorMessage(e,'Error al generar etiqueta')}`)}
+        finally{
+          processed+=1;
+          setBulkProgress(`${processed}/${targets.length}`);
+          activity.update({
+            current:processed,
+            progress:targets.length?processed/targets.length*90:90,
+            detail:`Etiquetas procesadas · ${processed} de ${targets.length}`,
+          });
+        }
+      }
+      if(generated){
+        activity.update({progress:90,current:processed,detail:'Comprimiendo etiquetas…'});
+        const blob=await zip.generateAsync({type:'blob'},metadata=>{
+          activity.update({progress:90+Math.min(100,Math.max(0,metadata.percent))*0.1,current:processed,detail:`Comprimiendo ZIP · ${Math.round(metadata.percent)}%`});
+        });
+        downloadBlob(blob,bulkLabelZipFilename(settings.orders.bulkZipFilenameTemplate,scope,iso(new Date())));
+      }
       const freshOrders=await listFulfillmentOrders();setOrders(freshOrders);setCheckedIds(new Set());setSelected(current=>current?freshOrders.find(item=>item.id===current.id)||null:null);
       if(failed.length){const detail=failed.slice(0,3).join(' · ');showError(`${generated} etiquetas generadas. ${failed.length} no se pudieron generar${detail?`: ${detail}`:''}`)}
       else showSuccess(`${generated} etiquetas generadas y descargadas en un ZIP.`);
     }catch(e){showError(errorMessage(e,'Las etiquetas se generaron, pero no se pudo preparar el ZIP.'))}
-    finally{setBulkGenerating(false);setBulkProgress('')}
+    finally{setBulkGenerating(false);setBulkProgress('');activity.finish()}
   };
   const configuredBulkTargets=settings.orders.bulkScope==='selected'?selectedOrders:pendingOrders;
   const generateConfiguredLabels=()=>generateLabels(configuredBulkTargets,settings.orders.bulkScope==='selected'?'seleccionadas':'pendientes');

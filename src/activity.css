@@ -1,0 +1,132 @@
+.activityCenter{
+  position:fixed;
+  right:18px;
+  bottom:18px;
+  z-index:1900;
+  width:min(390px,calc(100vw - 30px));
+  display:grid;
+  gap:9px;
+  pointer-events:none;
+}
+.activityItem{
+  pointer-events:auto;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:11px;
+  align-items:start;
+  padding:13px 14px;
+  border:1px solid var(--border,#dbe2ea);
+  border-radius:14px;
+  background:color-mix(in srgb,var(--surface,#fff) 96%,transparent);
+  color:var(--text,#172033);
+  box-shadow:0 16px 42px rgba(15,23,42,.18);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  animation:activityIn .18s ease-out;
+}
+.activityIcon{
+  width:34px;
+  height:34px;
+  border-radius:10px;
+  display:grid;
+  place-items:center;
+  background:#ecfdf5;
+  color:#0f766e;
+}
+.activityBody{min-width:0}
+.activityTitle{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  min-width:0;
+}
+.activityTitle strong{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:12.5px;
+}
+.activityTitle span{
+  flex:none;
+  color:#0f766e;
+  font-size:11px;
+  font-weight:850;
+}
+.activityDetail{
+  margin-top:3px;
+  color:var(--text-secondary,#64748b);
+  font-size:11.5px;
+  line-height:1.35;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.activityTrack{
+  position:relative;
+  height:6px;
+  margin-top:10px;
+  overflow:hidden;
+  border-radius:999px;
+  background:var(--surface-soft,#eef2f7);
+}
+.activityTrack>span{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:#14b8a6;
+  transition:width .18s ease;
+}
+.activityTrack.isIndeterminate>span{
+  position:absolute;
+  width:42%;
+  animation:activityIndeterminate 1.05s ease-in-out infinite;
+}
+.activityMeta{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  margin-top:6px;
+  color:var(--text-secondary,#64748b);
+  font-size:10.5px;
+  line-height:1.25;
+}
+.activityMore{
+  justify-self:end;
+  padding:6px 9px;
+  border-radius:999px;
+  background:#0f172a;
+  color:white;
+  font-size:10.5px;
+  font-weight:800;
+  box-shadow:0 8px 24px rgba(15,23,42,.18);
+}
+html[data-theme='dark'] .activityItem{
+  background:rgba(17,24,39,.96);
+  border-color:#334155;
+}
+html[data-theme='dark'] .activityIcon{
+  background:#073c32;
+  color:#99f6e4;
+}
+html[data-theme='dark'] .activityTrack{background:#0f172a}
+@keyframes activityIndeterminate{
+  0%{left:-42%}
+  55%{left:52%}
+  100%{left:100%}
+}
+@keyframes activityIn{
+  from{opacity:0;transform:translateY(8px) scale(.985)}
+  to{opacity:1;transform:none}
+}
+@media(max-width:760px){
+  .activityCenter{
+    left:12px;
+    right:12px;
+    bottom:max(12px,env(safe-area-inset-bottom));
+    width:auto;
+  }
+  .activityItem{padding:12px}
+  .activityDetail{white-space:normal}
+}

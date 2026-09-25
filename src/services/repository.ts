@@ -11,6 +11,7 @@ import { loadAppSettings } from './settings';
 import { expenseImportPolicyFromSettings, type ExpenseImportPolicy } from './expenseImportPolicy';
 import { DEFAULT_APP_SETTINGS, type ProductsSettings, type SuppliersSettings } from './settingsSchema';
 import { applyExpenseInvoiceImportedAutomation, loadAutomationRule } from './automationRules';
+import { startActivity } from './activity';
 
 const numberOrZero = (value: unknown) => Number(value ?? 0) || 0;
 const normalizeProductKey = (value: string) => value
@@ -28,6 +29,12 @@ export async function bootstrapUser() {
 }
 
 export async function loadAppData(): Promise<AppData> {
+  const activity=startActivity({
+    label:'Actualizando datos de gestión',
+    detail:'Facturas, productos, proveedores y categorías…',
+    showAfterMs:350,
+  });
+  try{
   const [invoiceResult, lineResult, supplierResult, categoryResult, productResult] = await Promise.all([
     supabase.from('invoices').select('*').order('issue_date', { ascending: false, nullsFirst: false }),
     supabase.from('invoice_lines').select('*'),
@@ -109,6 +116,7 @@ export async function loadAppData(): Promise<AppData> {
   }));
 
   return { invoices, products, suppliers, categories };
+  }finally{activity.finish();}
 }
 
 async function sha256(file: File) {

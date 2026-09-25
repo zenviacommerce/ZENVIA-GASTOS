@@ -10,6 +10,7 @@ import { errorMessage, showError, showSuccess } from '../services/toast';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
 import { useSettings } from '../context/SettingsContext';
+import { startActivity } from '../services/activity';
 import '../sales-transfer.css';
 
 const IMPORT_LABEL='Importar facturas';
@@ -43,6 +44,11 @@ export function SalesInvoices(){
   const [epoch,setEpoch]=useState(0);
 
   const refreshTools=useCallback(async()=>{
+    const activity=startActivity({
+      label:'Cargando facturación',
+      detail:'Facturas, clientes y configuración…',
+      showAfterMs:350,
+    });
     setLoading(true);
     try{
       const [nextClients,nextInvoices,nextSettings,nextBranding]=await Promise.all([loadClients(),loadSalesInvoices(),loadBusinessSettings(),loadCompanyBranding()]);
@@ -50,7 +56,7 @@ export function SalesInvoices(){
       setSelectedInvoiceIds(current=>current.filter(id=>nextInvoices.some(invoice=>invoice.id===id)));
       return true;
     }catch(error){showError(errorMessage(error,'No se pudieron cargar las herramientas de facturación.'));return false;}
-    finally{setLoading(false);}
+    finally{setLoading(false);activity.finish();}
   },[]);
 
   useEffect(()=>{void refreshTools();},[refreshTools]);

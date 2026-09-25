@@ -182,7 +182,9 @@ html[data-theme='dark'] .zenviaRowAction.danger:hover{background:#3f171b;border-
    The drawer owns vertical scrolling; the page behind it stays fixed. */
 html.zenviaSideDrawerOpen,
 body.zenviaSideDrawerOpen{
-  overflow:hidden!important;
+  /* clip prevents background scrolling without creating a new scroll container,
+     which keeps the sticky desktop sidebar anchored when a drawer opens. */
+  overflow:clip!important;
   overscroll-behavior:none!important;
 }
 

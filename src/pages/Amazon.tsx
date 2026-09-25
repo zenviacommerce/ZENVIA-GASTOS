@@ -24,7 +24,7 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
   const amazonSettings=settings.amazon;
   const [status,setStatus]=useState<AmazonStatus|null>(()=>readViewCache<AmazonStatus>(AMAZON_STATUS_CACHE));const [loading,setLoading]=useState(()=>!readViewCache<AmazonStatus>(AMAZON_STATUS_CACHE));const [syncing,setSyncing]=useState(false);const [error,setError]=useState('');
   const [activeTab,setActiveTab]=useState<AmazonTab>('summary');
-  const [filters,setFilters]=useState<AmazonAnalyticsFilters>(()=>({...amazonInitialRange(amazonSettings,new Date()),marketplaceIds:amazonSettings.primaryMarketplaceId?[amazonSettings.primaryMarketplaceId]:[]}));
+  const [filters,setFilters]=useState<AmazonAnalyticsFilters>(()=>({...amazonInitialRange(amazonSettings,new Date()),marketplaceIds:[]}));
   const [summaryMeta,setSummaryMeta]=useState<AmazonSummaryData|null>(null);
   const [analyticsRefresh,setAnalyticsRefresh]=useState(0);
   const [refreshingAnalytics,setRefreshingAnalytics]=useState(false);
@@ -83,12 +83,13 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
   useEffect(()=>{
     if(!connected||!marketplaces.length)return;
     setFilters(current=>{
+      // An empty selection means "Todos" and is the default. Only clean up
+      // marketplaces that are no longer available; never force the primary one.
+      if(!current.marketplaceIds.length)return current;
       const valid=current.marketplaceIds.filter(id=>marketplaces.some(item=>item.id===id));
-      if(valid.length===current.marketplaceIds.length&&valid.length)return current;
-      const fallback=marketplaceSelection.primaryMarketplaceId?[marketplaceSelection.primaryMarketplaceId]:[];
-      return {...current,marketplaceIds:fallback};
+      return valid.length===current.marketplaceIds.length?current:{...current,marketplaceIds:valid};
     });
-  },[connected,marketplaceSelection.primaryMarketplaceId,marketplaces.map(item=>item.id).join(',')]);
+  },[connected,marketplaces.map(item=>item.id).join(',')]);
   return <div className="page amazonPage">
     <header className="pageHead amazonPageHead"><div><div className="eyebrow">AMAZON ANALYTICS</div><h1>Amazon</h1><p>Ventas, costes, rentabilidad e inventario de tus marketplaces europeos.</p></div><div className="actions amazonExternalLinks">{externalLinks.map(({label,href,Icon})=><a key={label} className="secondary amazonExternalLink" href={href} target="_blank" rel="noopener noreferrer"><Icon size={17}/><span>{label}</span><ExternalLink size={14}/></a>)}{connected&&<button className="secondary amazonRefreshView" onClick={refreshAnalytics} disabled={refreshingAnalytics}>{<RefreshCw size={17} className={refreshingAnalytics?'spin':''}/>}<span>{refreshingAnalytics?'Actualizando…':'Actualizar datos'}</span></button>}{isAdmin&&<button className="primary amazonSyncButton" onClick={()=>void syncNow()} disabled={syncing||loading||!status?.configured}>{syncing?<LoaderCircle size={17} className="spin"/>:<RefreshCw size={17}/>}<span>{syncing?'Sincronizando…':'Sincronizar ahora'}</span></button>}</div></header>
 
