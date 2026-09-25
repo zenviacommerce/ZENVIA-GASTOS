@@ -176,8 +176,8 @@ as
 select
   c.id,c.owner_id,c.amazon_account_id,c.finance_transaction_id,c.marketplace_id,
   c.amazon_order_id,c.seller_sku,c.asin,c.posted_date,c.component_key,
-  c.component_type,c.component_category,c.amount_original,c.currency_code,
-  c.tax_amount_original,c.amount_eur,c.tax_amount_eur,c.fx_rate,c.created_at,c.updated_at
+  c.component_type,c.component_category,c.amount_original::numeric as amount_original,c.currency_code,
+  c.tax_amount_original::numeric as tax_amount_original,c.amount_eur,c.tax_amount_eur,c.fx_rate,c.created_at,c.updated_at
 from public.amazon_finance_components c;
 
 grant select on private.amazon_finance_components_analytics to authenticated;
