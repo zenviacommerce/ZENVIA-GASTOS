@@ -1,4 +1,4 @@
-import { authenticateAdminUser, createAdminClient } from '../_shared/amazon/supabase.ts';
+import { authenticateAdminUser, createAdminClient, getAdminKey } from '../_shared/amazon/supabase.ts';
 import { ensureAmazonAccountAndMarketplaces } from '../_shared/amazon/marketplaces.ts';
 import { enqueueHourlySync } from '../_shared/amazon/sync.ts';
 import { filterAutomaticMarketplaces, loadAmazonAutomaticSyncSettings } from '../_shared/amazon/settings.ts';
@@ -9,6 +9,25 @@ const corsHeaders={
   'Access-Control-Allow-Methods':'POST, OPTIONS',
 };
 function response(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:{...corsHeaders,'Content-Type':'application/json'}});}
+
+
+async function kickWorker(){
+  const url=(Deno.env.get('SUPABASE_URL')||'').trim();
+  const key=getAdminKey();
+  if(!url||!key)return false;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),8_000);
+  try{
+    const result=await fetch(`${url.replace(/\/$/,'')}/functions/v1/amazon-sync-worker`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':key},
+      body:'{}',
+      signal:controller.signal,
+    });
+    return result.ok;
+  }catch{return false;}
+  finally{clearTimeout(timeout);}
+}
 
 Deno.serve(async(req:Request)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders});
@@ -41,7 +60,8 @@ Deno.serve(async(req:Request)=>{
       const created=await enqueueHourlySync(admin,bootstrap.account,marketplaces,'manual',new Date(),settings.enabledSources);
       jobs+=created.length;processed+=1;
     }
-    return response({ok:true,accounts:processed,jobs});
+    const workerKicked=jobs>0?await kickWorker():false;
+    return response({ok:true,accounts:processed,jobs,workerKicked});
   }catch(error){
     const message=error instanceof Error?error.message:'No se pudo solicitar la sincronización de Amazon.';
     const status=/sesión|administrador|acceso/i.test(message)?403:500;
