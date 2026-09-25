@@ -144,6 +144,7 @@ const AMAZON_ACTIVITY_LABELS:Record<string,string>={
   amazon_analytics_inventory:'Cargando inventario de Amazon',
   amazon_analytics_unmapped_skus:'Cargando SKU sin vincular',
   amazon_get_product_mappings:'Cargando vínculos de Amazon',
+  amazon_add_product_mapping:'Añadiendo componente de Amazon',
   amazon_set_product_mapping:'Guardando vínculo de Amazon',
   amazon_delete_product_mapping:'Eliminando vínculo de Amazon',
   amazon_delete_product_mapping_item:'Eliminando componente de Amazon',
@@ -222,7 +223,7 @@ export function loadAmazonOrders(filters:AmazonAnalyticsFilters,search='',page=1
 export function loadAmazonInventory(filters:Pick<AmazonAnalyticsFilters,'marketplaceIds'>,search='',page=1,pageSize=25){return rpc<AmazonPageResult<AmazonInventoryAnalytics>>('amazon_analytics_inventory',{marketplace_ids:filters.marketplaceIds.length?filters.marketplaceIds:null,search:search||null,page,page_size:pageSize},'No se pudo cargar el inventario de Amazon.');}
 export function loadAmazonUnmapped(search='',page=1,pageSize=25){return rpc<AmazonPageResult<AmazonUnmappedSku>>('amazon_analytics_unmapped_skus',{search:search||null,page,page_size:pageSize},'No se pudieron cargar los SKU sin vincular.');}
 export function loadAmazonProductMappings(sellerSku:string){return rpc<AmazonProductMapping[]>('amazon_get_product_mappings',{seller_sku:sellerSku},'No se pudieron cargar los vínculos del producto.');}
-export function setAmazonProductMapping(input:{sellerSku:string;productId:string;consumptionFactor:number}){return rpc<{ok:true;skuAssigned?:boolean}>('amazon_set_product_mapping',{seller_sku:input.sellerSku,product_id:input.productId,consumption_factor:input.consumptionFactor},'No se pudo guardar el vínculo del producto.');}
+export function setAmazonProductMapping(input:{sellerSku:string;productId:string;consumptionFactor:number}){return rpc<{ok:true;skuAssigned?:boolean}>('amazon_add_product_mapping',{seller_sku:input.sellerSku,product_id:input.productId,consumption_factor:input.consumptionFactor},'No se pudo guardar el vínculo del producto.');}
 export function deleteAmazonProductMapping(sellerSku:string){return rpc<{ok:true;deleted:number}>('amazon_delete_product_mapping',{seller_sku:sellerSku},'No se pudo eliminar el vínculo del producto.');}
 export function deleteAmazonProductMappingItem(sellerSku:string,productId:string){return rpc<{ok:true;deleted:number}>('amazon_delete_product_mapping_item',{seller_sku:sellerSku,product_id:productId},'No se pudo eliminar el componente del producto.');}
 export async function loadAmazonProductMetadata(asins:string[]):Promise<Record<string,AmazonProductMetadata>>{

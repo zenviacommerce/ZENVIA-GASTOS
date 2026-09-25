@@ -27,6 +27,7 @@ test('Amazon mapping editor exposes supplier and keeps a component list',async()
   assert.match(service,/last_supplier_id/);
   assert.match(service,/supplierName/);
   assert.match(service,/amazon_get_product_mappings/);
+  assert.match(service,/amazon_add_product_mapping/);
 });
 
 test('Amazon product profitability UI reports multiple linked components',async()=>{
@@ -34,4 +35,11 @@ test('Amazon product profitability UI reports multiple linked components',async(
   assert.match(products,/Gestionar vínculos/);
   assert.match(products,/productMappings/);
   assert.match(products,/componentes/);
+});
+
+test('legacy Amazon mapping setter remains replace-safe during staggered rollout',async()=>{
+  const sql=await source('supabase/migrations/20260925145500_amazon_mapping_backward_compat.sql');
+  assert.match(sql,/create\s+or\s+replace\s+function\s+public\.amazon_add_product_mapping/i);
+  assert.match(sql,/delete\s+from\s+public\.amazon_product_mappings/i);
+  assert.match(sql,/m\.product_id<>v_product/i);
 });
