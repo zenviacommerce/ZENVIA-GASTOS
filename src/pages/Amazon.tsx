@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ExternalLink, LoaderCircle, Megaphone, RefreshCw, ShoppingBag, WifiOff } from 'lucide-react';
 import { AMAZON_CONNECTIVITY_EVENT, amazonInitialRange, isAmazonConnectivityError, loadAmazonStatus, requestAmazonSync, resolveAmazonMarketplaceSelection, resolveAmazonVisibleKpis, type AmazonAnalyticsFilters, type AmazonStatus, type AmazonSummary as AmazonSummaryData } from '../services/amazon';
 import { errorMessage, showError, showSuccess } from '../services/toast';
@@ -30,6 +30,8 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
   const [analyticsRefresh,setAnalyticsRefresh]=useState(0);
   const [refreshingAnalytics,setRefreshingAnalytics]=useState(false);
   const [connectivityIssue,setConnectivityIssue]=useState(()=>typeof navigator!=='undefined'&&!navigator.onLine);
+  const previousPendingJobs=useRef(0);
+  const [manualSyncPending,setManualSyncPending]=useState(false);
 
   const refresh=useCallback(async()=>{
     setLoading(true);setError('');
@@ -62,8 +64,9 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
     setSyncing(true);
     try{
       const result=await requestAmazonSync();
-      showSuccess(result.jobs?`Sincronización solicitada: ${result.jobs} trabajos en cola.`:'Amazon está al día; no se han creado trabajos nuevos.');
+      showSuccess(result.jobs?`Sincronización iniciada: ${result.jobs} trabajos preparados.`:'Amazon está al día; no se han creado trabajos nuevos.');
       await refresh();
+      setManualSyncPending(result.jobs>0);
     }catch(e){
       if(!isAmazonConnectivityError(e))showError(errorMessage(e,'No se pudo iniciar la sincronización de Amazon.'));
     }finally{setSyncing(false);}
@@ -82,6 +85,25 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
   const defaultPreset=amazonSettings.defaultPeriod==='all'?'custom':amazonSettings.defaultPeriod;
   const jobs=status?.sync.jobCounts;
 
+
+  const pendingJobs=(jobs?.queued||0)+(jobs?.running||0);
+  useEffect(()=>{
+    const previous=previousPendingJobs.current;
+    previousPendingJobs.current=pendingJobs;
+
+    if(previous>0&&pendingJobs===0){
+      setAnalyticsRefresh(value=>value+1);
+      if(manualSyncPending)showSuccess('Sincronización de Amazon completada. Los datos se han actualizado.');
+      setManualSyncPending(false);
+    }
+
+    if(!connected||pendingJobs<=0)return;
+    const timer=window.setTimeout(()=>void refresh(),5_000);
+    return()=>window.clearTimeout(timer);
+  },[connected,pendingJobs,refresh,manualSyncPending]);
+
+  const syncActive=syncing||pendingJobs>0;
+
   useEffect(()=>{
     if(!connected||!marketplaces.length)return;
     setFilters(current=>{
@@ -93,7 +115,7 @@ export function AmazonPage({isAdmin}:{isAdmin:boolean}){
     });
   },[connected,marketplaces.map(item=>item.id).join(',')]);
   return <div className="page amazonPage">
-    <header className="pageHead amazonPageHead"><div><div className="eyebrow">AMAZON ANALYTICS</div><h1>Amazon</h1><p>Ventas, costes, rentabilidad e inventario de tus marketplaces europeos.</p></div><div className="actions amazonExternalLinks">{externalLinks.map(({label,href,Icon})=><a key={label} className="secondary amazonExternalLink" href={href} target="_blank" rel="noopener noreferrer"><Icon size={17}/><span>{label}</span><ExternalLink size={14}/></a>)}{connected&&<button className="secondary amazonRefreshView" onClick={refreshAnalytics} disabled={refreshingAnalytics}>{<RefreshCw size={17} className={refreshingAnalytics?'spin':''}/>}<span>{refreshingAnalytics?'Actualizando…':'Actualizar datos'}</span></button>}{isAdmin&&<button className="primary amazonSyncButton" onClick={()=>void syncNow()} disabled={syncing||loading||!status?.configured}>{syncing?<LoaderCircle size={17} className="spin"/>:<RefreshCw size={17}/>}<span>{syncing?'Sincronizando…':'Sincronizar ahora'}</span></button>}</div></header>
+    <header className="pageHead amazonPageHead"><div><div className="eyebrow">AMAZON ANALYTICS</div><h1>Amazon</h1><p>Ventas, costes, rentabilidad e inventario de tus marketplaces europeos.</p></div><div className="actions amazonExternalLinks">{externalLinks.map(({label,href,Icon})=><a key={label} className="secondary amazonExternalLink" href={href} target="_blank" rel="noopener noreferrer"><Icon size={17}/><span>{label}</span><ExternalLink size={14}/></a>)}{connected&&<button className="secondary amazonRefreshView" onClick={refreshAnalytics} disabled={refreshingAnalytics}>{<RefreshCw size={17} className={refreshingAnalytics?'spin':''}/>}<span>{refreshingAnalytics?'Actualizando…':'Actualizar datos'}</span></button>}{isAdmin&&<button className="primary amazonSyncButton" onClick={()=>void syncNow()} disabled={syncActive||loading||!status?.configured}>{syncActive?<LoaderCircle size={17} className="spin"/>:<RefreshCw size={17}/>}<span>{syncing?'Solicitando…':pendingJobs>0?'Sincronizando…':'Sincronizar ahora'}</span></button>}</div></header>
 
     <section aria-label="Estado de conexión" className={`card amazonCompactStatus ${connected?'isConnected':status?.status==='error'?'isError':''}`}><div className="amazonCompactState">{connected?<CheckCircle2 size={18}/>:<AlertTriangle size={18}/>}<strong>{statusLabel(status,loading)}</strong><span>{status?.account?.displayName||'Amazon SP-API'}</span></div><div className="amazonCompactMeta"><span>{marketplaces.length} marketplaces</span><span>{jobs?.running||0} en curso</span><span>{jobs?.queued||0} en cola</span>{jobs?.failed? <span className="amazonFailed">{jobs.failed} con error</span>:null}{status?.account?.lastSuccessfulSyncAt&&<span>Última sync {new Date(status.account.lastSuccessfulSyncAt).toLocaleString('es-ES')}</span>}</div></section>
     {connectivityIssue&&<div className="amazonOfflineNotice card"><WifiOff size={18}/><div><strong>Sin conexión a Internet</strong><span>Mostrando los últimos datos guardados. Amazon se actualizará automáticamente cuando vuelva la conexión.</span></div><button className="secondary" onClick={()=>{if(navigator.onLine){setConnectivityIssue(false);void refresh();setAnalyticsRefresh(value=>value+1);}}}><RefreshCw size={15}/> Reintentar</button></div>}

@@ -11,6 +11,24 @@ import { useSettings } from '../../context/SettingsContext';
 const integer=new Intl.NumberFormat('es-ES',{maximumFractionDigits:0});
 function spanDays(filters:AmazonAnalyticsFilters){return Math.max(1,Math.round((new Date(`${filters.to}T00:00:00`).getTime()-new Date(`${filters.from}T00:00:00`).getTime())/86400000)+1);}
 function dateRangeLabel(filters:AmazonAnalyticsFilters){const fmt=(value:string)=>new Date(value+'T12:00:00').toLocaleDateString('es-ES');return fmt(filters.from)+' – '+fmt(filters.to);}
+function chartPeriodDate(value:unknown){
+  const raw=String(value||'').slice(0,10);
+  const parsed=new Date(`${raw}T12:00:00`);
+  return Number.isNaN(parsed.getTime())?null:parsed;
+}
+function chartTickLabel(value:unknown,grain:'day'|'month'){
+  const date=chartPeriodDate(value);
+  if(!date)return String(value||'');
+  if(grain==='month')return date.toLocaleDateString('es-ES',{month:'short',year:'2-digit'}).replace('.','');
+  return date.toLocaleDateString('es-ES',{day:'2-digit',month:'short'}).replace('.','');
+}
+function chartTooltipLabel(value:unknown,grain:'day'|'month'){
+  const date=chartPeriodDate(value);
+  if(!date)return String(value||'');
+  return grain==='month'
+    ?date.toLocaleDateString('es-ES',{month:'long',year:'numeric'})
+    :date.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'long',year:'numeric'});
+}
 function DetailRow({label,value,note}:{label:string;value:string;note?:string}){return <div className="amazonDetailsRow"><div><span>{label}</span>{note&&<small>{note}</small>}</div><strong>{value}</strong></div>;}
 
 export function AmazonSummary({filters,onLoaded,refreshToken=0,visibleKpis}:{filters:AmazonAnalyticsFilters;onLoaded?:(summary:AmazonSummaryData)=>void;refreshToken?:number;visibleKpis?:AmazonKpiKey[]}){
@@ -152,7 +170,7 @@ export function AmazonSummary({filters,onLoaded,refreshToken=0,visibleKpis}:{fil
 
     <section className="card amazonChartCard">
       <div className="amazonCardHeading"><div><span className="amazonSectionLabel">EVOLUCIÓN</span><strong>Ventas y ganancia neta</strong></div><span className="amazonCountBadge">{grain==='day'?'Diario':'Mensual'}</span></div>
-      <div className="amazonChart"><ResponsiveContainer width="100%" height="100%"><LineChart data={series} margin={{top:8,right:16,bottom:0,left:0}}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="period" tickFormatter={value=>String(value).slice(5)}/><YAxis tickFormatter={value=>money.format(Number(value))}/><Tooltip formatter={(value:any)=>money.format(Number(value))}/><Legend/><Line type="monotone" dataKey="netSales" name="Ventas sin IVA" stroke="currentColor" strokeWidth={2} dot={false}/><Line type="monotone" dataKey="netProfit" name="Ganancia neta" stroke="currentColor" strokeDasharray="6 4" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>
+      <div className="amazonChart"><ResponsiveContainer width="100%" height="100%"><LineChart data={series} margin={{top:8,right:16,bottom:0,left:0}}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="period" tickFormatter={value=>chartTickLabel(value,grain)} interval="preserveStartEnd" minTickGap={34}/><YAxis tickFormatter={value=>money.format(Number(value))}/><Tooltip labelFormatter={value=>chartTooltipLabel(value,grain)} formatter={(value:any)=>money.format(Number(value))}/><Legend/><Line type="monotone" dataKey="netSales" name="Ventas sin IVA" stroke="currentColor" strokeWidth={2} dot={false}/><Line type="monotone" dataKey="netProfit" name="Ganancia neta" stroke="currentColor" strokeDasharray="6 4" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>
     </section>
 
     {!loading&&<AmazonProducts filters={filters} embedded refreshToken={refreshToken}/>} 
