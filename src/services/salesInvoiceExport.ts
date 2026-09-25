@@ -42,7 +42,7 @@ export async function exportSalesInvoices(selected:SalesInvoice[],settings:Busin
       });
       // Yield periodically so the global progress indicator can repaint during
       // large client-side PDF exports instead of appearing only at the end.
-      if(processed%4===0)await new Promise<void>(resolve=>window.setTimeout(resolve,0));
+      if(processed%4===0)await new Promise<void>(resolve=>setTimeout(resolve,0));
     }
     const exportTotal=selected.reduce((sum,invoice)=>sum+invoice.totalAmount,0);
     zip.file('LEEME.txt',`ZENVIA Gestión · ${label}\nFacturas: ${selected.length}\nTotal: ${formatAppMoney(exportTotal,generalSettings.currencyCode,generalSettings,{minimumFractionDigits:2,maximumFractionDigits:2})}\n`);
