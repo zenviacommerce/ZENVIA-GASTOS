@@ -44,3 +44,25 @@ code{background:#eef2f6;padding:2px 5px;border-radius:5px}
 .usageBadge{display:inline-flex;align-items:center;justify-content:center;min-width:58px;padding:4px 7px;border-radius:7px;background:#f2f4f7;color:#475467;font-size:11px;font-weight:800;white-space:nowrap}
 .usageBadge.nearLimit{background:#fffaeb;color:#b54708}
 .usageBadge.atLimit{background:#fef3f2;color:#b42318}
+
+.loginModeButton{width:100%;margin-top:10px;border:0;background:transparent;color:#475467;font-size:12px;font-weight:700;padding:7px}
+.loginModeButton:hover{color:#101828;text-decoration:underline}
+.platformUserTable{min-width:920px}
+.platformUserRow{display:grid;grid-template-columns:2fr 1fr .8fr 1fr 1fr auto;gap:14px;align-items:center;padding:14px 18px;border-bottom:1px solid #f0f2f5;font-size:13px}
+.platformUserRow:last-child{border-bottom:0}
+.platformUserHead{background:#f9fafb;color:#667085;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.compactButton{padding:6px 9px}
+.userEditorTop{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:end;margin-bottom:15px}
+.userEditorTop label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:700;color:#344054}
+.userEditorTop select,.permissionRow select{background:white;border:1px solid #d0d5dd;border-radius:8px;padding:8px 9px;color:#344054}
+.permissionHelp{font-size:12px;color:#667085;background:#f8fafc;border:1px solid #eaecf0;border-radius:9px;padding:10px 12px;margin-bottom:13px}
+.permissionGroups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.permissionGroup{border:1px solid #eaecf0;border-radius:11px;overflow:hidden}
+.permissionGroup h3{margin:0;padding:10px 12px;background:#f9fafb;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#667085}
+.permissionRow{display:grid;grid-template-columns:1fr 155px;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid #f0f2f5}
+.permissionRow>div{min-width:0;display:flex;flex-direction:column}
+.permissionRow strong{font-size:12px;color:#344054}
+.permissionRow span{font-size:10px;color:#98a2b3;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+[data-theme='dark'] .permissionHelp,[data-theme='dark'] .permissionGroup h3{background:#0f172a}
+@media(max-width:820px){.platformUserTable{overflow-x:auto}.permissionGroups{grid-template-columns:1fr}}
+@media(max-width:600px){.userEditorTop{grid-template-columns:1fr}.permissionRow{grid-template-columns:1fr}.permissionRow select{width:100%}}
