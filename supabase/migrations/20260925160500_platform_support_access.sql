@@ -17,6 +17,8 @@ create index if not exists platform_audit_logs_created_idx
   on public.platform_audit_logs(created_at desc);
 create index if not exists platform_audit_logs_workspace_idx
   on public.platform_audit_logs(workspace_id,created_at desc);
+create index if not exists platform_audit_logs_actor_idx
+  on public.platform_audit_logs(actor_user_id,created_at desc);
 
 alter table public.platform_audit_logs enable row level security;
 revoke all on public.platform_audit_logs from anon,public;
