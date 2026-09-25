@@ -62,6 +62,13 @@ test('Amazon mapping modal stays responsive without horizontal overflow',async()
   assert.match(css,/\.amazonMappingModalBody\{[\s\S]*overflow:auto/);
 });
 
+
+test('Amazon product table gives the Amazon product name useful desktop width',async()=>{
+  const css=await source('src/amazon.css');
+  assert.match(css,/\.amazonProductNameCell\{min-width:360px;width:clamp\(360px,28vw,520px\)\}/);
+  assert.match(css,/\.amazonProductIdentity strong\{display:block;max-width:clamp\(300px,24vw,460px\)/);
+});
+
 test('Amazon product profitability UI reports multiple linked components',async()=>{
   const products=await source('src/components/amazon/AmazonProducts.tsx');
   assert.match(products,/Gestionar vínculos/);
