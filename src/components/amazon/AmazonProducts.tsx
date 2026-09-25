@@ -33,7 +33,9 @@ export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:
   const [search,setSearch]=useState('');
   const [page,setPage]=useState(1);
   const initialProductsKey=stableCacheKey('amazon:products',{filters,search:'',page:1,pageSize:50,sortBy:'profit_before_ads',sortDir:'desc'});
-  const [data,setData]=useState<AmazonPageResult<AmazonProductAnalytics>>(()=>readViewCache<AmazonPageResult<AmazonProductAnalytics>>(initialProductsKey)||{items:[],page:1,pageSize:50,total:0});
+  const initialProducts=readViewCache<AmazonPageResult<AmazonProductAnalytics>>(initialProductsKey);
+  const [data,setData]=useState<AmazonPageResult<AmazonProductAnalytics>>(()=>initialProducts||{items:[],page:1,pageSize:50,total:0});
+  const [loading,setLoading]=useState(()=>!initialProducts);
   const [editing,setEditing]=useState<string|null>(null);
   const [error,setError]=useState('');
   const [sortBy,setSortBy]=useState<AmazonProductSort>('profit_before_ads');
@@ -45,8 +47,12 @@ export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:
     const key=stableCacheKey('amazon:products',{filters,search,page,pageSize,sortBy,sortDir});
     const cached=readViewCache<AmazonPageResult<AmazonProductAnalytics>>(key);
     if(cached)setData(cached);
+    setLoading(!cached);
     setError('');
-    return loadAmazonProducts(filters,search,page,pageSize,sortBy,sortDir).then(next=>{setData(next);writeViewCache(key,next);}).catch(e=>{if(!isAmazonConnectivityError(e))setError(errorMessage(e,'No se pudieron cargar los productos.'));});
+    return loadAmazonProducts(filters,search,page,pageSize,sortBy,sortDir)
+      .then(next=>{setData(next);writeViewCache(key,next);})
+      .catch(e=>{if(!isAmazonConnectivityError(e))setError(errorMessage(e,'No se pudieron cargar los productos.'));})
+      .finally(()=>setLoading(false));
   };
   useEffect(()=>{void refresh();},[filters.from,filters.to,filters.marketplaceIds.join(','),search,page,sortBy,sortDir,refreshToken]);
   useEffect(()=>{const asins=data.items.map(row=>row.asin).filter((value):value is string=>Boolean(value));if(!asins.length){setImages({});return}void loadAmazonProductImages(asins).then(setImages).catch(()=>setImages({}));},[data.items]);
@@ -100,11 +106,11 @@ export function AmazonProducts({filters,embedded=false,refreshToken=0}:{filters:
             <td>{money.format(row.amazonFeeVat)}</td>
             <td><button className="amazonInlineAction" onClick={()=>setEditing(editing===row.sellerSku?null:row.sellerSku)}><Link2 size={14}/>{row.productId?'Cambiar vínculo':'Vincular'}</button></td>
           </tr>)}
-          {!data.items.length&&<tr><td colSpan={14} className="amazonEmptyCell">No hay productos para este periodo.</td></tr>}
+          {!data.items.length&&<tr><td colSpan={14} className="amazonEmptyCell">{loading?'Cargando productos de Amazon…':'No hay productos para este periodo.'}</td></tr>}
         </tbody>
       </table>
     </div>
     {editing&&<AmazonMappingModal sellerSku={editing} asin={editingRow?.asin} imageUrl={editingRow?.asin?images[editingRow.asin]||null:null} initialProductId={editingRow?.productId} initialFactor={editingRow?.consumptionFactor||1} allowDelete={Boolean(editingRow?.productId)} onSaved={()=>{setEditing(null);void refresh();}} onClose={()=>setEditing(null)}/>}
-    <div className="amazonPagination"><span>{data.total} productos · {Math.min((page-1)*pageSize+1,data.total)}–{Math.min(page*pageSize,data.total)}</span><div><button disabled={page<=1} onClick={()=>setPage(value=>value-1)}>Anterior</button><span>Página {page}</span><button disabled={page*pageSize>=data.total} onClick={()=>setPage(value=>value+1)}>Siguiente</button></div></div>
+    <div className="amazonPagination"><span>{loading&&!data.items.length?'Cargando productos…':`${data.total} productos · ${Math.min((page-1)*pageSize+1,data.total)}–${Math.min(page*pageSize,data.total)}`}</span><div><button disabled={page<=1} onClick={()=>setPage(value=>value-1)}>Anterior</button><span>Página {page}</span><button disabled={page*pageSize>=data.total} onClick={()=>setPage(value=>value+1)}>Siguiente</button></div></div>
   </section>;
 }
