@@ -270,7 +270,7 @@ create policy support_storage_delete on storage.objects for delete to authentica
 using (
   bucket_id='support-attachments'
   and (
-    owner_id=(select auth.uid())
+    owner_id=(select auth.uid())::text
     or (select private.app_is_admin())
   )
 );
