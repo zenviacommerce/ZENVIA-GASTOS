@@ -106,6 +106,9 @@ Deno.serve(async (req: Request) => {
     if (!caller?.active || caller.role !== 'admin') return fail('Solo un administrador puede gestionar usuarios.', 403);
     const workspaceId = caller.workspace_id || caller.data_owner_id;
     if (!workspaceId) return fail('Workspace no configurado.', 403);
+    const { data: workspace, error: workspaceError } = await admin.from('workspaces').select('status').eq('id', workspaceId).maybeSingle();
+    if (workspaceError) throw workspaceError;
+    if (!workspace || !['active','trialing'].includes(workspace.status)) return fail('El acceso de tu empresa está suspendido.', 403);
 
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || 'list');
