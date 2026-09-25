@@ -52,7 +52,7 @@ test('Finance components persist normalized gross amount and explicit tax',async
   const parser=await source('supabase/functions/_shared/amazon/finance-components.ts');
   assert.match(parser,/amount_original:amount\(entry\.node\)\+\(entry\.tax!==null/);
   assert.match(parser,/tax_amount_original:entry\.tax/);
-  assert.match(parser,/gross \+ tax/i);
+  assert.match(parser,/normalized component as gross amount plus its tax share/i);
 });
 
 test('Amazon finance normalization deduplicates lifecycle rows and normalizes fee VAT in one analytics view',async()=>{
