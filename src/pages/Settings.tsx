@@ -934,13 +934,37 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
   };
   useEffect(()=>{void reload()},[]);
 
-  const providerMeta:Record<IntegrationProvider,{name:string;description:string}>={
-    amazon:{name:'Amazon',description:'Seller Central / SP-API. Admite varias cuentas y marketplaces por cuenta.'},
-    shopify:{name:'Shopify',description:'Tiendas Shopify detectadas en una cuenta conectada de Sendcloud.'},
-    sendcloud:{name:'Sendcloud',description:'Cuentas logísticas, etiquetas, transportistas y seguimiento.'},
-    gmail:{name:'Gmail',description:'Cuentas autorizadas para importar facturas recibidas.'},
+  const providerMeta:Record<IntegrationProvider,{name:string;description:string;logo:string;addLabel:string}>={
+    amazon:{
+      name:'Amazon',
+      description:'Conexión directa con Seller Central mediante SP-API. Admite varias cuentas y marketplaces.',
+      logo:'https://cdn.simpleicons.org/amazon/FF9900',
+      addLabel:'Conectar Amazon',
+    },
+    shopify:{
+      name:'Shopify',
+      description:'Tienda de venta conectada a través de una cuenta de Sendcloud.',
+      logo:'https://cdn.simpleicons.org/shopify/7AB55C',
+      addLabel:'Añadir Shopify',
+    },
+    sendcloud:{
+      name:'Sendcloud',
+      description:'Conexión logística para etiquetas, transportistas, seguimiento y canales vinculados.',
+      logo:'https://cdn.simpleicons.org/sendcloud/4D67FF',
+      addLabel:'Conectar Sendcloud',
+    },
+    gmail:{
+      name:'Gmail',
+      description:'Cuenta de Google autorizada para importar facturas recibidas.',
+      logo:'https://cdn.simpleicons.org/gmail/EA4335',
+      addLabel:'Autorizar Gmail',
+    },
   };
-  const ordered:IntegrationProvider[]=['amazon','shopify','sendcloud','gmail'];
+  // Shopify is not a standalone credential connection in the current architecture:
+  // it is a sales channel discovered through Sendcloud, so it is shown inside
+  // Sendcloud instead of pretending to be an independent integration.
+  const primaryProviders:IntegrationProvider[]=['amazon','sendcloud','gmail'];
+  const globalProviders:IntegrationProvider[]=['amazon','sendcloud','shopify','gmail'];
   const settingKey:Record<IntegrationProvider,keyof IntegrationsSettings>={
     gmail:'gmailEnabled',amazon:'amazonEnabled',sendcloud:'sendcloudEnabled',shopify:'shopifyEnabled',
   };
@@ -1180,17 +1204,19 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
     <div className="settingsSectionHero"><div className="settingsSectionIcon"><PlugZap size={22}/></div><div><h2>Integraciones</h2><p>Conecta y administra varias cuentas por servicio. Las credenciales se gestionan por cuenta; aquí no se muestran secretos guardados.</p></div></div>
 
     <div className="settingsSubsection">
-      <div className="settingsSubsectionHead"><div><h3>Cuentas conectadas</h3><p>Amazon, Shopify, Sendcloud y Gmail pueden tener varias cuentas dentro del mismo espacio de trabajo.</p></div></div>
+      <div className="settingsSubsectionHead"><div><h3>Cuentas conectadas</h3><p>Amazon, Sendcloud y Gmail se conectan como servicios independientes. Las tiendas Shopify se muestran dentro de Sendcloud porque actualmente llegan a ZENVIA a través de esa conexión logística.</p></div></div>
       {compatibilityMode&&<p className="settingsHelpText">Estás viendo conexiones actuales detectadas automáticamente. Ya puedes abrir el alta de nuevas cuentas; si este entorno todavía no tiene activado el backend multicuenta, al guardar se indicará de forma explícita.</p>}
       {loading?<div className="settingsInlineLoading">Cargando cuentas…</div>:<div className="integrationProviderGrid">
-        {ordered.map(id=>{
+        {primaryProviders.map(id=>{
           const items=accounts.filter(item=>item.provider===id);
           return <div className="integrationProviderCard" key={id}>
             <div className="integrationProviderHead">
-              <div><strong>{providerMeta[id].name}</strong><small>{providerMeta[id].description}</small></div>
-              <button type="button" className="secondary" disabled={busy!==null||(id==='shopify'&&!sendcloudAccounts.length)} onClick={()=>resetEditor(id)}><Plus size={14}/> {id==='shopify'?'Añadir tienda':'Añadir cuenta'}</button>
+              <div className="integrationProviderIdentity">
+                <span className="integrationProviderLogo"><img src={providerMeta[id].logo} alt="" aria-hidden="true"/></span>
+                <div><strong>{providerMeta[id].name}</strong><small>{providerMeta[id].description}</small></div>
+              </div>
+              <button type="button" className="secondary" disabled={busy!==null} onClick={()=>resetEditor(id)}><Plus size={14}/> {providerMeta[id].addLabel}</button>
             </div>
-            {id==='shopify'&&!sendcloudAccounts.length&&<p className="settingsHelpText">Conecta primero una cuenta de Sendcloud para detectar sus tiendas Shopify.</p>}
             <div className="integrationAccountList">
               {!items.length?<div className="settingsEmptyMini">Todavía no hay cuentas configuradas.</div>:items.map(account=><div className={`integrationAccountRow ${account.status==='disabled'?'isDisabled':''}`} key={account.id}>
                 <div className="integrationAccountMain">
@@ -1212,6 +1238,34 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
                 </div>
               </div>)}
             </div>
+            {id==='sendcloud'&&<div className="integrationDerivedChannels">
+              <div className="integrationDerivedHead">
+                <div className="integrationProviderIdentity">
+                  <span className="integrationProviderLogo isSmall"><img src={providerMeta.shopify.logo} alt="" aria-hidden="true"/></span>
+                  <div><strong>Shopify vía Sendcloud</strong><small>Estas tiendas no usan credenciales Shopify en ZENVIA: Sendcloud es el conector que entrega los pedidos.</small></div>
+                </div>
+                <button type="button" className="secondary" disabled={busy!==null||!sendcloudAccounts.length} onClick={()=>resetEditor('shopify')}><Plus size={14}/> Añadir tienda</button>
+              </div>
+              {!sendcloudAccounts.length?<div className="settingsEmptyMini">Conecta Sendcloud antes de añadir una tienda Shopify.</div>:accounts.filter(item=>item.provider==='shopify').length===0
+                ?<div className="settingsEmptyMini">No hay tiendas Shopify añadidas desde Sendcloud.</div>
+                :<div className="integrationAccountList">{accounts.filter(item=>item.provider==='shopify').map(account=><div className={`integrationAccountRow integrationDerivedRow ${account.status==='disabled'?'isDisabled':''}`} key={account.id}>
+                  <div className="integrationAccountMain">
+                    <span className={`integrationStatusDot status-${account.status}`}/>
+                    <div>
+                      <strong>{account.displayName}{account.isDefault&&<em>Predeterminada</em>}{account.legacy&&<em>Actual</em>}</strong>
+                      <small>{String(account.config?.shopUrl||account.externalAccountId||'Tienda Shopify')} · vía {sendcloudAccounts.find(parent=>parent.id===account.parentAccountId)?.displayName||'Sendcloud'}</small>
+                      {account.lastSuccessAt&&<small>Último éxito: {dateTime(account.lastSuccessAt)}</small>}
+                      {account.lastError&&<small className="integrationError">{account.lastError}</small>}
+                    </div>
+                  </div>
+                  <div className="integrationAccountActions">
+                    <button type="button" className="secondary" disabled={busy!==null||account.status==='disabled'} onClick={()=>void testAccount(account)}>{busy==='test:'+account.id?'Probando…':'Probar'}</button>
+                    <button type="button" className="secondary" disabled={busy!==null} onClick={()=>resetEditor('shopify',account)}>Configurar</button>
+                    {!account.isDefault&&account.status!=='disabled'&&<button type="button" className="secondary" disabled={busy!==null} onClick={()=>void makeDefault(account)}>Predeterminada</button>}
+                    {account.status!=='disabled'&&!account.legacy&&<button type="button" className="secondary dangerText" disabled={busy!==null} onClick={()=>void disconnect(account)}>Desconectar</button>}
+                  </div>
+                </div>)}</div>}
+            </div>}
           </div>;
         })}
       </div>}
@@ -1221,7 +1275,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
       <h3>Comportamiento global</h3>
       <p className="settingsHelpText">Estos interruptores afectan al servicio completo. La conexión, marketplaces y reglas concretas pertenecen a cada cuenta.</p>
       <div className="settingsToggleGrid">
-        {ordered.map(id=><label className="settingsToggleField" key={id}><input type="checkbox" checked={enabled(id)} onChange={e=>toggle(id,e.target.checked)}/><span><strong>{providerMeta[id].name}</strong><small>{enabled(id)?'Automatismos globales permitidos.':'Automatismos globales desactivados.'}</small></span></label>)}
+        {globalProviders.map(id=><label className="settingsToggleField" key={id}><input type="checkbox" checked={enabled(id)} onChange={e=>toggle(id,e.target.checked)}/><span><strong>{providerMeta[id].name}</strong><small>{enabled(id)?'Automatismos globales permitidos.':'Automatismos globales desactivados.'}</small></span></label>)}
       </div>
     </div>
 
@@ -1233,7 +1287,13 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
 
     {editorOpen&&<div className="integrationEditorBackdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)closeEditor()}}>
       <div className="integrationEditor" role="dialog" aria-modal="true" aria-label={editing?'Configurar integración':'Añadir integración'}>
-        <div className="integrationEditorHead"><div><strong>{editing?'Configurar':'Añadir'} {providerMeta[provider].name}</strong><small>{editing?.legacy?'Cuenta actual detectada en el sistema existente. Los secretos se mantienen en el backend actual hasta completar la migración multicuenta.':editing?'Los secretos guardados nunca se vuelven a mostrar. Déjalos vacíos para conservarlos.':'Configura la cuenta que quieres conectar.'}</small></div><button type="button" className="iconBtn" onClick={closeEditor} aria-label="Cerrar">×</button></div>
+        <div className="integrationEditorHead"><div className="integrationEditorTitle"><span className="integrationProviderLogo"><img src={providerMeta[provider].logo} alt="" aria-hidden="true"/></span><div><strong>{editing?'Configurar':provider==='shopify'?'Añadir':'Conectar'} {providerMeta[provider].name}</strong><small>{provider==='shopify'
+          ?'Shopify se añade como canal de venta de Sendcloud. No se solicita una contraseña de Shopify porque ZENVIA recibe esos pedidos desde Sendcloud.'
+          :editing?.legacy?'Cuenta actual detectada en el sistema existente. Los secretos se mantienen en el backend actual hasta completar la migración multicuenta.'
+          :editing?'Los secretos guardados nunca se vuelven a mostrar. Déjalos vacíos para conservarlos.'
+          :provider==='amazon'?'Conexión directa con Amazon SP-API. Introduce las credenciales de la cuenta Seller Central que quieras añadir.'
+          :provider==='sendcloud'?'Conexión directa con la API de Sendcloud. Cada cuenta puede tener sus propios canales de venta.'
+          :'Autoriza la cuenta de Google que quieras utilizar.'}</small></div></div><button type="button" className="iconBtn" onClick={closeEditor} aria-label="Cerrar">×</button></div>
         <div className="integrationEditorBody">
           {provider!=='gmail'&&<label className="settingsField"><span>Nombre / alias</span><input value={displayName} disabled={Boolean(editing?.legacy)} onChange={e=>setDisplayName(e.target.value)} placeholder={provider==='amazon'?'Ej. ZENVIA COMMERCE':provider==='sendcloud'?'Ej. Logística principal':'Ej. TrufaPet'}/></label>}
 
@@ -1267,11 +1327,13 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
           </>}
 
           {provider==='shopify'&&<>
-            <label className="settingsField"><span>Cuenta de Sendcloud</span><SelectField ariaLabel="Cuenta de Sendcloud para Shopify" value={parentAccountId} options={sendcloudAccounts.map(item=>({value:item.id,label:item.displayName}))} onChange={value=>{setParentAccountId(value);setShopifyStores([]);setShopifyIntegrationId('')}}/></label>
-            {!editing&&<div className="settingsInlineActions"><button type="button" className="secondary" disabled={busy!==null||!parentAccountId} onClick={()=>void discoverShopify()}>{busy==='discover-shopify'?'Buscando…':'Buscar tiendas Shopify'}</button></div>}
-            {!editing&&shopifyStores.length>0&&<label className="settingsField"><span>Tienda</span><SelectField ariaLabel="Tienda Shopify" value={shopifyIntegrationId} options={shopifyStores.map(item=>({value:String(item.id),label:item.shopName,description:item.shopUrl||undefined}))} onChange={value=>{setShopifyIntegrationId(value);const shop=shopifyStores.find(item=>String(item.id)===value);if(shop&&!displayName)setDisplayName(shop.shopName)}}/></label>}
-            {editing&&<div className="settingsResetPreview"><strong>Integración Sendcloud #{shopifyIntegrationId}</strong><small>{String(editing.config?.shopUrl||'La tienda se valida contra Sendcloud al probar la conexión.')}</small></div>}
-            <label className="settingsToggleField"><input type="checkbox" checked={syncOrders} onChange={e=>setSyncOrders(e.target.checked)}/><span><strong>Sincronizar pedidos</strong><small>Incluir esta tienda en las sincronizaciones de pedidos.</small></span></label>
+            <div className="settingsResetPreview"><strong>Shopify se conecta mediante Sendcloud</strong><small>ZENVIA usa la integración Shopify que ya exista en Sendcloud. Así se evita mantener dos conexiones distintas para los mismos pedidos.</small></div>
+            {sendcloudAccounts.length>1&&<label className="settingsField"><span>Cuenta logística</span><SelectField ariaLabel="Cuenta de Sendcloud para Shopify" value={parentAccountId} options={sendcloudAccounts.map(item=>({value:item.id,label:item.displayName}))} onChange={value=>{setParentAccountId(value);setShopifyStores([]);setShopifyIntegrationId('')}}/></label>}
+            {sendcloudAccounts.length===1&&<div className="integrationConnectionPath"><span>Shopify</span><span>→</span><strong>{sendcloudAccounts[0].displayName}</strong><span>→</span><span>ZENVIA</span></div>}
+            {!editing&&<div className="settingsInlineActions"><button type="button" className="secondary" disabled={busy!==null||!parentAccountId} onClick={()=>void discoverShopify()}>{busy==='discover-shopify'?'Buscando…':'Detectar tiendas en Sendcloud'}</button></div>}
+            {!editing&&shopifyStores.length>0&&<label className="settingsField"><span>Tienda Shopify detectada</span><SelectField ariaLabel="Tienda Shopify" value={shopifyIntegrationId} options={shopifyStores.map(item=>({value:String(item.id),label:item.shopName,description:item.shopUrl||undefined}))} onChange={value=>{setShopifyIntegrationId(value);const shop=shopifyStores.find(item=>String(item.id)===value);if(shop&&!displayName)setDisplayName(shop.shopName)}}/></label>}
+            {editing&&<div className="settingsResetPreview"><strong>{editing.displayName}</strong><small>{String(editing.config?.shopUrl||`Integración Sendcloud #${shopifyIntegrationId}`)}</small></div>}
+            <label className="settingsToggleField"><input type="checkbox" checked={syncOrders} onChange={e=>setSyncOrders(e.target.checked)}/><span><strong>Sincronizar pedidos</strong><small>Incluir los pedidos de esta tienda dentro de la sincronización de Sendcloud.</small></span></label>
           </>}
 
           {provider==='gmail'&&<>
@@ -1281,7 +1343,7 @@ function IntegrationsSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>voi
 
           {editing&&<label className="settingsToggleField"><input type="checkbox" checked={accountEnabled} onChange={e=>setAccountEnabled(e.target.checked)}/><span><strong>Cuenta activa</strong><small>Permite usar esta cuenta sin afectar a las demás del mismo proveedor.</small></span></label>}
         </div>
-        <div className="integrationEditorActions"><button type="button" className="secondary" disabled={busy!==null} onClick={closeEditor}>Cancelar</button><button type="button" className="primary" disabled={busy!==null} onClick={()=>void saveAccount()}>{busy==='save-account'?'Guardando…':provider==='gmail'&&!editing?'Autorizar y añadir':'Guardar cuenta'}</button></div>
+        <div className="integrationEditorActions"><button type="button" className="secondary" disabled={busy!==null} onClick={closeEditor}>Cancelar</button><button type="button" className="primary" disabled={busy!==null} onClick={()=>void saveAccount()}>{busy==='save-account'?'Guardando…':provider==='gmail'&&!editing?'Autorizar Gmail':provider==='shopify'&&!editing?'Añadir tienda':'Guardar cuenta'}</button></div>
       </div>
     </div>}
   </section>;

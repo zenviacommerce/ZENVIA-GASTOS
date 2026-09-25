@@ -19,6 +19,8 @@ test('SettingsProvider starts from cached preference instead of system default',
   assert.match(source,/function initialUserPreferences/);
   assert.match(source,/zenvia-gestion-theme-preference/);
   assert.match(source,/useState<UserPreferences>\(initialUserPreferences\)/);
+  const noUserBlock=source.match(/if\(!effectiveUserId\)\{[\s\S]*?return;\s*\}/)?.[0]||'';
+  assert.doesNotMatch(noUserBlock,/setPreferences\(clone\(DEFAULT_USER_PREFERENCES\)\)/);
 });
 
 test('App caches both the actual preference and resolved visual theme',async()=>{

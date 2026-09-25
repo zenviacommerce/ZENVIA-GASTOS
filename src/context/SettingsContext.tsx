@@ -74,7 +74,9 @@ export function SettingsProvider({children,userId}:{children:ReactNode;userId?:s
   const refresh=useCallback(async()=>{
     if(!effectiveUserId){
       setSettings(clone(DEFAULT_APP_SETTINGS));
-      setPreferences(clone(DEFAULT_USER_PREFERENCES));
+      // Keep the synchronously cached visual preferences while Supabase restores
+      // the session. Resetting them to defaults here caused a dark -> light flash
+      // on every reload for users whose saved preference is light.
       setWarnings([]);
       setError(null);
       return;

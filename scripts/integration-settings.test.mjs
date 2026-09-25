@@ -38,7 +38,7 @@ test('Integrations settings editor supports multi-account credentials without ex
   const page=await read('src/pages/Settings.tsx');
   const accounts=await read('src/services/integrationAccounts.ts');
   assert.match(page,/function IntegrationsSection/);
-  for(const label of ['Gmail','Amazon','Sendcloud','Shopify','Probar','Sincronizar','Añadir cuenta','Predeterminada'])assert.match(page,new RegExp(label,'i'),label);
+  for(const label of ['Gmail','Amazon','Sendcloud','Shopify','Probar','Sincronizar','Predeterminada','Conectar Amazon','Conectar Sendcloud','Autorizar Gmail'])assert.match(page,new RegExp(label,'i'),label);
   assert.match(page,/type="password"/);
   assert.match(page,/Refresh token/i);
   assert.match(page,/Secret key/i);
@@ -79,7 +79,22 @@ test('Amazon configuration is consolidated inside Integrations instead of a sepa
 
 test('legacy compatibility no longer disables adding another integration account',async()=>{
   const page=await read('src/pages/Settings.tsx');
-  assert.match(page,/Añadir cuenta/);
+  assert.match(page,/Conectar Amazon/);
+  assert.match(page,/Conectar Sendcloud/);
   assert.doesNotMatch(page,/disabled=\{busy!==null\|\|compatibilityMode/);
   assert.match(page,/backend multicuenta todavía no está activado/i);
+});
+
+test('integration UI shows provider logos and models Shopify honestly as a Sendcloud channel',async()=>{
+  const [page,css]=await Promise.all([
+    read('src/pages/Settings.tsx'),
+    read('src/settings.css'),
+  ]);
+  for(const brand of ['simpleicons.org/amazon','simpleicons.org/shopify','simpleicons.org/sendcloud','simpleicons.org/gmail'])assert.match(page,new RegExp(brand));
+  assert.match(page,/primaryProviders:IntegrationProvider\[\]=\['amazon','sendcloud','gmail'\]/);
+  assert.match(page,/Shopify vía Sendcloud/);
+  assert.match(page,/no usa credenciales Shopify|no se solicita una contraseña de Shopify/i);
+  assert.match(page,/Conexión directa con Amazon SP-API/i);
+  assert.match(css,/\.integrationProviderLogo/);
+  assert.match(css,/\.integrationDerivedChannels/);
 });
