@@ -60,24 +60,6 @@ function publicAccount(row:any){
     updatedAt:row.updated_at,
   };
 }
-async function ensureEnvironmentBackedAccounts(admin:any,ownerId:string){
-  const sendcloudPublic=clean(Deno.env.get('SENDCLOUD_PUBLIC_KEY')||Deno.env.get('SENDCLOUD_API_KEY'));
-  const sendcloudSecret=clean(Deno.env.get('SENDCLOUD_SECRET_KEY')||Deno.env.get('SENDCLOUD_API_SECRET'));
-  if(sendcloudPublic&&sendcloudSecret){
-    const {count,error}=await admin.from('integration_accounts').select('id',{count:'exact',head:true})
-      .eq('owner_id',ownerId).eq('provider','sendcloud').neq('status','disabled');
-    if(error)throw error;
-    if(Number(count||0)===0){
-      const inserted=await admin.from('integration_accounts').insert({
-        owner_id:ownerId,provider:'sendcloud',display_name:'Sendcloud',external_account_id:'legacy',
-        status:'connected',enabled:true,is_default:true,credential_source:'environment',
-        config:{syncOrders:true,shippingEnabled:true},
-      });
-      if(inserted.error)throw inserted.error;
-    }
-  }
-}
-
 async function listAccounts(admin:any,ownerId:string){
   const {data,error}=await admin.from('integration_accounts')
     .select('*').eq('owner_id',ownerId).order('provider').order('is_default',{ascending:false}).order('display_name');
@@ -121,11 +103,12 @@ function envAmazonCredentials(){
 async function amazonCredentials(admin:any,account:any){
   const stored=account.secret_id?await readVault(admin,account.secret_id):{};
   const env=envAmazonCredentials() as any;
+  const legacyEnvironment=account.credential_source==='environment';
   const credentials={
     clientId:clean((stored as any).clientId||(stored as any).client_id||env.client_id||env.clientId),
     clientSecret:clean((stored as any).clientSecret||(stored as any).client_secret||env.client_secret||env.clientSecret),
-    refreshToken:clean((stored as any).refreshToken||(stored as any).refresh_token||env.refresh_token||env.refreshToken),
-    sellerId:clean((stored as any).sellerId||(stored as any).seller_id||account.external_account_id||env.seller_id||env.sellerId),
+    refreshToken:clean((stored as any).refreshToken||(stored as any).refresh_token||(legacyEnvironment?(env.refresh_token||env.refreshToken):'')),
+    sellerId:clean((stored as any).sellerId||(stored as any).seller_id||account.external_account_id||(legacyEnvironment?(env.seller_id||env.sellerId):'')),
   };
   if(!credentials.clientId||!credentials.clientSecret||!credentials.refreshToken||!credentials.sellerId){
     throw new Error('Faltan credenciales de Amazon. Se necesitan Seller ID, refresh token y credenciales de la aplicación SP-API.');
@@ -257,7 +240,7 @@ Deno.serve(async(req:Request)=>{
     const body=await req.json().catch(()=>({}));
     const action=clean(body?.action||'list');
 
-    if(action==='list'){await ensureEnvironmentBackedAccounts(admin,caller.data_owner_id);return response({accounts:await listAccounts(admin,caller.data_owner_id)});}
+    if(action==='list')return response({accounts:await listAccounts(admin,caller.data_owner_id)});
 
     if(action==='discover_shopify'){
       const parentId=clean(body?.parentAccountId);
