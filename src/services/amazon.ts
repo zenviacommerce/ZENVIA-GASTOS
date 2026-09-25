@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 import type { AmazonSettings } from './settingsSchema';
 import { startActivity } from './activity';
 
-function withAmazonTimeout<T>(promise:Promise<T>,ms=30000):Promise<T>{
+function withAmazonTimeout<T>(promise:PromiseLike<T>,ms=30000):Promise<T>{
   return new Promise<T>((resolve,reject)=>{
     const timer=setTimeout(()=>reject(new Error('Amazon está tardando demasiado en responder. Inténtalo de nuevo.')),ms);
     promise.then(value=>{clearTimeout(timer);resolve(value)},error=>{clearTimeout(timer);reject(error)});
