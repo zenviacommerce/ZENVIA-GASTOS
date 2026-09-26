@@ -195,54 +195,8 @@ export async function replySupportTicket(ticketId:string,body:string,files:File[
   return {message,notification};
 }
 
-export async function updateSupportTicket(ticketId:string,changes:{type?:SupportTicketType;subject?:string;description?:string;status?:SupportTicketStatus;priority?:SupportTicketPriority;assignedTo?:string|null}){
-  const payload:any={updated_at:new Date().toISOString()};
-  if(changes.type)payload.type=changes.type;
-  if(changes.subject!==undefined){
-    const subject=changes.subject.trim();
-    if(subject.length<3)throw new Error('Escribe un asunto de al menos 3 caracteres.');
-    payload.subject=subject;
-  }
-  if(changes.description!==undefined){
-    const description=changes.description.trim();
-    if(description.length<3)throw new Error('Describe la incidencia o petición.');
-    payload.description=description;
-  }
-  if(changes.status){
-    payload.status=changes.status;
-    payload.resolved_at=changes.status==='resolved'?new Date().toISOString():null;
-    payload.closed_at=changes.status==='closed'?new Date().toISOString():null;
-  }
-  if(changes.priority)payload.priority=changes.priority;
-  if('assignedTo' in changes)payload.assigned_to=changes.assignedTo||null;
-  const {data,error}=await supabase.from('support_tickets').update(payload).eq('id',ticketId).select('*').single();
-  if(error)throw error;
-  const ticket=mapTicket(data);
-  if(changes.status)await notifySupport({ticketId,event:'status'});
-  return ticket;
-}
-
 export async function supportAttachmentUrl(storagePath:string){
   const {data,error}=await supabase.storage.from('support-attachments').createSignedUrl(storagePath,300);
   if(error)throw error;
   return data.signedUrl;
 }
-
-export async function deleteSupportTicket(ticketId:string){
-  const {data:attachments,error:attachmentsError}=await supabase
-    .from('support_attachments')
-    .select('storage_path')
-    .eq('ticket_id',ticketId);
-  if(attachmentsError)throw attachmentsError;
-
-  const {error}=await supabase.from('support_tickets').delete().eq('id',ticketId);
-  if(error)throw error;
-
-  const paths=(attachments||[]).map((row:any)=>String(row.storage_path||'')).filter(Boolean);
-  if(paths.length){
-    const removed=await supabase.storage.from('support-attachments').remove(paths);
-    if(removed.error)return {ok:true,storageCleanup:false,warning:removed.error.message};
-  }
-  return {ok:true,storageCleanup:true,warning:''};
-}
-
