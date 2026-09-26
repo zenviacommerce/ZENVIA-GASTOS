@@ -237,13 +237,45 @@ Deno.serve(async(req:Request)=>{
     if(action==='update_ticket'){
       const ticketId=asText(body?.ticketId,80);if(!ticketId)return fail('Falta el ticket.');
       const patch:any={updated_at:new Date().toISOString()};
+      if(['incident','request'].includes(body?.type))patch.type=body.type;
+      if('subject' in body){
+        const subject=asText(body?.subject,180);
+        if(subject.length<3)return fail('El asunto debe tener al menos 3 caracteres.');
+        patch.subject=subject;
+      }
+      if('description' in body){
+        const description=asText(body?.description,10000);
+        if(description.length<3)return fail('La descripción debe tener al menos 3 caracteres.');
+        patch.description=description;
+      }
       if(['open','in_progress','waiting_user','resolved','closed'].includes(body?.status))patch.status=body.status;
       if(['low','normal','high','urgent'].includes(body?.priority))patch.priority=body.priority;
       if('assignedTo' in body)patch.assigned_to=body.assignedTo||null;
-      if(patch.status==='resolved')patch.resolved_at=new Date().toISOString();
-      if(patch.status==='closed')patch.closed_at=new Date().toISOString();
-      const {data:updated,error}=await admin.from('support_tickets').update(patch).eq('id',ticketId).select('id,owner_id,ticket_number').single();
+      if('status' in patch){
+        patch.resolved_at=patch.status==='resolved'?new Date().toISOString():null;
+        patch.closed_at=patch.status==='closed'?new Date().toISOString():null;
+      }
+      const {data:updated,error}=await admin.from('support_tickets').update(patch).eq('id',ticketId).select('id,owner_id,ticket_number,type,subject,description,status,priority').single();
       if(error)throw error;return ok({ok:true,ticket:updated});
+    }
+
+    if(action==='delete_ticket'){
+      const ticketId=asText(body?.ticketId,80);if(!ticketId)return fail('Falta el ticket.');
+      const [{data:ticket,error:ticketError},{data:attachments,error:attachmentsError}]=await Promise.all([
+        admin.from('support_tickets').select('id,ticket_number,owner_id,subject').eq('id',ticketId).maybeSingle(),
+        admin.from('support_attachments').select('storage_path').eq('ticket_id',ticketId),
+      ]);
+      if(ticketError)throw ticketError;if(attachmentsError)throw attachmentsError;
+      if(!ticket)return fail('Ticket no encontrado.',404);
+      const {error:deleteError}=await admin.from('support_tickets').delete().eq('id',ticketId);
+      if(deleteError)throw deleteError;
+      const paths=(attachments||[]).map((row:any)=>String(row.storage_path||'')).filter(Boolean);
+      let storageCleanup=true,warning='';
+      if(paths.length){
+        const removed=await admin.storage.from('support-attachments').remove(paths);
+        if(removed.error){storageCleanup=false;warning=removed.error.message;}
+      }
+      return ok({ok:true,ticketNumber:ticket.ticket_number,subject:ticket.subject,storageCleanup,warning});
     }
 
     if(action==='reply_ticket'){
