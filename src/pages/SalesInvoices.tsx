@@ -52,8 +52,9 @@ export function SalesInvoices(){
     setLoading(true);
     try{
       const [nextClients,nextInvoices,nextSettings,nextBranding]=await Promise.all([loadClients(),loadSalesInvoices(),loadBusinessSettings(),loadCompanyBranding()]);
-      setClients(nextClients);setInvoices(nextInvoices);setSettings(nextSettings);setBranding(nextBranding);
-      setSelectedInvoiceIds(current=>current.filter(id=>nextInvoices.some(invoice=>invoice.id===id)));
+      const invoiceDocuments=nextInvoices.filter(invoice=>invoice.documentKind==='invoice');
+      setClients(nextClients);setInvoices(invoiceDocuments);setSettings(nextSettings);setBranding(nextBranding);
+      setSelectedInvoiceIds(current=>current.filter(id=>invoiceDocuments.some(invoice=>invoice.id===id)));
       return true;
     }catch(error){showError(errorMessage(error,'No se pudieron cargar las herramientas de facturación.'));return false;}
     finally{setLoading(false);activity.finish();}
