@@ -66,7 +66,7 @@ export function SupportPage({isAdmin,currentUserId}:{isAdmin:boolean;currentUser
     </header>
 
     {isAdmin&&<div className="supportScopeTabs">
-      <button className={scope==='all'?'active':''} onClick={()=>setScope('all')}><LifeBuoy size={16}/> Gestión de tickets</button>
+      <button className={scope==='all'?'active':''} onClick={()=>setScope('all')}><LifeBuoy size={16}/> Tickets de la empresa</button>
       <button className={scope==='mine'?'active':''} onClick={()=>setScope('mine')}><MessageCircle size={16}/> Mis tickets</button>
     </div>}
 
