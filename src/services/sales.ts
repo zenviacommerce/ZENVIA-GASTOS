@@ -45,7 +45,7 @@ export type SalesInvoiceSeries = {
   id: string;
   code: string;
   name: string;
-  kind: 'standard' | 'rectifying';
+  kind: 'standard' | 'rectifying' | 'receipt';
   year: number;
   prefix: string;
   nextNumber: number;
@@ -89,6 +89,9 @@ export type SalesInvoice = {
   taxRegistrationLabel?: string | null;
   taxRegistrationCountryCode?: string | null;
   invoiceType: 'standard' | 'rectifying';
+  documentKind: 'invoice' | 'receipt';
+  fiscalTreatment: 'taxable' | 'exempt' | 'non_taxable' | 'out_of_scope';
+  fiscalReason?: string | null;
   rectifiesInvoiceId?: string | null;
   invoiceNumber?: string | null;
   status: SalesInvoiceStatus;
@@ -170,6 +173,7 @@ export async function ensureSalesSeries(year:number):Promise<SalesInvoiceSeries[
   const rows=current??[];const missing:Record<string,unknown>[]=[];
   if(!rows.some((row:any)=>row.kind==='standard'))missing.push({code:'F',name:`Facturas ${year}`,kind:'standard',year,prefix:`F-${year}-`,next_number:1,padding:4});
   if(!rows.some((row:any)=>row.kind==='rectifying'))missing.push({code:'R',name:`Rectificativas ${year}`,kind:'rectifying',year,prefix:`R-${year}-`,next_number:1,padding:4});
+  if(!rows.some((row:any)=>row.kind==='receipt'))missing.push({code:'REC',name:`Recibos ${year}`,kind:'receipt',year,prefix:`REC-${year}-`,next_number:1,padding:4});
   if(missing.length){const {error:insertError}=await supabase.from('sales_invoice_series').insert(missing);if(insertError&&insertError.code!=='23505')throw insertError;}
   const {data,error:reloadError}=await supabase.from('sales_invoice_series').select('*').eq('year',year).eq('active',true).order('code');if(reloadError)throw reloadError;return (data??[]).map(mapSeries);
 }
@@ -194,7 +198,7 @@ export async function loadSalesInvoices():Promise<SalesInvoice[]>{
   for(const row of paymentResult.data??[]){const bucket=payments.get(row.invoice_id)??[];bucket.push({id:row.id,paymentDate:row.payment_date,amount:n(row.amount),method:row.method,reference:row.reference,notes:row.notes});payments.set(row.invoice_id,bucket);}
   return (invoiceResult.data??[]).map((row:any)=>{
     const liveClient:any=clients.get(row.client_id);const tax:any=taxRegs.get(row.tax_registration_id)||defaultTax;const draft=row.status==='draft';const invoicePayments=payments.get(row.id)??[];
-    return {id:row.id,clientId:row.client_id,clientName:row.client_name||liveClient?.name||'Cliente',seriesId:row.series_id,seriesName:series.get(row.series_id)||'Serie',taxRegistrationId:row.tax_registration_id||tax?.id||null,taxRegistrationLabel:row.issuer_tax_registration_label||tax?.label||null,taxRegistrationCountryCode:row.issuer_tax_country_code||tax?.country_code||null,invoiceType:row.invoice_type,rectifiesInvoiceId:row.rectifies_invoice_id,invoiceNumber:row.invoice_number,status:row.status,issueDate:row.issue_date,operationDate:row.operation_date,dueDate:row.due_date,currency:row.currency||DEFAULT_APP_SETTINGS.general.currencyCode,subtotal:n(row.subtotal),discountAmount:n(row.discount_amount),taxAmount:n(row.tax_amount),totalAmount:n(row.total_amount),paymentMethod:row.payment_method,notes:row.notes,
+    return {id:row.id,clientId:row.client_id,clientName:row.client_name||liveClient?.name||'Cliente',seriesId:row.series_id,seriesName:series.get(row.series_id)||'Serie',taxRegistrationId:row.tax_registration_id||tax?.id||null,taxRegistrationLabel:row.issuer_tax_registration_label||tax?.label||null,taxRegistrationCountryCode:row.issuer_tax_country_code||tax?.country_code||null,invoiceType:row.invoice_type,documentKind:row.document_kind||'invoice',fiscalTreatment:row.fiscal_treatment||'taxable',fiscalReason:row.fiscal_reason||null,rectifiesInvoiceId:row.rectifies_invoice_id,invoiceNumber:row.invoice_number,status:row.status,issueDate:row.issue_date,operationDate:row.operation_date,dueDate:row.due_date,currency:row.currency||DEFAULT_APP_SETTINGS.general.currencyCode,subtotal:n(row.subtotal),discountAmount:n(row.discount_amount),taxAmount:n(row.tax_amount),totalAmount:n(row.total_amount),paymentMethod:row.payment_method,notes:row.notes,
       clientTaxId:row.client_tax_id||(draft?liveClient?.tax_id:null),clientEmail:row.client_email||(draft?liveClient?.email:null),clientPhone:row.client_phone||(draft?liveClient?.phone:null),clientAddress:row.client_address||(draft?addressFrom(liveClient):null),
       issuerName:row.issuer_name||(draft?tax?.fiscal_name:null),issuerTaxId:row.issuer_tax_id||(draft?tax?.vat_number:null),issuerEmail:row.issuer_email,issuerPhone:row.issuer_phone,issuerAddress:row.issuer_address||(draft?tax?.address_text:null),issuerTaxCountryCode:row.issuer_tax_country_code||(draft?tax?.country_code:null),issuerTaxRegistrationLabel:row.issuer_tax_registration_label||(draft?tax?.label:null),issuedAt:row.issued_at,sentAt:row.sent_at,paidAt:row.paid_at,lines:lines.get(row.id)??[],payments:invoicePayments,paidAmount:invoicePayments.reduce((sum,p)=>sum+p.amount,0)} satisfies SalesInvoice;
   });
@@ -210,3 +214,72 @@ export async function issueSalesInvoice(id:string){const {data,error}=await supa
 export async function markSalesInvoiceSent(id:string){const {error}=await supabase.from('sales_invoices').update({status:'sent',sent_at:new Date().toISOString()}).eq('id',id).in('status',['issued','sent']);if(error)throw error;}
 export async function addSalesPayment(invoiceId:string,input:{amount:number;paymentDate:string;method?:string;reference?:string;notes?:string}){const {error}=await supabase.from('sales_payments').insert({invoice_id:invoiceId,amount:input.amount,payment_date:input.paymentDate,method:nullable(input.method),reference:nullable(input.reference),notes:nullable(input.notes)});if(error)throw error;}
 export async function markSalesInvoicePaid(id:string){const {data,error}=await supabase.rpc('mark_sales_invoice_paid',{p_invoice_id:id});if(error)throw error;return data;}
+
+export type SalesReceiptDraftInput={
+  clientId:string;
+  seriesId:string;
+  taxRegistrationId?:string|null;
+  issueDate:string;
+  paymentMethod?:string;
+  notes?:string;
+  fiscalTreatment:'taxable'|'exempt'|'non_taxable'|'out_of_scope';
+  fiscalReason?:string;
+  lines:SalesInvoiceLine[];
+};
+
+export async function createSalesReceiptDraft(input:SalesReceiptDraftInput){
+  const row={
+    client_id:input.clientId,
+    series_id:input.seriesId,
+    tax_registration_id:input.taxRegistrationId||null,
+    invoice_type:'standard',
+    document_kind:'receipt',
+    fiscal_treatment:input.fiscalTreatment,
+    fiscal_reason:nullable(input.fiscalReason),
+    issue_date:sanitizeDatabaseSingleLine(input.issueDate),
+    due_date:sanitizeDatabaseSingleLine(input.issueDate),
+    currency:DEFAULT_APP_SETTINGS.general.currencyCode,
+    payment_method:nullable(input.paymentMethod),
+    notes:nullable(input.notes),
+  };
+  const {data:receipt,error}=await supabase.from('sales_invoices').insert(row).select('id').single();
+  if(error)throw error;
+  const rows=lineRows(receipt.id,input.lines).filter(item=>item.description);
+  if(rows.length){
+    const {error:lineError}=await supabase.from('sales_invoice_lines').insert(rows);
+    if(lineError){await supabase.from('sales_invoices').delete().eq('id',receipt.id);throw lineError;}
+  }
+  return receipt.id as string;
+}
+
+export async function updateSalesReceiptDraft(id:string,input:SalesReceiptDraftInput){
+  const row={
+    client_id:input.clientId,
+    series_id:input.seriesId,
+    tax_registration_id:input.taxRegistrationId||null,
+    fiscal_treatment:input.fiscalTreatment,
+    fiscal_reason:nullable(input.fiscalReason),
+    issue_date:sanitizeDatabaseSingleLine(input.issueDate),
+    due_date:sanitizeDatabaseSingleLine(input.issueDate),
+    payment_method:nullable(input.paymentMethod),
+    notes:nullable(input.notes),
+  };
+  const {error}=await supabase.from('sales_invoices').update(row).eq('id',id).eq('document_kind','receipt').eq('status','draft');
+  if(error)throw error;
+  const {error:deleteError}=await supabase.from('sales_invoice_lines').delete().eq('invoice_id',id);
+  if(deleteError)throw deleteError;
+  const rows=lineRows(id,input.lines).filter(item=>item.description);
+  if(rows.length){const {error:lineError}=await supabase.from('sales_invoice_lines').insert(rows);if(lineError)throw lineError;}
+}
+
+export async function issueSalesReceipt(id:string){
+  const {data,error}=await supabase.rpc('issue_sales_receipt',{p_invoice_id:id});
+  if(error)throw error;
+  return data;
+}
+
+export async function deleteSalesReceiptDraft(id:string){
+  const {error}=await supabase.from('sales_invoices').delete().eq('id',id).eq('document_kind','receipt').eq('status','draft');
+  if(error)throw error;
+}
+
