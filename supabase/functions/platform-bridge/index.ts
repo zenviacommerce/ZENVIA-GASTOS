@@ -19,6 +19,10 @@ function slugify(value:string){
     .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,48);
   return base||'empresa';
 }
+function safeFileName(value:string){
+  const cleaned=value.normalize('NFKD').replace(/[^A-Za-z0-9._-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');
+  return cleaned.slice(-120)||'archivo';
+}
 function integerOrNull(value:unknown){
   if(value===null||value===''||value===undefined)return null;
   const parsed=Number(value);
@@ -231,7 +235,61 @@ Deno.serve(async(req:Request)=>{
       if(ticketError)throw ticketError;if(messagesError)throw messagesError;if(attachmentsError)throw attachmentsError;if(!ticket)return fail('Ticket no encontrado.',404);
       const {data:w,error:wError}=await admin.from('workspaces').select('name').eq('id',ticket.owner_id).maybeSingle();
       if(wError)throw wError;
-      return ok({ticket:{...ticket,workspace_name:w?.name||'Workspace'},messages:messages||[],attachments:attachments||[]});
+      const signedAttachments=await Promise.all((attachments||[]).map(async(attachment:any)=>{
+        const {data:signed,error:signedError}=await admin.storage.from('support-attachments').createSignedUrl(String(attachment.storage_path),3600);
+        return {...attachment,signed_url:signedError?null:signed?.signedUrl||null};
+      }));
+      return ok({ticket:{...ticket,workspace_name:w?.name||'Workspace'},messages:messages||[],attachments:signedAttachments});
+    }
+
+    if(action==='prepare_ticket_attachment'){
+      const ticketId=asText(body?.ticketId,80),messageId=asText(body?.messageId,80);
+      const fileName=asText(body?.fileName,240),mimeType=asText(body?.mimeType,160);
+      const fileSize=Number(body?.fileSize||0);
+      if(!ticketId||!fileName)return fail('Falta el archivo.');
+      if(!actor.id||!actor.email)return fail('Falta la identidad del operador.',400);
+      if(!Number.isFinite(fileSize)||fileSize<=0||fileSize>10*1024*1024)return fail('El máximo por archivo es 10 MB.');
+      const {data:ticket,error:ticketError}=await admin.from('support_tickets').select('id,owner_id').eq('id',ticketId).maybeSingle();
+      if(ticketError)throw ticketError;if(!ticket)return fail('Ticket no encontrado.',404);
+      if(messageId){
+        const {data:message,error:messageError}=await admin.from('support_messages').select('id').eq('id',messageId).eq('ticket_id',ticketId).maybeSingle();
+        if(messageError)throw messageError;if(!message)return fail('El mensaje no pertenece al ticket.');
+      }
+      const folder=messageId?`${ticketId}/${messageId}`:`${ticketId}/platform`;
+      const storagePath=`${folder}/${crypto.randomUUID()}-${safeFileName(fileName)}`;
+      const {data:signed,error:signedError}=await admin.storage.from('support-attachments').createSignedUploadUrl(storagePath);
+      if(signedError)throw signedError;
+      return ok({storagePath,signedUrl:signed.signedUrl,token:signed.token,fileName,mimeType:mimeType||null,fileSize});
+    }
+
+    if(action==='finalize_ticket_attachment'){
+      const ticketId=asText(body?.ticketId,80),messageId=asText(body?.messageId,80);
+      const storagePath=asText(body?.storagePath,600),fileName=asText(body?.fileName,240),mimeType=asText(body?.mimeType,160);
+      const fileSize=Number(body?.fileSize||0);
+      if(!ticketId||!storagePath||!fileName)return fail('Faltan datos del adjunto.');
+      if(!actor.id||!actor.email)return fail('Falta la identidad del operador.',400);
+      if(!storagePath.startsWith(`${ticketId}/`))return fail('Ruta de adjunto no válida.');
+      if(!Number.isFinite(fileSize)||fileSize<=0||fileSize>10*1024*1024)return fail('El máximo por archivo es 10 MB.');
+      const {data:ticket,error:ticketError}=await admin.from('support_tickets').select('id,owner_id').eq('id',ticketId).maybeSingle();
+      if(ticketError)throw ticketError;if(!ticket)return fail('Ticket no encontrado.',404);
+      if(messageId){
+        const {data:message,error:messageError}=await admin.from('support_messages').select('id').eq('id',messageId).eq('ticket_id',ticketId).maybeSingle();
+        if(messageError)throw messageError;if(!message)return fail('El mensaje no pertenece al ticket.');
+      }
+      const {data:attachment,error}=await admin.from('support_attachments').insert({
+        ticket_id:ticketId,message_id:messageId||null,owner_id:ticket.owner_id,uploaded_by:actor.id,
+        file_name:fileName,mime_type:mimeType||null,file_size:fileSize,storage_path:storagePath,
+      }).select('id,ticket_id,message_id,file_name,mime_type,file_size,storage_path,created_at').single();
+      if(error)throw error;
+      return ok({ok:true,attachment});
+    }
+
+    if(action==='discard_ticket_attachment'){
+      const ticketId=asText(body?.ticketId,80),storagePath=asText(body?.storagePath,600);
+      if(!ticketId||!storagePath||!storagePath.startsWith(`${ticketId}/`))return fail('Ruta de adjunto no válida.');
+      const {error}=await admin.storage.from('support-attachments').remove([storagePath]);
+      if(error)throw error;
+      return ok({ok:true});
     }
 
     if(action==='update_ticket'){
