@@ -1,0 +1,24 @@
+.salesDocumentTabs{display:flex;gap:5px;padding:10px 28px 0;max-width:1500px;margin:0 auto}
+.salesDocumentTabs button{border:1px solid #d0d5dd;background:#fff;color:#475467;border-radius:9px;padding:8px 12px;font-weight:700}
+.salesDocumentTabs button.active{background:#101828;color:#fff;border-color:#101828}
+.receiptEditorModal{width:min(1080px,calc(100vw - 32px));max-height:94vh;overflow:auto}
+.receiptEditorBody,.receiptDetailBody{padding:18px 20px}
+.receiptMetaGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.receiptLines{margin-top:14px;display:grid;gap:8px}
+.receiptLine{display:grid;grid-template-columns:minmax(220px,1fr) 90px 110px 85px 38px;gap:8px;align-items:center}
+.receiptLine input,.receiptNotes textarea{width:100%;border:1px solid #d0d5dd;border-radius:8px;padding:9px 10px;background:#fff}
+.receiptLine input:disabled{background:#f2f4f7;color:#667085}
+.receiptAddLine{width:max-content}
+.receiptNotes{display:grid;gap:6px;font-size:12px;font-weight:700;color:#344054;margin-top:16px}
+.receiptTotal{display:flex;justify-content:flex-end;align-items:baseline;gap:14px;padding:16px 0 0}.receiptTotal span{color:#667085}.receiptTotal strong{font-size:24px}
+.receiptModalActions{padding:0 20px 20px}
+.receiptStats .statCard{min-height:88px}.receiptStats .statCard>div{display:grid}.receiptStats .statCard strong{font-size:21px}
+.receiptTable{overflow:hidden}.receiptRow{display:grid;grid-template-columns:1.05fr 1.8fr .8fr 1.15fr .9fr .8fr .8fr 28px;gap:12px;align-items:center;padding:13px 16px;border-bottom:1px solid #f0f2f5;font-size:12px}
+.receiptHead{background:#f9fafb;color:#667085;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.receiptDataRow{width:100%;border-width:0 0 1px;background:#fff;text-align:left;color:inherit}.receiptDataRow:hover{background:#f9fafb}.receiptDataRow:last-child{border-bottom:0}
+.receiptDetailModal{width:min(820px,calc(100vw - 32px))}
+.receiptDetailStats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.receiptDetailStats>div{display:grid;gap:4px;padding:11px;border:1px solid #eaecf0;border-radius:10px;background:#f9fafb}.receiptDetailStats span{font-size:10px;text-transform:uppercase;color:#667085;font-weight:800}.receiptDetailStats strong{font-size:13px}
+.receiptFiscalReason{margin-top:14px;padding:12px;border:1px solid #eaecf0;border-radius:10px;background:#f9fafb}.receiptFiscalReason strong{font-size:11px}.receiptFiscalReason p{margin:5px 0 0;font-size:12px;color:#475467;white-space:pre-wrap}
+.receiptDetailLines{margin-top:14px;border:1px solid #eaecf0;border-radius:10px;overflow:hidden}.receiptDetailLines>div{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid #f0f2f5}.receiptDetailLines>div:last-child{border-bottom:0}.receiptDetailLines span{display:grid;font-size:12px}.receiptDetailLines small{color:#667085;margin-top:2px}
+@media(max-width:900px){.receiptTable{overflow-x:auto}.receiptRow{min-width:900px}.receiptDetailStats{grid-template-columns:1fr 1fr}}
+@media(max-width:650px){.salesDocumentTabs{padding:10px 14px 0}.receiptMetaGrid{grid-template-columns:1fr}.receiptLine{grid-template-columns:1fr 70px 90px}.receiptLine .receiptDescription{grid-column:1/-1}.receiptLine input:nth-of-type(4){grid-column:1/3}.receiptDetailStats{grid-template-columns:1fr}.receiptModalActions{flex-wrap:wrap}.receiptModalActions button{flex:1 1 140px}}
