@@ -32,7 +32,7 @@ test('receipts have their own series and explicit fiscal treatment',async()=>{
   assert.match(migration,/fiscal_treatment/);
   assert.match(migration,/taxable','exempt','non_taxable','out_of_scope/);
   assert.match(migration,/issue_sales_receipt/);
-  assert.match(migration,/Los recibos exentos o no sujetos deben tener IVA 0 %/);
+  assert.match(migration,/Los recibos exentos o no sujetos deben tener IVA 0 %%/);
   assert.match(migration,/Indica el motivo fiscal/);
 });
 
