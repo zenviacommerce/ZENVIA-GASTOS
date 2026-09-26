@@ -46,7 +46,7 @@ begin
      and v_fiscal_treatment in ('exempt','non_taxable','out_of_scope')
      and coalesce(new.tax_rate,0)<>0
   then
-    raise exception 'Los recibos exentos o no sujetos deben tener IVA 0 %.';
+    raise exception 'Los recibos exentos o no sujetos deben tener IVA 0 %%.';
   end if;
 
   v_gross := new.quantity * new.unit_price;
@@ -167,7 +167,7 @@ begin
   if v_invoice.fiscal_treatment<>'taxable'
      and exists(select 1 from public.sales_invoice_lines where invoice_id=p_invoice_id and coalesce(tax_rate,0)<>0)
   then
-    raise exception 'Los recibos exentos o no sujetos deben tener IVA 0 %.';
+    raise exception 'Los recibos exentos o no sujetos deben tener IVA 0 %%.';
   end if;
 
   select * into v_client from public.clients where id=v_invoice.client_id;
