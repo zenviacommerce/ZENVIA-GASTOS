@@ -10,7 +10,7 @@ test('Support module exposes incident/request ticket lifecycle with replies and 
     read('src/services/support.ts'),
     read('supabase/migrations/20260925121000_support_ticketing.sql'),
   ]);
-  for(const label of ['Incidencia','Petición','Nuevo ticket','Gestión de tickets','Responder'])assert.match(page,new RegExp(label));
+  for(const label of ['Incidencia','Petición','Nuevo ticket','Tickets de la empresa','Responder'])assert.match(page,new RegExp(label));
   assert.match(service,/support_tickets/);
   assert.match(service,/support_messages/);
   assert.match(service,/support-attachments/);
