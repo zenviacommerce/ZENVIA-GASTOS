@@ -42,20 +42,23 @@ test('Support is permission-aware and admin gets the management view',async()=>{
   assert.match(sidebar,/Soporte/);
 });
 
-test('Support administrators can edit/delete tickets and every change is audited',async()=>{
-  const [page,service,migration,admin]=await Promise.all([
+test('Gestión customers cannot edit or delete tickets; management stays in Platform',async()=>{
+  const [page,service,restriction,bridge,admin]=await Promise.all([
     read('src/pages/Support.tsx'),
     read('src/services/support.ts'),
-    read('supabase/migrations/20260925123000_support_admin_permissions_audit.sql'),
+    read('supabase/migrations/20260926071000_customer_support_readonly_management.sql'),
+    read('supabase/functions/platform-bridge/index.ts'),
     read('src/pages/Admin.tsx'),
   ]);
-  assert.match(page,/Editar ticket/);
-  assert.match(page,/Eliminar ticket/);
-  assert.match(service,/deleteSupportTicket/);
-  assert.match(service,/description\?:string/);
-  assert.match(migration,/support_tickets_admin_delete/);
-  assert.match(migration,/audit_support_change/);
-  assert.match(migration,/'support','reply'/);
+  assert.doesNotMatch(page,/Editar ticket/);
+  assert.doesNotMatch(page,/Eliminar ticket/);
+  assert.doesNotMatch(service,/deleteSupportTicket/);
+  assert.doesNotMatch(service,/updateSupportTicket/);
+  assert.match(restriction,/revoke update,delete on public\.support_tickets from authenticated/);
+  assert.match(restriction,/drop policy if exists support_tickets_admin_update/);
+  assert.match(restriction,/drop policy if exists support_tickets_admin_delete/);
+  assert.match(bridge,/action==='update_ticket'/);
+  assert.match(bridge,/action==='delete_ticket'/);
   assert.match(admin,/support:'Soporte'/);
   assert.match(admin,/reply:'Respuesta'/);
 });
