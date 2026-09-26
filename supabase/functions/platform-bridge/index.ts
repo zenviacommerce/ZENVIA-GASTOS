@@ -28,6 +28,22 @@ function integerOrNull(value:unknown){
   const parsed=Number(value);
   return Number.isInteger(parsed)&&parsed>=0?parsed:null;
 }
+async function loadUserLimit(admin:any,workspaceId:string){
+  const {data:subscription,error:subscriptionError}=await admin.from('workspace_subscriptions').select('plan_key').eq('workspace_id',workspaceId).maybeSingle();
+  if(subscriptionError)throw subscriptionError;
+  if(!subscription?.plan_key)return null;
+  const {data:entitlement,error:entitlementError}=await admin.from('plan_entitlements').select('enabled,limit_value').eq('plan_key',subscription.plan_key).eq('entitlement_key','users').maybeSingle();
+  if(entitlementError)throw entitlementError;
+  if(!entitlement)return null;
+  if(entitlement.enabled===false)return 0;
+  return entitlement.limit_value==null?null:Number(entitlement.limit_value);
+}
+function sanitizePermissions(value:unknown){
+  if(!Array.isArray(value))return [];
+  const allowed=new Set(modulePermissions);
+  return value.filter((item):item is string=>typeof item==='string'&&allowed.has(item));
+}
+
 async function sha256(value:string){
   const encoded=new TextEncoder().encode(value);
   const digest=await crypto.subtle.digest('SHA-256',encoded);
@@ -122,10 +138,174 @@ Deno.serve(async(req:Request)=>{
       })});
     }
 
+    if(action==='workspace_detail'){
+      const workspaceId=asText(body?.workspaceId,80);if(!workspaceId)return fail('Falta el cliente.');
+      const [
+        {data:workspace,error:workspaceError},
+        {data:business,error:businessError},
+        {data:branding,error:brandingError},
+        {data:users,error:usersError},
+        {data:integrations,error:integrationsError},
+        {data:subscription,error:subscriptionError},
+      ]=await Promise.all([
+        admin.from('workspaces').select('id,slug,name,legal_name,status,created_at,updated_at').eq('id',workspaceId).maybeSingle(),
+        admin.from('business_settings').select('owner_id,legal_name,trade_name,tax_id,address_line1,address_line2,postal_code,city,province,country_code,email,phone,website').eq('owner_id',workspaceId).maybeSingle(),
+        admin.from('company_branding').select('owner_id,logo_path').eq('owner_id',workspaceId).maybeSingle(),
+        admin.from('app_users').select('user_id,email,full_name,role,active,permissions,created_at,updated_at').eq('workspace_id',workspaceId).order('created_at',{ascending:true}),
+        admin.from('integration_accounts').select('id,provider,display_name,external_account_id,status,enabled,is_default,last_tested_at,last_success_at,last_error,created_at').eq('owner_id',workspaceId).order('provider').order('created_at'),
+        admin.from('workspace_subscriptions').select('workspace_id,plan_key,status,billing_provider,trial_ends_at,current_period_ends_at,cancel_at_period_end').eq('workspace_id',workspaceId).maybeSingle(),
+      ]);
+      if(workspaceError)throw workspaceError;if(!workspace)return fail('Cliente no encontrado.',404);
+      if(businessError)throw businessError;if(brandingError)throw brandingError;if(usersError)throw usersError;if(integrationsError)throw integrationsError;if(subscriptionError)throw subscriptionError;
+      let logoUrl:string|null=null;
+      if(branding?.logo_path){
+        const {data:signed}=await admin.storage.from('company-assets').createSignedUrl(String(branding.logo_path),3600);
+        logoUrl=signed?.signedUrl||null;
+      }
+      const {data:authUsers}=await admin.auth.admin.listUsers({page:1,perPage:1000});
+      const authById=new Map((authUsers?.users||[]).map((item:any)=>[item.id,item]));
+      const userLimit=await loadUserLimit(admin,workspaceId);
+      return ok({
+        workspace,business:business||null,branding:{logoPath:branding?.logo_path||null,logoUrl},
+        users:(users||[]).map((item:any)=>({...item,last_sign_in_at:authById.get(item.user_id)?.last_sign_in_at||null})),
+        integrations:integrations||[],subscription:subscription||null,
+        userLimit,
+        onboarding:{
+          company:Boolean(business?.trade_name&&business?.legal_name&&business?.email),
+          branding:Boolean(branding?.logo_path),
+          owner:Boolean((users||[]).some((item:any)=>item.role==='admin'&&item.active)),
+          plan:Boolean(subscription?.plan_key),
+          integrations:Boolean((integrations||[]).some((item:any)=>item.enabled&&item.status!=='disabled')),
+        },
+      });
+    }
+
+    if(action==='update_workspace_profile'){
+      const workspaceId=asText(body?.workspaceId,80);if(!workspaceId)return fail('Falta el cliente.');
+      const name=asText(body?.name,120),legalName=asText(body?.legalName,180);
+      if(name.length<2)return fail('Indica el nombre comercial.');
+      const {error:workspaceError}=await admin.from('workspaces').update({name,legal_name:legalName||null,updated_at:new Date().toISOString()}).eq('id',workspaceId);
+      if(workspaceError)throw workspaceError;
+      const business=body?.business&&typeof body.business==='object'?body.business:{};
+      const businessPatch={
+        owner_id:workspaceId,
+        trade_name:name,
+        legal_name:legalName||name,
+        tax_id:asText(business.taxId,40)||null,
+        address_line1:asText(business.addressLine1,180)||null,
+        address_line2:asText(business.addressLine2,180)||null,
+        postal_code:asText(business.postalCode,20)||null,
+        city:asText(business.city,100)||null,
+        province:asText(business.province,100)||null,
+        country_code:(asText(business.countryCode,2)||'ES').toUpperCase(),
+        email:asText(business.email,254)||null,
+        phone:asText(business.phone,50)||null,
+        website:asText(business.website,240)||null,
+        updated_at:new Date().toISOString(),
+      };
+      const {error:businessError}=await admin.from('business_settings').upsert(businessPatch,{onConflict:'owner_id'});
+      if(businessError)throw businessError;
+      return ok({ok:true});
+    }
+
+    if(action==='prepare_workspace_logo'){
+      const workspaceId=asText(body?.workspaceId,80),fileName=safeFileName(asText(body?.fileName,240));
+      const mimeType=asText(body?.mimeType,100),fileSize=Number(body?.fileSize||0);
+      if(!workspaceId||!fileName)return fail('Falta el logotipo.');
+      if(!['image/png','image/jpeg','image/webp'].includes(mimeType))return fail('El logotipo debe ser PNG, JPG o WebP.');
+      if(!Number.isFinite(fileSize)||fileSize<=0||fileSize>5*1024*1024)return fail('El logotipo no puede superar 5 MB.');
+      const extension=mimeType==='image/jpeg'?'jpg':mimeType==='image/webp'?'webp':'png';
+      const storagePath=`${workspaceId}/branding/platform-${Date.now()}-${crypto.randomUUID().slice(0,8)}.${extension}`;
+      const {data,error}=await admin.storage.from('company-assets').createSignedUploadUrl(storagePath);
+      if(error||!data?.signedUrl)return fail(error?.message||'No se pudo preparar la subida.',500);
+      return ok({storagePath,signedUrl:data.signedUrl,token:data.token});
+    }
+
+    if(action==='finalize_workspace_logo'){
+      const workspaceId=asText(body?.workspaceId,80),storagePath=asText(body?.storagePath,500);
+      if(!workspaceId||!storagePath.startsWith(`${workspaceId}/branding/`))return fail('Ruta de branding no válida.');
+      const {data:current,error:currentError}=await admin.from('company_branding').select('logo_path').eq('owner_id',workspaceId).maybeSingle();
+      if(currentError)throw currentError;
+      const {error}=await admin.from('company_branding').upsert({owner_id:workspaceId,logo_path:storagePath,updated_at:new Date().toISOString()},{onConflict:'owner_id'});
+      if(error)throw error;
+      if(current?.logo_path&&current.logo_path!==storagePath)await admin.storage.from('company-assets').remove([String(current.logo_path)]).catch(()=>undefined);
+      return ok({ok:true});
+    }
+
+    if(action==='remove_workspace_logo'){
+      const workspaceId=asText(body?.workspaceId,80);if(!workspaceId)return fail('Falta el cliente.');
+      const {data:current,error:currentError}=await admin.from('company_branding').select('logo_path').eq('owner_id',workspaceId).maybeSingle();
+      if(currentError)throw currentError;
+      const {error}=await admin.from('company_branding').upsert({owner_id:workspaceId,logo_path:null,updated_at:new Date().toISOString()},{onConflict:'owner_id'});
+      if(error)throw error;
+      if(current?.logo_path)await admin.storage.from('company-assets').remove([String(current.logo_path)]).catch(()=>undefined);
+      return ok({ok:true});
+    }
+
+    if(action==='invite_workspace_user'){
+      const workspaceId=asText(body?.workspaceId,80),email=asText(body?.email,254).toLowerCase(),fullName=asText(body?.fullName,150);
+      const role=body?.role==='admin'?'admin':'user',permissions=role==='admin'?[...modulePermissions]:sanitizePermissions(body?.permissions);
+      if(!workspaceId)return fail('Falta el cliente.');
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email))return fail('Indica un email válido.');
+      if(fullName.length<2)return fail('Indica el nombre del usuario.');
+      if(role==='user'&&!permissions.length)return fail('Selecciona al menos un permiso.');
+      const userLimit=await loadUserLimit(admin,workspaceId);
+      if(userLimit!==null){
+        const {count,error:countError}=await admin.from('app_users').select('user_id',{count:'exact',head:true}).eq('workspace_id',workspaceId).eq('active',true);
+        if(countError)throw countError;
+        if((count||0)>=userLimit)return fail(userLimit===0?'El plan no permite usuarios adicionales.':`Se ha alcanzado el límite de ${userLimit} usuarios activos.`,403);
+      }
+      const {data:invite,error:inviteError}=await admin.auth.admin.inviteUserByEmail(email,{data:{full_name:fullName,onboarding_pending:true},redirectTo:customerAppUrl});
+      if(inviteError||!invite.user)throw inviteError||new Error('No se pudo enviar la invitación.');
+      const {error:metaError}=await admin.auth.admin.updateUserById(invite.user.id,{app_metadata:{...(invite.user.app_metadata||{}),zenvia_managed:true,workspace_id:workspaceId}});
+      if(metaError){await admin.auth.admin.deleteUser(invite.user.id).catch(()=>undefined);throw metaError;}
+      const {error:profileError}=await admin.from('app_users').insert({user_id:invite.user.id,email,full_name:fullName,role,active:true,workspace_id:workspaceId,data_owner_id:workspaceId,permissions});
+      if(profileError){await admin.auth.admin.deleteUser(invite.user.id).catch(()=>undefined);throw profileError;}
+      return ok({ok:true,userId:invite.user.id});
+    }
+
+    if(action==='update_workspace_user'){
+      const workspaceId=asText(body?.workspaceId,80),userId=asText(body?.userId,80);
+      if(!workspaceId||!userId)return fail('Falta el usuario.');
+      const {data:target,error:targetError}=await admin.from('app_users').select('user_id,role,active').eq('workspace_id',workspaceId).eq('user_id',userId).maybeSingle();
+      if(targetError)throw targetError;if(!target)return fail('Usuario no encontrado.',404);
+      const role=body?.role==='admin'?'admin':'user',active=body?.active!==false,permissions=role==='admin'?[...modulePermissions]:sanitizePermissions(body?.permissions);
+      if(role==='user'&&!permissions.length)return fail('Selecciona al menos un permiso.');
+      if((target.role==='admin'&&target.active)&&(!active||role!=='admin')){
+        const {count,error:adminCountError}=await admin.from('app_users').select('user_id',{count:'exact',head:true}).eq('workspace_id',workspaceId).eq('role','admin').eq('active',true);
+        if(adminCountError)throw adminCountError;if((adminCount||0)<=1)return fail('El cliente debe conservar al menos un administrador activo.');
+      }
+      if(active&&!target.active){
+        const userLimit=await loadUserLimit(admin,workspaceId);
+        if(userLimit!==null){
+          const {count,error:countError}=await admin.from('app_users').select('user_id',{count:'exact',head:true}).eq('workspace_id',workspaceId).eq('active',true);
+          if(countError)throw countError;if((count||0)>=userLimit)return fail(`Se ha alcanzado el límite de ${userLimit} usuarios activos.`,403);
+        }
+      }
+      const {error}=await admin.from('app_users').update({role,active,permissions,updated_at:new Date().toISOString()}).eq('workspace_id',workspaceId).eq('user_id',userId);
+      if(error)throw error;return ok({ok:true});
+    }
+
+    if(action==='delete_workspace_user'){
+      const workspaceId=asText(body?.workspaceId,80),userId=asText(body?.userId,80);
+      if(!workspaceId||!userId)return fail('Falta el usuario.');
+      const {data:target,error:targetError}=await admin.from('app_users').select('user_id,role,active').eq('workspace_id',workspaceId).eq('user_id',userId).maybeSingle();
+      if(targetError)throw targetError;if(!target)return fail('Usuario no encontrado.',404);
+      if(target.role==='admin'&&target.active){
+        const {count,error:adminCountError}=await admin.from('app_users').select('user_id',{count:'exact',head:true}).eq('workspace_id',workspaceId).eq('role','admin').eq('active',true);
+        if(adminCountError)throw adminCountError;if((adminCount||0)<=1)return fail('No puedes eliminar el último administrador activo.');
+      }
+      const {error}=await admin.from('app_users').delete().eq('workspace_id',workspaceId).eq('user_id',userId);
+      if(error)throw error;
+      await admin.auth.admin.deleteUser(userId);
+      return ok({ok:true});
+    }
+
     if(action==='create_workspace'){
       const name=asText(body?.name,120),legalName=asText(body?.legalName,180);
       const ownerEmail=asText(body?.ownerEmail,254).toLowerCase(),ownerFullName=asText(body?.ownerFullName,150);
       const planKey=asText(body?.planKey,50)||'starter';
+      const initialBusiness=body?.business&&typeof body.business==='object'?body.business:{};
       if(name.length<2)return fail('Indica el nombre de la empresa.');
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(ownerEmail))return fail('Indica un email válido para el propietario.');
       if(ownerFullName.length<2)return fail('Indica el nombre del propietario.');
@@ -148,7 +328,13 @@ Deno.serve(async(req:Request)=>{
         if(ownerError)throw ownerError;
         const {error:creatorError}=await admin.from('workspaces').update({created_by:invitedUserId}).eq('id',workspaceId);if(creatorError)throw creatorError;
         const {error:subscriptionError}=await admin.from('workspace_subscriptions').insert({workspace_id:workspaceId,plan_key:planKey,status:'active',billing_provider:'manual'});if(subscriptionError)throw subscriptionError;
-        const {error:businessError}=await admin.from('business_settings').insert({owner_id:workspaceId,legal_name:legalName||name,trade_name:name,country_code:'ES',email:ownerEmail});if(businessError)throw businessError;
+        const {error:businessError}=await admin.from('business_settings').insert({
+          owner_id:workspaceId,legal_name:legalName||name,trade_name:name,
+          tax_id:asText(initialBusiness.taxId,40)||null,address_line1:asText(initialBusiness.addressLine1,180)||null,
+          postal_code:asText(initialBusiness.postalCode,20)||null,city:asText(initialBusiness.city,100)||null,
+          province:asText(initialBusiness.province,100)||null,country_code:(asText(initialBusiness.countryCode,2)||'ES').toUpperCase(),
+          email:asText(initialBusiness.email,254)||ownerEmail,phone:asText(initialBusiness.phone,50)||null,website:asText(initialBusiness.website,240)||null,
+        });if(businessError)throw businessError;
         const categories=[['Mercancía',10],['Transporte y logística',20],['Publicidad y marketing',30],['Software y suscripciones',40],['Embalaje y consumibles',50],['Servicios profesionales',60],['Suministros',70],['Viajes y dietas',80],['Comisiones marketplaces',90],['Otros',100]]
           .map(([categoryName,sortOrder])=>({owner_id:workspaceId,name:String(categoryName),sort_order:Number(sortOrder),active:true}));
         const {error:categoryError}=await admin.from('expense_categories').insert(categories);if(categoryError)throw categoryError;
@@ -194,6 +380,10 @@ Deno.serve(async(req:Request)=>{
       if(typeof body?.description==='string')patch.description=asText(body.description,500)||null;
       if(typeof body?.isPublic==='boolean')patch.is_public=body.isPublic;
       if(typeof body?.active==='boolean')patch.active=body.active;
+      if('sortOrder' in body)patch.sort_order=integerOrNull(body.sortOrder)??100;
+      const existingMetadata=body?.metadata&&typeof body.metadata==='object'&&!Array.isArray(body.metadata)?body.metadata:{};
+      if('trialDays' in body)patch.metadata={...existingMetadata,trial_days:integerOrNull(body.trialDays)??0};
+      else if(Object.keys(existingMetadata).length)patch.metadata=existingMetadata;
       if('monthlyPriceCents' in body)patch.monthly_price_cents=integerOrNull(body.monthlyPriceCents);
       if('yearlyPriceCents' in body)patch.yearly_price_cents=integerOrNull(body.yearlyPriceCents);
       if(planKey==='internal'){patch.is_public=false;patch.active=true;}
