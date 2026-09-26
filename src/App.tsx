@@ -14,7 +14,7 @@ import { PasskeySetup } from './components/PasskeySetup';
 import { useSettings } from './context/SettingsContext';
 import { Dashboard } from './pages/Dashboard';
 import { ExpenseInvoicesHub } from './pages/ExpenseInvoicesHub';
-import { SalesInvoices } from './pages/SalesInvoices';
+import { SalesDocumentsHub } from './pages/SalesDocumentsHub';
 import { Orders } from './pages/Orders';
 import { Clients } from './pages/Clients';
 import { Products } from './pages/Products';
@@ -287,7 +287,7 @@ export default function App(){
    />
    {error&&<div className="globalError">{error}<button onClick={refresh}>Reintentar</button></div>}
    {page==='dashboard'&&can('dashboard')&&<Dashboard invoices={data.invoices} products={data.products} suppliers={data.suppliers} onUpload={can('invoices')?()=>setUpload(true):undefined} onProducts={can('products')?()=>void navigate('products'):undefined}/>} 
-   {page==='sales'&&can('sales')&&<SalesInvoices/>}
+   {page==='sales'&&can('sales')&&<SalesDocumentsHub/>}
    {page==='orders'&&can('orders')&&<Orders/>}
    {page==='invoices'&&can('invoices')&&<ExpenseInvoicesHub invoices={data.invoices} suppliers={data.suppliers} categories={data.categories} onUpload={()=>setUpload(true)} onBulkUpload={()=>setBulkUpload(true)} onStatusChange={changeStatus} onOpenFile={openInvoice} onDelete={removeInvoice} onSupplierChange={changeInvoiceSupplier} onCategoryChange={changeInvoiceCategory} onImported={refresh}/>} 
    {page==='clients'&&can('clients')&&<Clients/>}
