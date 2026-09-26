@@ -23,7 +23,7 @@ import {
 import { useSettings } from '../context/SettingsContext';
 import { SelectField } from '../components/forms/SelectField';
 import { SearchableSelect } from '../components/forms/SearchableSelect';
-import { showError, showSuccess } from '../services/toast';
+import { showError, showInfo, showSuccess } from '../services/toast';
 import { confirmAction } from '../services/actionDialog';
 import { DEFAULT_APP_SETTINGS, type AmazonSettings, type ClientsSettings, type ExpensesSettings, type IntegrationsSettings, type MaintenanceSettings, type NotificationsSettings, type NotificationSetting, type OrdersSettings, type ProductsSettings, type SalesSettings, type ShippingSettings, type SuppliersSettings, type UserPreferences } from '../services/settingsSchema';
 import { loadBusinessSettings, saveBusinessSettings, type BusinessSettings } from '../services/sales';
@@ -43,9 +43,12 @@ import { applyExpenseInvoiceReprocess, findClientDuplicates, findInvoiceDuplicat
 import { downloadSettingsExport, previewSettingsReset, resetAllSettingsToDefaults, type SettingsResetPreview } from '../services/settingsExport';
 import { DASHBOARD_KPI_DEFAULTS, TABLE_COLUMN_DEFAULTS, type PreferenceTableKey } from '../services/uiPreferences';
 import { formatAppDateTime, formatAppMoney } from '../services/formatting';
+import type { AccessProfile } from '../services/access';
+import { loadCustomerBillingOverview, requestCustomerPlanChange, type BillingCycle, type CustomerBillingOverview, type CustomerBillingPlan } from '../services/billing';
 
 type SettingsSectionId =
   | 'general'
+  | 'billing'
   | 'sales'
   | 'expenses'
   | 'orders'
@@ -99,6 +102,7 @@ function IntegrationBrandLogo({provider,small=false}:{provider:IntegrationProvid
 
 const sections:SettingsSection[]=[
   {id:'general',label:'General',description:'Identidad, moneda y comportamiento general de la empresa.',icon:Building2,adminOnly:true},
+  {id:'billing',label:'Plan y facturación',description:'Plan contratado, consumo, límites y cambios de suscripción.',icon:CreditCard,adminOnly:true},
   {id:'sales',label:'Facturación',description:'Valores predeterminados, cobros y documentos de venta.',icon:ReceiptText,adminOnly:true},
   {id:'expenses',label:'Gastos e importación',description:'Importación, duplicados y reglas de facturas recibidas.',icon:FileInput,adminOnly:true},
   {id:'orders',label:'Pedidos',description:'Comportamiento general de pedidos, etiquetas y tracking.',icon:ShoppingBag,adminOnly:true},
@@ -289,6 +293,154 @@ function GeneralSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   </section>;
 }
 
+
+
+const subscriptionLabels:Record<string,string>={
+  active:'Activa',trialing:'En prueba',past_due:'Pago pendiente',cancelled:'Cancelada',suspended:'Suspendida',
+};
+
+const entitlementLabels:Record<string,string>={
+  'module.dashboard':'Resumen',
+  'module.sales':'Facturación',
+  'module.orders':'Pedidos',
+  'module.invoices':'Gastos',
+  'module.clients':'Clientes',
+  'module.products':'Productos',
+  'module.suppliers':'Proveedores',
+  'module.amazon':'Amazon',
+  'module.support':'Soporte',
+  'integration.amazon':'Amazon',
+  'integration.sendcloud':'Sendcloud',
+  'integration.gmail':'Gmail',
+};
+
+function billingMoney(cents:number|null){
+  if(cents==null)return 'Consultar';
+  return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(cents/100);
+}
+function billingDate(value:string|null){
+  if(!value)return '—';
+  const date=new Date(value);
+  return Number.isNaN(date.getTime())?'—':date.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'});
+}
+function usagePercent(value:number,limit:number|null){
+  if(limit==null||limit<=0)return null;
+  return Math.min(100,Math.round((value/limit)*100));
+}
+function usageLabel(value:number,limit:number|null){
+  return limit==null?`${value} / Sin límite`:`${value} / ${limit}`;
+}
+function planFeatureLabels(plan:CustomerBillingPlan){
+  return plan.entitlements
+    .filter(item=>item.enabled&&(item.key.startsWith('module.')||item.key.startsWith('integration.')))
+    .map(item=>entitlementLabels[item.key]||item.key.replace(/^module\.|^integration\./,''))
+    .slice(0,8);
+}
+
+function BillingSection({access}:{access:AccessProfile}){
+  const [overview,setOverview]=useState<CustomerBillingOverview|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  const [cycle,setCycle]=useState<BillingCycle>('monthly');
+  const [requesting,setRequesting]=useState<string|null>(null);
+
+  const load=async()=>{
+    setLoading(true);setError('');
+    try{setOverview(await loadCustomerBillingOverview(access));}
+    catch(e){
+      const message=e instanceof Error?e.message:'No se pudo cargar el plan y la facturación.';
+      setError(message);showError(message);
+    }finally{setLoading(false)}
+  };
+  useEffect(()=>{void load()},[access.workspaceId,access.planKey]);
+
+  const requestChange=async(plan:CustomerBillingPlan)=>{
+    setRequesting(plan.planKey);
+    try{
+      const result=await requestCustomerPlanChange({access,targetPlan:plan,cycle});
+      showSuccess(`Solicitud para cambiar a ${plan.name} enviada a soporte.`);
+      if(!result.notification.delivered)showInfo('La solicitud quedó registrada, aunque el aviso por email no pudo enviarse.');
+    }catch(e){showError(e instanceof Error?e.message:'No se pudo solicitar el cambio de plan.')}
+    finally{setRequesting(null)}
+  };
+
+  if(loading)return <section className="settingsSectionCard"><div className="settingsSectionHero"><div className="settingsSectionIcon"><CreditCard size={22}/></div><div><h2>Plan y facturación</h2><p>Cargando tu suscripción…</p></div></div><div className="settingsInlineLoading">Cargando plan y consumo…</div></section>;
+  if(error||!overview)return <section className="settingsSectionCard"><div className="settingsSectionHero"><div className="settingsSectionIcon"><CreditCard size={22}/></div><div><h2>Plan y facturación</h2><p>No se pudo cargar la información de suscripción.</p></div></div><div className="settingsWarning"><BellRing size={18}/><div><strong>Error de facturación</strong><span>{error}</span></div></div><div className="settingsSectionActions"><button type="button" className="secondary" onClick={()=>void load()}>Reintentar</button></div></section>;
+
+  const current=overview.currentPlan;
+  const currentMonthly=current.monthlyPriceCents;
+  const currentYearly=current.yearlyPriceCents;
+  const publicPlans=overview.availablePlans;
+  const usage=[
+    {label:'Pedidos este mes',...overview.usage.monthlyOrders},
+    {label:'Usuarios activos',...overview.usage.users},
+    {label:'Cuentas Amazon',...overview.usage.amazonAccounts},
+  ];
+
+  return <section className="settingsSectionCard billingSettings">
+    <div className="settingsSectionHero">
+      <div className="settingsSectionIcon"><CreditCard size={22}/></div>
+      <div><h2>Plan y facturación</h2><p>Consulta tu suscripción, el uso incluido y los planes disponibles para tu empresa.</p></div>
+    </div>
+
+    <div className="billingCurrentCard">
+      <div className="billingCurrentMain">
+        <span className="billingKicker">Plan actual</span>
+        <div className="billingPlanTitle"><h3>{current.name}</h3><span className={`billingStatus ${overview.subscription.status}`}>{subscriptionLabels[overview.subscription.status]||overview.subscription.status}</span></div>
+        <p>{current.description||'Plan activo para tu workspace.'}</p>
+        {current.planKey==='internal'&&<div className="billingInternalNote"><ShieldCheck size={16}/><span>Plan interno de ZENVIA. No aparece en la oferta comercial para clientes.</span></div>}
+      </div>
+      <div className="billingPriceBox">
+        <strong>{currentMonthly==null&&currentYearly==null?'Sin precio comercial':billingMoney(currentMonthly)}</strong>
+        {currentMonthly!=null&&<span>/ mes</span>}
+        {currentYearly!=null&&<small>{billingMoney(currentYearly)} / año</small>}
+      </div>
+      <div className="billingMeta">
+        <div><span>Proveedor</span><strong>{overview.subscription.billingProvider==='stripe'?'Stripe':'Gestión manual'}</strong></div>
+        <div><span>Próxima renovación</span><strong>{billingDate(overview.subscription.currentPeriodEndsAt)}</strong></div>
+        {overview.subscription.trialEndsAt&&<div><span>Fin de prueba</span><strong>{billingDate(overview.subscription.trialEndsAt)}</strong></div>}
+        {overview.subscription.cancelAtPeriodEnd&&<div className="billingCancelNotice"><span>Cancelación</span><strong>Al final del periodo</strong></div>}
+      </div>
+    </div>
+
+    <div className="settingsSubsection">
+      <h3>Uso del plan</h3>
+      <p className="settingsHelpText">Los límites se calculan sobre tu plan actual. “Sin límite” indica que Platform no ha establecido un máximo para ese recurso.</p>
+      <div className="billingUsageGrid">{usage.map(item=>{
+        const percent=usagePercent(item.value,item.limit);
+        return <article className="billingUsageCard" key={item.label}>
+          <div><span>{item.label}</span><strong>{usageLabel(item.value,item.limit)}</strong></div>
+          {percent!==null&&<div className="billingUsageTrack"><span style={{width:`${percent}%`}}/></div>}
+          {percent!==null&&<small>{percent}% utilizado</small>}
+        </article>;
+      })}</div>
+    </div>
+
+    <div className="settingsSubsection">
+      <div className="billingPlansHead"><div><h3>Planes disponibles</h3><p className="settingsHelpText">Solo se muestran los planes que ZENVIA Platform haya publicado para contratación.</p></div>
+        <div className="billingCycleToggle" role="group" aria-label="Modalidad de facturación">
+          <button type="button" className={cycle==='monthly'?'active':''} onClick={()=>setCycle('monthly')}>Mensual</button>
+          <button type="button" className={cycle==='yearly'?'active':''} onClick={()=>setCycle('yearly')}>Anual</button>
+        </div>
+      </div>
+      {publicPlans.length?<div className="billingPlanGrid">{publicPlans.map(plan=>{
+        const currentPlan=plan.planKey===access.planKey;
+        const price=cycle==='yearly'?plan.yearlyPriceCents:plan.monthlyPriceCents;
+        const features=planFeatureLabels(plan);
+        return <article className={currentPlan?'billingPlanCard current':'billingPlanCard'} key={plan.planKey}>
+          <div className="billingPlanCardHead"><div><span>{currentPlan?'Tu plan':'Plan'}</span><h4>{plan.name}</h4></div>{currentPlan&&<span className="billingCurrentPill">Actual</span>}</div>
+          <p>{plan.description}</p>
+          <div className="billingPlanPrice"><strong>{billingMoney(price)}</strong>{price!=null&&<span>{cycle==='yearly'?'/ año':'/ mes'}</span>}</div>
+          {features.length>0&&<ul>{features.map(feature=><li key={feature}><ShieldCheck size={14}/>{feature}</li>)}</ul>}
+          <button type="button" className={currentPlan?'secondary':'primary'} disabled={currentPlan||requesting!==null} onClick={()=>void requestChange(plan)}>
+            {currentPlan?'Plan actual':requesting===plan.planKey?'Enviando…':'Solicitar cambio'}
+          </button>
+        </article>;
+      })}</div>:<div className="settingsEmptySection"><CreditCard size={22}/><div><strong>No hay planes públicos disponibles todavía</strong><span>Cuando se publiquen planes desde ZENVIA Platform aparecerán aquí automáticamente con sus precios, límites y funcionalidades.</span></div></div>}
+      <div className="billingCheckoutNote"><ShieldCheck size={16}/><span>Hasta integrar el cobro automático, “Solicitar cambio” crea una petición de soporte. El plan no cambia hasta que ZENVIA confirme la contratación. Cuando Stripe esté conectado, este flujo pasará a checkout automático.</span></div>
+    </div>
+  </section>;
+}
 
 function SalesSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void}){
   const {settings,updateSection,resetSection}=useSettings();
@@ -2217,7 +2369,7 @@ function MaintenanceSection({onDirtyChange}:{onDirtyChange:(dirty:boolean)=>void
   </section>;
 }
 
-export function SettingsPage({isAdmin}:{isAdmin:boolean}){
+export function SettingsPage({isAdmin,access}:{isAdmin:boolean;access:AccessProfile}){
   const {warnings,error,loading}=useSettings();
   const visibleSections=useMemo(()=>sections.filter(section=>!section.adminOnly||isAdmin),[isAdmin]);
   const [activeSection,setActiveSection]=useState<SettingsSectionId>(isAdmin?'general':'preferences');
@@ -2272,7 +2424,7 @@ export function SettingsPage({isAdmin}:{isAdmin:boolean}){
         })}
       </nav>
       <div className="settingsContent" onChangeCapture={()=>setDirty(true)}>
-        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='integrations'?<IntegrationsSection onDirtyChange={setDirty}/>:active&&active.id==='automations'?<AlertsSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&active.id==='maintenance'?<MaintenanceSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
+        {active&&active.id==='preferences'?<PreferencesSection onDirtyChange={setDirty}/>:active&&active.id==='general'?<GeneralSection onDirtyChange={setDirty}/>:active&&active.id==='billing'?<BillingSection access={access}/>:active&&active.id==='sales'?<SalesSection onDirtyChange={setDirty}/>:active&&active.id==='orders'?<OrdersSection onDirtyChange={setDirty}/>:active&&active.id==='shipping'?<ShippingSection onDirtyChange={setDirty}/>:active&&active.id==='integrations'?<IntegrationsSection onDirtyChange={setDirty}/>:active&&active.id==='automations'?<AlertsSection onDirtyChange={setDirty}/>:active&&active.id==='expenses'?<ExpensesSection onDirtyChange={setDirty}/>:active&&active.id==='products'?<ProductsSection onDirtyChange={setDirty}/>:active&&active.id==='clients'?<ClientsSection onDirtyChange={setDirty}/>:active&&active.id==='suppliers'?<SuppliersSection onDirtyChange={setDirty}/>:active&&active.id==='maintenance'?<MaintenanceSection onDirtyChange={setDirty}/>:active&&<SectionPlaceholder section={active}/>} 
       </div>
     </div>
   </div>;
