@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { listManagedUsers, type AccessProfile, type WorkspaceEntitlement } from './access';
+import type { AccessProfile, WorkspaceEntitlement } from './access';
 import { createSupportTicket } from './support';
 
 export type BillingCycle='monthly'|'yearly';
@@ -91,45 +91,23 @@ function limitFor(access:AccessProfile,key:string){
   return access.entitlements[key]?.enabled===false?0:(access.entitlements[key]?.limit??null);
 }
 
-function startOfCurrentUtcMonth(){
-  const now=new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString();
-}
-function startOfNextUtcMonth(){
-  const now=new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,1)).toISOString();
-}
+type BillingOverviewResponse={
+  plans:PlanRow[];
+  entitlements:EntitlementRow[];
+  subscription:{
+    plan_key:string;status:string;billing_provider:string;trial_ends_at:string|null;
+    current_period_ends_at:string|null;cancel_at_period_end:boolean;
+  }|null;
+  usage:{users:number;amazonAccounts:number;monthlyOrders:number};
+};
 
 export async function loadCustomerBillingOverview(access:AccessProfile):Promise<CustomerBillingOverview>{
-  const [plansResult,entitlementsResult,subscriptionResult,users,amazonResult,ordersResult]=await Promise.all([
-    supabase.from('billing_plans')
-      .select('plan_key,name,description,is_public,active,monthly_price_cents,yearly_price_cents,sort_order')
-      .eq('active',true)
-      .order('sort_order',{ascending:true}),
-    supabase.from('plan_entitlements')
-      .select('plan_key,entitlement_key,enabled,limit_value,config')
-      .order('entitlement_key',{ascending:true}),
-    supabase.from('workspace_subscriptions')
-      .select('workspace_id,plan_key,status,billing_provider,trial_ends_at,current_period_ends_at,cancel_at_period_end')
-      .eq('workspace_id',access.workspaceId)
-      .maybeSingle(),
-    listManagedUsers(),
-    supabase.from('amazon_accounts').select('id,status').eq('owner_id',access.workspaceId),
-    supabase.from('fulfillment_orders')
-      .select('id',{count:'exact',head:true})
-      .eq('owner_id',access.workspaceId)
-      .gte('order_created_at',startOfCurrentUtcMonth())
-      .lt('order_created_at',startOfNextUtcMonth()),
-  ]);
-
-  if(plansResult.error)throw plansResult.error;
-  if(entitlementsResult.error)throw entitlementsResult.error;
-  if(subscriptionResult.error)throw subscriptionResult.error;
-  if(amazonResult.error)throw amazonResult.error;
-  if(ordersResult.error)throw ordersResult.error;
-
-  const planRows=(plansResult.data||[]) as PlanRow[];
-  const entitlementRows=(entitlementsResult.data||[]) as EntitlementRow[];
+  const {data,error}=await supabase.functions.invoke('customer-billing',{body:{action:'overview'}});
+  if(error)throw new Error(error.message||'No se pudo cargar el plan y la facturación.');
+  if(data?.error)throw new Error(String(data.error));
+  const response=data as BillingOverviewResponse;
+  const planRows=Array.isArray(response?.plans)?response.plans:[];
+  const entitlementRows=Array.isArray(response?.entitlements)?response.entitlements:[];
   const currentRow=planRows.find(plan=>plan.plan_key===access.planKey);
   const currentPlan=currentRow
     ?mapPlan(currentRow,entitlementRows)
@@ -144,11 +122,7 @@ export async function loadCustomerBillingOverview(access:AccessProfile):Promise<
       entitlements:Object.entries(access.entitlements).map(([key,value])=>toEntitlement(key,value)),
     };
 
-  const subscriptionRow=subscriptionResult.data;
-  const activeUsers=users.filter(user=>user.active).length;
-  const amazonAccounts=(amazonResult.data||[]).filter((row:any)=>row.status!=='disabled').length;
-  const monthlyOrders=Number(ordersResult.count||0);
-
+  const subscriptionRow=response?.subscription||null;
   return {
     currentPlan,
     subscription:{
@@ -160,9 +134,9 @@ export async function loadCustomerBillingOverview(access:AccessProfile):Promise<
       cancelAtPeriodEnd:Boolean(subscriptionRow?.cancel_at_period_end),
     },
     usage:{
-      users:{value:activeUsers,limit:limitFor(access,'users')},
-      amazonAccounts:{value:amazonAccounts,limit:limitFor(access,'amazon_accounts')},
-      monthlyOrders:{value:monthlyOrders,limit:limitFor(access,'monthly_orders')},
+      users:{value:Number(response?.usage?.users||0),limit:limitFor(access,'users')},
+      amazonAccounts:{value:Number(response?.usage?.amazonAccounts||0),limit:limitFor(access,'amazon_accounts')},
+      monthlyOrders:{value:Number(response?.usage?.monthlyOrders||0),limit:limitFor(access,'monthly_orders')},
     },
     availablePlans:planRows
       .filter(plan=>plan.plan_key!=='internal'&&plan.is_public)
